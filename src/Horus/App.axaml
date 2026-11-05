@@ -10,7 +10,12 @@
     </ResourceDictionary>
   </Application.Resources>
   <Application.Styles>
-    <FluentTheme />
+    <FluentTheme>
+      <FluentTheme.Palettes>
+        <ColorPaletteResources x:Key="Light" Accent="#2D81FF" />
+        <ColorPaletteResources x:Key="Dark" Accent="#2D81FF" />
+      </FluentTheme.Palettes>
+    </FluentTheme>
     <StyleInclude Source="avares://Horus/Theme/Styles.axaml" />
   </Application.Styles>
 </Application>

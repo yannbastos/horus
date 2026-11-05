@@ -1,31 +1,65 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Horus.ViewModels"
+        xmlns:examples="using:Horus.Views.Examples"
         x:Class="Horus.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="{Binding AppName}"
-        Width="960"
-        Height="600"
-        MinWidth="480"
-        MinHeight="320"
+        Width="1180"
+        Height="760"
+        MinWidth="720"
+        MinHeight="480"
         WindowStartupLocation="CenterScreen">
-  <Border HorizontalAlignment="Center"
-          VerticalAlignment="Center"
-          Padding="56,40"
-          BorderBrush="{DynamicResource HorusLineBrush}"
-          BorderThickness="1">
-    <StackPanel Spacing="16">
-      <TextBlock x:Name="AppNameText"
-                 Classes="display"
-                 Text="{Binding AppName}"
-                 HorizontalAlignment="Center"
-                 FontSize="56"
-                 LetterSpacing="4" />
-      <Border Classes="tag" HorizontalAlignment="Center">
-        <TextBlock x:Name="StatusMessageText"
-                   Classes="label"
-                   Text="{Binding StatusMessage}" />
-      </Border>
-    </StackPanel>
-  </Border>
+  <DockPanel>
+    <Border DockPanel.Dock="Top"
+            Height="52"
+            BorderBrush="{DynamicResource HorusLineBrush}"
+            BorderThickness="0,0,0,1">
+      <Grid ColumnDefinitions="Auto,*,Auto">
+        <Border Padding="20,0"
+                BorderBrush="{DynamicResource HorusLineBrush}"
+                BorderThickness="0,0,1,0">
+          <TextBlock x:Name="AppNameText"
+                     Classes="display"
+                     Text="{Binding AppName}"
+                     VerticalAlignment="Center"
+                     FontSize="18"
+                     LetterSpacing="2" />
+        </Border>
+        <StackPanel Grid.Column="1"
+                    Orientation="Horizontal"
+                    VerticalAlignment="Center"
+                    Margin="16,0"
+                    Spacing="4">
+          <RadioButton x:Name="NavHome" Classes="segment" GroupName="Nav" Content="INÍCIO" IsChecked="True" />
+          <RadioButton x:Name="NavList" Classes="segment" GroupName="Nav" Content="LISTA" />
+          <RadioButton x:Name="NavReading" Classes="segment" GroupName="Nav" Content="LEITURA" />
+          <RadioButton x:Name="NavSettings" Classes="segment" GroupName="Nav" Content="AJUSTES" />
+        </StackPanel>
+        <Border Grid.Column="2"
+                Classes="tag"
+                VerticalAlignment="Center"
+                Margin="16,0">
+          <TextBlock x:Name="StatusMessageText"
+                     Classes="label"
+                     Text="{Binding StatusMessage}" />
+        </Border>
+      </Grid>
+    </Border>
+
+    <Border DockPanel.Dock="Bottom"
+            Padding="20,8"
+            BorderBrush="{DynamicResource HorusLineBrush}"
+            BorderThickness="0,1,0,0">
+      <TextBlock Classes="label"
+                 Text="TELAS E DADOS DE EXEMPLO · APENAS A NAVEGAÇÃO E O TEMA FUNCIONAM" />
+    </Border>
+
+    <Panel>
+      <examples:HomeExampleView x:Name="HomeView" IsVisible="{Binding #NavHome.IsChecked}" />
+      <examples:ListExampleView x:Name="ListView" IsVisible="{Binding #NavList.IsChecked}" />
+      <examples:ReadingExampleView x:Name="ReadingView" IsVisible="{Binding #NavReading.IsChecked}" />
+      <examples:SettingsExampleView x:Name="SettingsView" IsVisible="{Binding #NavSettings.IsChecked}" />
+    </Panel>
+  </DockPanel>
 </Window>

@@ -13,7 +13,7 @@ Mais detalhes em [docs/vision.md](docs/vision.md).
 
 ## Estado atual
 
-**Em desenvolvimento inicial.** Hoje o aplicativo abre uma janela com o nome HORUS e um aviso de que está em desenvolvimento, nos temas claro e escuro conforme o sistema. Ainda não há nenhuma funcionalidade de estudo.
+**Em desenvolvimento inicial.** Hoje o aplicativo abre uma janela com o nome HORUS, um aviso de que está em desenvolvimento e telas de exemplo com dados fictícios, usadas para avaliar o design. Apenas a navegação entre as telas e a troca entre os temas claro e escuro funcionam. Ainda não há nenhuma funcionalidade de estudo.
 
 As próximas etapas estão em [docs/roadmap.md](docs/roadmap.md).
 

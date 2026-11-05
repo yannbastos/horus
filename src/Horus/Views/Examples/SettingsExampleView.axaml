@@ -1,0 +1,48 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Horus.Views.Examples.SettingsExampleView">
+  <ScrollViewer>
+    <StackPanel MaxWidth="680"
+                Margin="20,40"
+                Spacing="24">
+      <TextBlock Classes="label" Text="04 / AJUSTES DE EXEMPLO" />
+
+      <StackPanel Spacing="8">
+        <TextBlock Classes="display" FontSize="18" Text="Aparência" />
+        <TextBlock Classes="muted" Text="Esta é a única opção que funciona nesta tela." />
+        <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,4,0,0">
+          <RadioButton x:Name="ThemeSystem" Classes="segment" GroupName="Theme" Content="SISTEMA" IsChecked="True" IsCheckedChanged="OnThemeOptionChanged" />
+          <RadioButton x:Name="ThemeLight" Classes="segment" GroupName="Theme" Content="CLARO" IsCheckedChanged="OnThemeOptionChanged" />
+          <RadioButton x:Name="ThemeDark" Classes="segment" GroupName="Theme" Content="ESCURO" IsCheckedChanged="OnThemeOptionChanged" />
+        </StackPanel>
+      </StackPanel>
+
+      <Border Height="1" Background="{DynamicResource HorusLineBrush}" />
+
+      <StackPanel Spacing="16">
+        <TextBlock Classes="display" FontSize="18" Text="Controles de exemplo" />
+        <StackPanel Spacing="4">
+          <TextBlock Classes="muted" Text="Campo de texto" />
+          <TextBox PlaceholderText="Digite algo" />
+        </StackPanel>
+        <StackPanel Spacing="4">
+          <TextBlock Classes="muted" Text="Lista de seleção" />
+          <ComboBox SelectedIndex="0" HorizontalAlignment="Stretch">
+            <ComboBoxItem Content="Opção de exemplo 1" />
+            <ComboBoxItem Content="Opção de exemplo 2" />
+            <ComboBoxItem Content="Opção de exemplo 3" />
+          </ComboBox>
+        </StackPanel>
+        <StackPanel Spacing="4">
+          <TextBlock Classes="muted" Text="Intensidade" />
+          <Slider Minimum="0" Maximum="100" Value="40" />
+        </StackPanel>
+        <ToggleSwitch Content="Opção liga e desliga"
+                      OnContent="Ligado"
+                      OffContent="Desligado"
+                      IsChecked="True" />
+        <CheckBox Content="Caixa de seleção de exemplo" IsChecked="True" />
+      </StackPanel>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

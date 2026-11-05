@@ -3,37 +3,40 @@
 
   <FontFamily x:Key="HorusDisplayFont">avares://Horus/Assets/Fonts/ArchivoExpanded-SemiBold.ttf#Archivo Expanded SemiBold</FontFamily>
   <FontFamily x:Key="HorusBodyFont">fonts:Inter#Inter</FontFamily>
+  <FontFamily x:Key="ContentControlThemeFontFamily">fonts:Inter#Inter</FontFamily>
+  <CornerRadius x:Key="ControlCornerRadius">0</CornerRadius>
+  <CornerRadius x:Key="OverlayCornerRadius">0</CornerRadius>
   <FontFamily x:Key="HorusMonoFont">avares://Horus/Assets/Fonts/GeistMono-Medium.ttf#Geist Mono Medium</FontFamily>
 
   <ResourceDictionary.ThemeDictionaries>
     <ResourceDictionary x:Key="Dark">
-      <SolidColorBrush x:Key="HorusBackgroundBrush" Color="#121316" />
-      <SolidColorBrush x:Key="HorusSunkenBrush" Color="#060607" />
-      <SolidColorBrush x:Key="HorusInkBrush" Color="#F2F1EE" />
+      <SolidColorBrush x:Key="HorusBackgroundBrush" Color="#111122" />
+      <SolidColorBrush x:Key="HorusSunkenBrush" Color="#0B0B18" />
+      <SolidColorBrush x:Key="HorusInkBrush" Color="#F1F0F8" />
       <SolidColorBrush x:Key="HorusInkStrongBrush" Color="#FFFFFF" />
-      <SolidColorBrush x:Key="HorusMutedBrush" Color="#A9A9A8" />
-      <SolidColorBrush x:Key="HorusFaintBrush" Color="#8E8E8D" />
+      <SolidColorBrush x:Key="HorusMutedBrush" Color="#B3B1C8" />
+      <SolidColorBrush x:Key="HorusFaintBrush" Color="#9996B2" />
       <SolidColorBrush x:Key="HorusLineBrush" Color="#26F2F1EE" />
       <SolidColorBrush x:Key="HorusLineStrongBrush" Color="#66F2F1EE" />
-      <SolidColorBrush x:Key="HorusAccentInkBrush" Color="#74AAFF" />
-      <SolidColorBrush x:Key="HorusInvertBackgroundBrush" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="HorusAccentInkBrush" Color="#AAA5FF" />
+      <SolidColorBrush x:Key="HorusInvertBackgroundBrush" Color="#AAA5FF" />
       <SolidColorBrush x:Key="HorusInvertForegroundBrush" Color="#0B0B0C" />
       <SolidColorBrush x:Key="HorusGoodBrush" Color="#3FD6B8" />
       <SolidColorBrush x:Key="HorusWarnBrush" Color="#FFC14D" />
       <SolidColorBrush x:Key="HorusBadBrush" Color="#FF6259" />
     </ResourceDictionary>
     <ResourceDictionary x:Key="Light">
-      <SolidColorBrush x:Key="HorusBackgroundBrush" Color="#F2F1EE" />
-      <SolidColorBrush x:Key="HorusSunkenBrush" Color="#E9E8E4" />
-      <SolidColorBrush x:Key="HorusInkBrush" Color="#101014" />
+      <SolidColorBrush x:Key="HorusBackgroundBrush" Color="#F1F0F8" />
+      <SolidColorBrush x:Key="HorusSunkenBrush" Color="#E7E6F0" />
+      <SolidColorBrush x:Key="HorusInkBrush" Color="#19182B" />
       <SolidColorBrush x:Key="HorusInkStrongBrush" Color="#000000" />
-      <SolidColorBrush x:Key="HorusMutedBrush" Color="#55555A" />
-      <SolidColorBrush x:Key="HorusFaintBrush" Color="#66666A" />
+      <SolidColorBrush x:Key="HorusMutedBrush" Color="#545168" />
+      <SolidColorBrush x:Key="HorusFaintBrush" Color="#625E77" />
       <SolidColorBrush x:Key="HorusLineBrush" Color="#29101014" />
       <SolidColorBrush x:Key="HorusLineStrongBrush" Color="#66101014" />
-      <SolidColorBrush x:Key="HorusAccentInkBrush" Color="#1659C4" />
-      <SolidColorBrush x:Key="HorusInvertBackgroundBrush" Color="#101014" />
-      <SolidColorBrush x:Key="HorusInvertForegroundBrush" Color="#F2F1EE" />
+      <SolidColorBrush x:Key="HorusAccentInkBrush" Color="#4939B8" />
+      <SolidColorBrush x:Key="HorusInvertBackgroundBrush" Color="#4939B8" />
+      <SolidColorBrush x:Key="HorusInvertForegroundBrush" Color="#F1F0F8" />
       <SolidColorBrush x:Key="HorusGoodBrush" Color="#0A7563" />
       <SolidColorBrush x:Key="HorusWarnBrush" Color="#8A5800" />
       <SolidColorBrush x:Key="HorusBadBrush" Color="#B3261E" />

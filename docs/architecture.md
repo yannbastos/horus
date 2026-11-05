@@ -13,6 +13,7 @@ src/Horus/              Aplicativo desktop
   Theme/                Cores, fontes e estilos visuais
   ViewModels/           Dados e estado apresentados pelas telas
   Views/                Telas em AXAML
+  Views/Examples/       Telas temporárias com dados fictícios para avaliar o design
 tests/Horus.Tests/      Testes automatizados
 docs/                   Documentação do projeto
 Horus.slnx              Solução do .NET
@@ -26,12 +27,14 @@ global.json             Versão mínima do SDK
 | --- | --- |
 | `Program` | Inicia o aplicativo e configura a plataforma e a fonte Inter |
 | `App` | Carrega o tema Fluent e cria a `MainWindow` com seu ViewModel |
-| `MainWindow` | Define o layout da janela principal |
-| `MainWindowViewModel` | Fornece o nome do aplicativo e a mensagem de status |
+| `MainWindow` | Define o cabeçalho, a navegação, o rodapé e a área das telas |
+| `Views/Examples`, `ExampleData` | Telas e dados fictícios, sem regras de negócio; devem ser removidos quando houver telas reais |
+| `MainWindowViewModel` | Fornece o nome do aplicativo, a mensagem de status e os dados de exemplo |
 | `Theme/Tokens.axaml` | Define as cores dos temas claro e escuro e as fontes |
 | `Theme/Styles.axaml` | Aplica os tokens à janela, aos textos e aos botões |
 | `MainWindowTests` | Abre a janela em modo headless e confere o conteúdo exibido |
 | `ThemeTests` | Confere contraste, carregamento das fontes e troca de tema |
+| `ExampleScreensTests` | Confere a navegação e a opção de tema das telas de exemplo |
 
 ## Frameworks e dependências
 
@@ -51,7 +54,7 @@ Todo o código do aplicativo fica em `src/Horus`. O scaffold anterior tinha cama
 
 ### MVVM sem biblioteca
 
-Views e ViewModels ficam separados porque esse é o padrão natural do Avalonia e permite testar a lógica sem depender da tela. Como a tela atual só exibe valores fixos, não há necessidade de `INotifyPropertyChanged` nem de comandos. Uma biblioteca como o `CommunityToolkit.Mvvm` pode ser avaliada quando surgir a primeira tela com estado.
+Views e ViewModels ficam separados porque esse é o padrão natural do Avalonia e permite testar a lógica sem depender da tela. Como as telas atuais só exibem valores fixos, não há necessidade de `INotifyPropertyChanged` nem de comandos. Uma biblioteca como o `CommunityToolkit.Mvvm` pode ser avaliada quando surgir a primeira tela com estado.
 
 ### Tema visual
 
@@ -80,3 +83,11 @@ O teste abre a janela real e confere o que ela apresenta, sem depender de um amb
 - O `app.manifest` e o `OutputType` `WinExe` só têm efeito no Windows.
 - O código atual não acessa o sistema de arquivos. Quando isso mudar, use `Path.Combine` e `Environment.GetFolderPath`, nunca caminhos fixos.
 - O aplicativo ainda não foi compilado nem executado no Linux.
+
+### Composição visual HORUS
+
+As telas de exemplo combinam a geometria reta e as divisórias do launcher com superfícies em tons de índigo e a composição gráfica inspirada no Hermes. A identidade é própria: um olho geométrico cercado por órbitas vetoriais, desenhado em AXAML, sem imagens, marcas ou código das referências.
+
+A tela inicial apresenta uma faixa de abertura com essa ilustração. As órbitas executam uma animação de entrada de 2,4 segundos e depois ficam estáticas. Cards e botões usam transições curtas de cor ao passar o ponteiro. Não há animação contínua durante a leitura. Os temas claro e escuro continuam usando os mesmos tokens dinâmicos, com contraste dos textos verificado pelos testes existentes.
+
+Essas telas continuam sendo exemplos com dados fictícios. A mudança visual não adiciona funcionalidades de estudo nem dependências.

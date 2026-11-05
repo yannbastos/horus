@@ -1,0 +1,69 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Horus.ViewModels"
+             x:Class="Horus.Views.Examples.ListExampleView"
+             x:DataType="vm:MainWindowViewModel">
+  <ScrollViewer>
+    <StackPanel Margin="20" Spacing="20">
+      <TextBlock Classes="label" Text="02 / LISTA DE EXEMPLO" />
+      <Border BorderBrush="{DynamicResource HorusLineBrush}" BorderThickness="0,1,0,0">
+        <StackPanel>
+          <Border Padding="16,10"
+                  BorderBrush="{DynamicResource HorusLineBrush}"
+                  BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="3*,160,2*,140,130">
+              <TextBlock Classes="label" Text="ÁREA" />
+              <TextBlock Grid.Column="1" Classes="label" Text="STATUS" />
+              <TextBlock Grid.Column="2" Classes="label" Text="PROGRESSO" />
+              <TextBlock Grid.Column="3" Classes="label" Text="PRÓXIMA" />
+            </Grid>
+          </Border>
+          <ItemsControl ItemsSource="{Binding ExampleSubjects}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:ExampleSubject">
+                <Border Classes="row"
+                        Padding="16,12"
+                        BorderBrush="{DynamicResource HorusLineBrush}"
+                        BorderThickness="0,0,0,1">
+                  <Grid ColumnDefinitions="3*,160,2*,140,130">
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                      <Border Width="36" Height="36" Background="{Binding Color}" />
+                      <StackPanel VerticalAlignment="Center">
+                        <TextBlock Classes="display" FontSize="14" Text="{Binding Name}" />
+                        <TextBlock Classes="muted" FontSize="12" Text="{Binding Description}" />
+                      </StackPanel>
+                    </StackPanel>
+                    <Border Grid.Column="1"
+                            Classes="tag"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Center">
+                      <TextBlock Classes="label" Text="{Binding Status}" />
+                    </Border>
+                    <StackPanel Grid.Column="2"
+                                VerticalAlignment="Center"
+                                Margin="0,0,24,0"
+                                Spacing="4">
+                      <TextBlock Classes="label" Text="{Binding Progress, StringFormat={}{0:0}%}" />
+                      <ProgressBar Minimum="0"
+                                   Maximum="100"
+                                   Value="{Binding Progress}"
+                                   Foreground="{Binding Color}" />
+                    </StackPanel>
+                    <TextBlock Grid.Column="3"
+                               VerticalAlignment="Center"
+                               Text="{Binding Next}" />
+                    <Button Grid.Column="4"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Center"
+                            VerticalAlignment="Center"
+                            Content="{Binding Action}" />
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </Border>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

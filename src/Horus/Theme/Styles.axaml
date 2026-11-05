@@ -19,6 +19,46 @@
     <Setter Property="Foreground" Value="{DynamicResource HorusMutedBrush}" />
   </Style>
 
+  <Style Selector="TextBlock.muted">
+    <Setter Property="Foreground" Value="{DynamicResource HorusMutedBrush}" />
+  </Style>
+
+  <Style Selector="Border.row:pointerover">
+    <Setter Property="Background" Value="{DynamicResource HorusSunkenBrush}" />
+  </Style>
+
+  <Style Selector="RadioButton.segment">
+    <Setter Property="Padding" Value="10,5" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="FontFamily" Value="{StaticResource HorusMonoFont}" />
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="LetterSpacing" Value="1.2" />
+    <Setter Property="Foreground" Value="{DynamicResource HorusMutedBrush}" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Background="{TemplateBinding Background}"
+                BorderBrush="{TemplateBinding BorderBrush}"
+                BorderThickness="1">
+          <ContentPresenter Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                            Foreground="{TemplateBinding Foreground}"
+                            Padding="{TemplateBinding Padding}" />
+        </Border>
+      </ControlTemplate>
+    </Setter>
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="{DynamicResource HorusLineBrush}" />
+  </Style>
+  <Style Selector="RadioButton.segment:pointerover">
+    <Setter Property="Foreground" Value="{DynamicResource HorusInkBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource HorusLineStrongBrush}" />
+  </Style>
+  <Style Selector="RadioButton.segment:checked">
+    <Setter Property="Background" Value="{DynamicResource HorusInvertBackgroundBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource HorusInvertForegroundBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource HorusInvertBackgroundBrush}" />
+  </Style>
+
   <Style Selector="Border.tag">
     <Setter Property="Background" Value="{DynamicResource HorusSunkenBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource HorusLineBrush}" />
@@ -54,12 +94,12 @@
     <Setter Property="BorderBrush" Value="{DynamicResource HorusInvertBackgroundBrush}" />
   </Style>
   <Style Selector="Button.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="{DynamicResource HorusInkBrush}" />
+    <Setter Property="Background" Value="{DynamicResource HorusInvertBackgroundBrush}" />
     <Setter Property="Foreground" Value="{DynamicResource HorusInvertForegroundBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource HorusInkBrush}" />
   </Style>
   <Style Selector="Button.primary:pressed /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="{DynamicResource HorusMutedBrush}" />
+    <Setter Property="Background" Value="{DynamicResource HorusInvertBackgroundBrush}" />
     <Setter Property="Foreground" Value="{DynamicResource HorusInvertForegroundBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource HorusMutedBrush}" />
   </Style>
@@ -68,6 +108,37 @@
     <Setter Property="Background" Value="Transparent" />
     <Setter Property="Foreground" Value="{DynamicResource HorusFaintBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource HorusLineBrush}" />
+  </Style>
+
+
+  <!-- Movimento finito: a ilustração repousa depois da entrada. -->
+  <Style Selector="Panel.orbit">
+    <Style.Animations>
+      <Animation Duration="0:0:2.4" FillMode="Forward">
+        <KeyFrame Cue="0%"><Setter Property="RotateTransform.Angle" Value="-35" /><Setter Property="Opacity" Value="0" /></KeyFrame>
+        <KeyFrame Cue="100%"><Setter Property="RotateTransform.Angle" Value="0" /><Setter Property="Opacity" Value="1" /></KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+  <Style Selector="Border.studyCard">
+    <Setter Property="Background" Value="{DynamicResource HorusBackgroundBrush}" />
+    <Setter Property="Transitions">
+      <Transitions><BrushTransition Property="Background" Duration="0:0:0.18" /><BrushTransition Property="BorderBrush" Duration="0:0:0.18" /></Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Border.studyCard:pointerover">
+    <Setter Property="Background" Value="{DynamicResource HorusSunkenBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource HorusAccentInkBrush}" />
+  </Style>
+  <Style Selector="Button /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Transitions">
+      <Transitions><BrushTransition Property="Background" Duration="0:0:0.14" /><BrushTransition Property="BorderBrush" Duration="0:0:0.14" /></Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="RadioButton.segment:checked">
+    <Setter Property="Background" Value="{DynamicResource HorusSunkenBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource HorusAccentInkBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource HorusAccentInkBrush}" />
   </Style>
 
 </Styles>
