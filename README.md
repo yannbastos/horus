@@ -88,3 +88,9 @@ Antes de alterar o código, leia [AGENTS.md](AGENTS.md) e [docs/architecture.md]
 ## Licença
 
 A licença open source ainda não foi definida.
+
+## Catálogo visual
+
+O laboratório React/Storybook fica em um repositório separado: [horus-storybook](https://github.com/yannbastos/horus-storybook). Ele reúne componentes e telas para avaliar o design antes da adaptação ao C# e ao futuro site.
+
+Na organização local, o catálogo está em `../HORUS Storybook`. Consulte o README daquele repositório para executar e verificar o catálogo. Ele é independente do aplicativo Avalonia e usa dados fictícios.

@@ -91,3 +91,11 @@ As telas de exemplo combinam a geometria reta e as divisórias do launcher com s
 A tela inicial apresenta uma faixa de abertura com essa ilustração. As órbitas executam uma animação de entrada de 2,4 segundos e depois ficam estáticas. Cards e botões usam transições curtas de cor ao passar o ponteiro. Não há animação contínua durante a leitura. Os temas claro e escuro continuam usando os mesmos tokens dinâmicos, com contraste dos textos verificado pelos testes existentes.
 
 Essas telas continuam sendo exemplos com dados fictícios. A mudança visual não adiciona funcionalidades de estudo nem dependências.
+
+## Laboratório visual em React
+
+O repositório separado [horus-storybook](https://github.com/yannbastos/horus-storybook), localizado em `../HORUS Storybook` na organização local, contém um projeto independente React + TypeScript + Vite com Storybook 10.6.5. Ele permite comparar fundamentos, componentes, movimento, telas de exemplo e uma composição exploratória para o futuro site. Não faz parte do executável Avalonia e não adiciona dependências ao projeto .NET.
+
+O catálogo oferece temas claro, escuro e do sistema, fontes locais, controles de propriedades e o addon de acessibilidade. O protótipo usa dados fictícios; busca, filtros, navegação e controles são locais e não persistem dados. A composição de site é uma proposta visual, não um site publicado.
+
+A paleta CSS inicial foi extraída dos tokens AXAML. Não há sincronização automática: decisões aprovadas no catálogo precisam ser adaptadas ao C#. Instruções e limitações estão no README do repositório `horus-storybook`.
