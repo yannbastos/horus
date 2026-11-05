@@ -9,6 +9,8 @@ src/Horus/              Aplicativo desktop
   Program.cs            Ponto de entrada e configuração do Avalonia
   App.axaml(.cs)        Tema da aplicação e criação da janela principal
   app.manifest          Declara compatibilidade com Windows 10 e 11
+  Assets/Fonts/         Fontes embutidas e suas licenças
+  Theme/                Cores, fontes e estilos visuais
   ViewModels/           Dados e estado apresentados pelas telas
   Views/                Telas em AXAML
 tests/Horus.Tests/      Testes automatizados
@@ -26,15 +28,18 @@ global.json             Versão mínima do SDK
 | `App` | Carrega o tema Fluent e cria a `MainWindow` com seu ViewModel |
 | `MainWindow` | Define o layout da janela principal |
 | `MainWindowViewModel` | Fornece o nome do aplicativo e a mensagem de status |
+| `Theme/Tokens.axaml` | Define as cores dos temas claro e escuro e as fontes |
+| `Theme/Styles.axaml` | Aplica os tokens à janela, aos textos e aos botões |
 | `MainWindowTests` | Abre a janela em modo headless e confere o conteúdo exibido |
+| `ThemeTests` | Confere contraste, carregamento das fontes e troca de tema |
 
 ## Frameworks e dependências
 
 | Pacote | Uso |
 | --- | --- |
 | `Avalonia`, `Avalonia.Desktop` | Interface desktop multiplataforma |
-| `Avalonia.Themes.Fluent` | Tema visual, com modos claro e escuro conforme o sistema |
-| `Avalonia.Fonts.Inter` | Fonte consistente entre sistemas operacionais |
+| `Avalonia.Themes.Fluent` | Base dos controles, personalizada pelo tema do HORUS |
+| `Avalonia.Fonts.Inter` | Fonte de texto consistente entre sistemas operacionais |
 | `xunit.v3`, `xunit.runner.visualstudio`, `Microsoft.NET.Test.Sdk` | Execução dos testes |
 | `Avalonia.Headless.XUnit` | Testes de interface sem abrir janelas na tela |
 
@@ -47,6 +52,14 @@ Todo o código do aplicativo fica em `src/Horus`. O scaffold anterior tinha cama
 ### MVVM sem biblioteca
 
 Views e ViewModels ficam separados porque esse é o padrão natural do Avalonia e permite testar a lógica sem depender da tela. Como a tela atual só exibe valores fixos, não há necessidade de `INotifyPropertyChanged` nem de comandos. Uma biblioteca como o `CommunityToolkit.Mvvm` pode ser avaliada quando surgir a primeira tela com estado.
+
+### Tema visual
+
+A linguagem visual usa cantos retos, linhas finas, botões de alto contraste e três fontes: Archivo Expanded nos títulos, Inter nos textos e Geist Mono em rótulos curtos. Ela foi inspirada no estilo do [ArtCraft Launcher](https://github.com/storytold/craft-launcher), sem reutilizar sua marca, seus ícones ou seu código.
+
+O tema acompanha a configuração clara ou escura do sistema. As telas devem usar `DynamicResource` com os tokens de `Theme/Tokens.axaml`, nunca cores fixas, para que a troca de tema funcione. Os textos devem ter contraste mínimo de 4,5:1, verificado pelos testes. Textos longos de estudo devem usar Inter, não fontes monoespaçadas.
+
+Archivo e Geist Mono são embutidas em versões estáticas e distribuídas sob a SIL Open Font License, com as licenças em `Assets/Fonts`. O Inter vem do pacote `Avalonia.Fonts.Inter`.
 
 ### Bindings compilados
 

@@ -4,5 +4,5 @@ public sealed class MainWindowViewModel
 {
     public string AppName => "HORUS";
 
-    public string StatusMessage => "Aplicativo em desenvolvimento";
+    public string StatusMessage => "APLICATIVO EM DESENVOLVIMENTO";
 }

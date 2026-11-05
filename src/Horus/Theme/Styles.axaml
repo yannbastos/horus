@@ -1,0 +1,73 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <Style Selector="Window">
+    <Setter Property="Background" Value="{DynamicResource HorusBackgroundBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource HorusInkBrush}" />
+    <Setter Property="FontFamily" Value="{StaticResource HorusBodyFont}" />
+  </Style>
+
+  <Style Selector="TextBlock.display">
+    <Setter Property="FontFamily" Value="{StaticResource HorusDisplayFont}" />
+    <Setter Property="Foreground" Value="{DynamicResource HorusInkStrongBrush}" />
+  </Style>
+
+  <Style Selector="TextBlock.label">
+    <Setter Property="FontFamily" Value="{StaticResource HorusMonoFont}" />
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="LetterSpacing" Value="1.2" />
+    <Setter Property="Foreground" Value="{DynamicResource HorusMutedBrush}" />
+  </Style>
+
+  <Style Selector="Border.tag">
+    <Setter Property="Background" Value="{DynamicResource HorusSunkenBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource HorusLineBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Padding" Value="8,3" />
+  </Style>
+
+  <Style Selector="Button">
+    <Setter Property="CornerRadius" Value="0" />
+    <Setter Property="Padding" Value="20,9" />
+    <Setter Property="FontFamily" Value="{StaticResource HorusMonoFont}" />
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="LetterSpacing" Value="1.2" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource HorusInkBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource HorusLineStrongBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+  </Style>
+  <Style Selector="Button:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource HorusSunkenBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource HorusInkBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource HorusInkBrush}" />
+  </Style>
+  <Style Selector="Button:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource HorusSunkenBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource HorusInkBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource HorusLineStrongBrush}" />
+  </Style>
+
+  <Style Selector="Button.primary">
+    <Setter Property="Background" Value="{DynamicResource HorusInvertBackgroundBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource HorusInvertForegroundBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource HorusInvertBackgroundBrush}" />
+  </Style>
+  <Style Selector="Button.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource HorusInkBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource HorusInvertForegroundBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource HorusInkBrush}" />
+  </Style>
+  <Style Selector="Button.primary:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource HorusMutedBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource HorusInvertForegroundBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource HorusMutedBrush}" />
+  </Style>
+
+  <Style Selector="Button:disabled /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource HorusFaintBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource HorusLineBrush}" />
+  </Style>
+
+</Styles>

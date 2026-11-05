@@ -9,19 +9,23 @@
         MinWidth="480"
         MinHeight="320"
         WindowStartupLocation="CenterScreen">
-  <StackPanel HorizontalAlignment="Center"
-              VerticalAlignment="Center"
-              Spacing="8">
-    <TextBlock x:Name="AppNameText"
-               Text="{Binding AppName}"
-               HorizontalAlignment="Center"
-               FontSize="48"
-               FontWeight="SemiBold"
-               LetterSpacing="4" />
-    <TextBlock x:Name="StatusMessageText"
-               Text="{Binding StatusMessage}"
-               HorizontalAlignment="Center"
-               FontSize="16"
-               Opacity="0.7" />
-  </StackPanel>
+  <Border HorizontalAlignment="Center"
+          VerticalAlignment="Center"
+          Padding="56,40"
+          BorderBrush="{DynamicResource HorusLineBrush}"
+          BorderThickness="1">
+    <StackPanel Spacing="16">
+      <TextBlock x:Name="AppNameText"
+                 Classes="display"
+                 Text="{Binding AppName}"
+                 HorizontalAlignment="Center"
+                 FontSize="56"
+                 LetterSpacing="4" />
+      <Border Classes="tag" HorizontalAlignment="Center">
+        <TextBlock x:Name="StatusMessageText"
+                   Classes="label"
+                   Text="{Binding StatusMessage}" />
+      </Border>
+    </StackPanel>
+  </Border>
 </Window>

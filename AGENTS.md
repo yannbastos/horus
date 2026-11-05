@@ -21,6 +21,7 @@ O idealizador é o responsável pelo produto e principal usuário. Os agentes as
 - Não exclua nem sobrescreva arquivos sem justificativa.
 - Não exponha credenciais ou informações sensíveis.
 - Preserve a compatibilidade futura com Linux: evite APIs exclusivas do Windows e caminhos fixos.
+- Nas telas, use os tokens de `src/Horus/Theme/Tokens.axaml` em vez de cores fixas.
 
 ## Prioridades
 

@@ -17,7 +17,7 @@ public class MainWindowTests
         Assert.Equal("HORUS", window.Title);
         Assert.Equal("HORUS", window.GetControl<TextBlock>("AppNameText").Text);
         Assert.Equal(
-            "Aplicativo em desenvolvimento",
+            "APLICATIVO EM DESENVOLVIMENTO",
             window.GetControl<TextBlock>("StatusMessageText").Text);
     }
 }

@@ -16,6 +16,7 @@ As etapas estão em ordem e não têm prazos definidos.
 ## 1. Fundação técnica
 
 - ✅ Aplicativo Avalonia com janela principal
+- ✅ Tema visual claro e escuro, acompanhando o sistema
 - ✅ Base de testes automatizados
 - ✅ Documentação inicial e instruções para agentes
 - ✅ Primeiro commit da fundação
