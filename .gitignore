@@ -11,9 +11,14 @@ coverage*/
 
 # IDE
 .vs/
+.vscode/
 .idea/
 *.user
 *.suo
+*.DotSettings.user
+
+# Avalonia
+.avalonia-build-tasks/
 
 # Local configuration and secrets
 .env

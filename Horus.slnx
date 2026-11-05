@@ -1,11 +1,8 @@
 <Solution>
   <Folder Name="/src/">
-    <Project Path="src/Horus.App/Horus.App.csproj" />
-    <Project Path="src/Horus.Application/Horus.Application.csproj" />
-    <Project Path="src/Horus.Domain/Horus.Domain.csproj" />
-    <Project Path="src/Horus.Infrastructure/Horus.Infrastructure.csproj" />
+    <Project Path="src/Horus/Horus.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/Horus.UnitTests/Horus.UnitTests.csproj" />
+    <Project Path="tests/Horus.Tests/Horus.Tests.csproj" />
   </Folder>
 </Solution>
