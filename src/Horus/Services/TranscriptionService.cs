@@ -14,9 +14,6 @@ public static class TranscriptionService
 
     public static string ModelsDir { get; } = Path.Combine(LocalData, "Horus", "models");
 
-    // Modelos já baixados pelo antigo app Thot são reaproveitados para evitar novo download.
-    private static string LegacyModelsDir { get; } = Path.Combine(LocalData, "Thot", "models");
-
     private static string ModelFileName(GgmlType type) => $"ggml-{type.ToString().ToLowerInvariant()}.bin";
 
     public static string ModelPath(GgmlType type) => Path.Combine(ModelsDir, ModelFileName(type));
@@ -26,8 +23,6 @@ public static class TranscriptionService
     {
         var path = ModelPath(type);
         if (File.Exists(path)) return path;
-        var legacy = Path.Combine(LegacyModelsDir, ModelFileName(type));
-        if (File.Exists(legacy)) return legacy;
 
         Directory.CreateDirectory(ModelsDir);
         var tmp = path + ".part";

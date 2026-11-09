@@ -74,7 +74,7 @@ A View injeta no ViewModel as funções que dependem da janela (diálogos de arq
 
 Funcionalidade trazida do antigo app Thot, com as mesmas regras: a fila conta o arquivo atual no limite de 20, a conclusão pausa a fila e só o salvamento bem-sucedido da versão atual do texto libera **Próximo vídeo**. Uma revisão do texto é registrada antes do salvamento para que edições feitas durante o diálogo não liberem o avanço.
 
-Os modelos ficam em `%LOCALAPPDATA%\Horus\models`; modelos já existentes em `%LOCALAPPDATA%\Thot\models` são reaproveitados. ffmpeg e yt-dlp são programas externos, procurados na pasta do app, no `PATH` e, no caso do yt-dlp, em `%LOCALAPPDATA%\Horus\tools` e `%LOCALAPPDATA%\Thot\tools`.
+Os modelos ficam em `%LOCALAPPDATA%\Horus\models`. ffmpeg e yt-dlp são programas externos, procurados na pasta do app, no `PATH` e, no caso do yt-dlp, em `%LOCALAPPDATA%\Horus\tools`.
 
 ### Tema visual
 

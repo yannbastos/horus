@@ -32,9 +32,9 @@ Em erro ou cancelamento, o arquivo atual e o texto parcial são preservados e **
 Dependências externas:
 
 - **ffmpeg** no `PATH` ou na pasta do app (`winget install Gyan.FFmpeg`).
-- Para o YouTube: **yt-dlp** e **Node.js 22+** (`winget install yt-dlp.yt-dlp` e `winget install OpenJS.NodeJS.LTS`). O app também procura o yt-dlp em `%LOCALAPPDATA%\Horus\tools` e `%LOCALAPPDATA%\Thot\tools`.
+- Para o YouTube: **yt-dlp** e **Node.js 22+** (`winget install yt-dlp.yt-dlp` e `winget install OpenJS.NodeJS.LTS`). O app também procura o yt-dlp em `%LOCALAPPDATA%\Horus\tools`.
 
-Os modelos são baixados na primeira vez para `%LOCALAPPDATA%\Horus\models`. Modelos que já estejam em `%LOCALAPPDATA%\Thot\models` são reaproveitados. Com GPU NVIDIA e CUDA 12, o runtime CUDA é usado automaticamente; senão, roda na CPU.
+Os modelos são baixados na primeira vez para `%LOCALAPPDATA%\Horus\models`. Com GPU NVIDIA e CUDA 12, o runtime CUDA é usado automaticamente; senão, roda na CPU.
 
 As próximas etapas estão em [docs/roadmap.md](docs/roadmap.md).
 

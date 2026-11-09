@@ -42,9 +42,7 @@ public static partial class YouTubeDownloadService
     {
         var name = OperatingSystem.IsWindows() ? "yt-dlp.exe" : "yt-dlp";
         var localData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        // A pasta do antigo app Thot continua sendo procurada para reaproveitar o yt-dlp já instalado.
-        foreach (var dir in new[] { AppContext.BaseDirectory,
-            System.IO.Path.Combine(localData, "Horus", "tools"), System.IO.Path.Combine(localData, "Thot", "tools") }
+        foreach (var dir in new[] { AppContext.BaseDirectory, System.IO.Path.Combine(localData, "Horus", "tools") }
             .Concat((Environment.GetEnvironmentVariable("PATH") ?? "").Split(System.IO.Path.PathSeparator)))
         {
             try { var path = System.IO.Path.Combine(dir.Trim('"'), name); if (System.IO.File.Exists(path)) return path; }
