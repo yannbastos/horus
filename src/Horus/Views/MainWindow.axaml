@@ -2,6 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Horus.ViewModels"
         xmlns:examples="using:Horus.Views.Examples"
+        xmlns:views="using:Horus.Views"
         x:Class="Horus.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="{Binding AppName}"
@@ -31,7 +32,8 @@
                     VerticalAlignment="Center"
                     Margin="16,0"
                     Spacing="4">
-          <RadioButton x:Name="NavHome" Classes="segment" GroupName="Nav" Content="INÍCIO" IsChecked="True" />
+          <RadioButton x:Name="NavTranscription" Classes="segment" GroupName="Nav" Content="TRANSCRIÇÃO" IsChecked="True" />
+          <RadioButton x:Name="NavHome" Classes="segment" GroupName="Nav" Content="INÍCIO" />
           <RadioButton x:Name="NavList" Classes="segment" GroupName="Nav" Content="LISTA" />
           <RadioButton x:Name="NavReading" Classes="segment" GroupName="Nav" Content="LEITURA" />
           <RadioButton x:Name="NavSettings" Classes="segment" GroupName="Nav" Content="AJUSTES" />
@@ -52,10 +54,11 @@
             BorderBrush="{DynamicResource HorusLineBrush}"
             BorderThickness="0,1,0,0">
       <TextBlock Classes="label"
-                 Text="TELAS E DADOS DE EXEMPLO · APENAS A NAVEGAÇÃO E O TEMA FUNCIONAM" />
+                 Text="TRANSCRIÇÃO FUNCIONAL · INÍCIO, LISTA E LEITURA SÃO TELAS DE EXEMPLO COM DADOS FICTÍCIOS" />
     </Border>
 
     <Panel>
+      <views:TranscriptionView x:Name="TranscriptionView" DataContext="{Binding Transcription}" IsVisible="{Binding #NavTranscription.IsChecked}" />
       <examples:HomeExampleView x:Name="HomeView" IsVisible="{Binding #NavHome.IsChecked}" />
       <examples:ListExampleView x:Name="ListView" IsVisible="{Binding #NavList.IsChecked}" />
       <examples:ReadingExampleView x:Name="ReadingView" IsVisible="{Binding #NavReading.IsChecked}" />

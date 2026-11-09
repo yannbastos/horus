@@ -1,0 +1,143 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Horus.ViewModels"
+             xmlns:views="using:Horus.Views"
+             xmlns:sys="using:System"
+             x:Class="Horus.Views.TranscriptionView"
+             x:DataType="vm:TranscriptionViewModel"
+             DragDrop.AllowDrop="True">
+  <Grid ColumnDefinitions="360,*">
+
+    <!-- Fontes, opções e fila -->
+    <Border Background="{DynamicResource HorusSunkenBrush}"
+            BorderBrush="{DynamicResource HorusLineBrush}"
+            BorderThickness="0,0,1,0">
+      <ScrollViewer>
+        <StackPanel Margin="24" Spacing="24">
+          <StackPanel Spacing="10">
+            <TextBlock Classes="label" Foreground="{DynamicResource HorusAccentInkBrush}" Text="01 / TRANSCRIÇÃO" />
+            <TextBlock Classes="display" FontSize="24" TextWrapping="Wrap" Text="Áudio e vídeo&#10;em texto." />
+            <TextBlock Classes="muted" FontSize="13" TextWrapping="Wrap"
+                       Text="Transcrição offline com Whisper. Seus arquivos não saem do computador." />
+          </StackPanel>
+
+          <Border x:Name="DropZone" Classes="dropZone" Padding="20,22">
+            <StackPanel Spacing="12" HorizontalAlignment="Center">
+              <Path HorizontalAlignment="Center"
+                    Data="M 14,0 L 14,20 M 6,12 L 14,20 L 22,12 M 0,26 L 28,26"
+                    Stroke="{DynamicResource HorusAccentInkBrush}" StrokeThickness="1.5" />
+              <TextBlock Classes="label" HorizontalAlignment="Center" Text="ARRASTE ARQUIVOS AQUI" />
+              <TextBlock Classes="muted" FontSize="12" HorizontalAlignment="Center" TextAlignment="Center"
+                         TextWrapping="Wrap" Text="mp3, wav, m4a, mp4, mkv, mov, webm..." />
+              <Button x:Name="BrowseButton" HorizontalAlignment="Center" Content="SELECIONAR ARQUIVOS"
+                      Command="{Binding BrowseCommand}" />
+            </StackPanel>
+          </Border>
+
+          <StackPanel Spacing="8">
+            <TextBlock Classes="label" Text="YOUTUBE" />
+            <TextBox x:Name="YouTubeUrlBox" Text="{Binding YouTubeUrl}" IsEnabled="{Binding IsIdle}"
+                     PlaceholderText="Cole o link de um vídeo" />
+            <Button x:Name="DownloadButton" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                    Content="BAIXAR E ADICIONAR À FILA" Command="{Binding DownloadVideoCommand}" />
+            <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+                       Text="Baixe apenas vídeos que você tem autorização para salvar." />
+          </StackPanel>
+
+          <StackPanel Spacing="8">
+            <TextBlock Classes="label" Text="MODELO" />
+            <ComboBox ItemsSource="{Binding Models}" SelectedItem="{Binding SelectedModel}"
+                      HorizontalAlignment="Stretch" IsEnabled="{Binding IsIdle}" />
+            <TextBlock Classes="label" Margin="0,8,0,0" Text="IDIOMA" />
+            <ComboBox ItemsSource="{Binding Languages}" SelectedItem="{Binding SelectedLanguage}"
+                      HorizontalAlignment="Stretch" IsEnabled="{Binding IsIdle}" />
+          </StackPanel>
+
+          <StackPanel Spacing="8">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Classes="label" VerticalAlignment="Center" Text="FILA" />
+              <Border Grid.Column="1" Classes="tag">
+                <TextBlock x:Name="QueueSummaryText" Classes="label" Text="{Binding QueueSummary}" />
+              </Border>
+            </Grid>
+            <TextBlock Classes="muted" FontSize="12" IsVisible="{Binding !HasQueue}" TextWrapping="Wrap"
+                       Text="A fila está vazia. O primeiro arquivo da fila é sempre o atual." />
+            <Border BorderBrush="{DynamicResource HorusLineBrush}" BorderThickness="0,1,0,0"
+                    IsVisible="{Binding HasQueue}">
+              <ItemsControl x:Name="QueueList" ItemsSource="{Binding QueueFiles}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="sys:String">
+                    <Border Classes="row" Padding="10,8" BorderBrush="{DynamicResource HorusLineBrush}"
+                            BorderThickness="0,0,0,1" ToolTip.Tip="{Binding}">
+                      <StackPanel Spacing="2">
+                        <TextBlock FontSize="13" TextTrimming="CharacterEllipsis"
+                                   Text="{Binding Converter={x:Static views:ViewConverters.FileName}}" />
+                        <TextBlock Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis"
+                                   Text="{Binding Converter={x:Static views:ViewConverters.Folder}}" />
+                      </StackPanel>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </Border>
+          </StackPanel>
+        </StackPanel>
+      </ScrollViewer>
+    </Border>
+
+    <!-- Arquivo atual, ações e resultado -->
+    <DockPanel Grid.Column="1" Margin="28,24">
+      <StackPanel DockPanel.Dock="Top" Spacing="18">
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="20">
+          <StackPanel Spacing="6">
+            <TextBlock Classes="label" Text="ARQUIVO ATUAL" />
+            <TextBlock x:Name="CurrentFileText" Classes="display" FontSize="20"
+                       TextTrimming="CharacterEllipsis" Text="{Binding CurrentFileName}" />
+            <TextBlock Classes="muted" FontSize="12" TextTrimming="CharacterEllipsis"
+                       Text="{Binding InputFile, Converter={x:Static views:ViewConverters.Folder}}" />
+          </StackPanel>
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Bottom">
+            <Border Classes="step" Classes.done="{Binding IsCompleted}">
+              <TextBlock Classes="label" Text="01 TRANSCREVER" />
+            </Border>
+            <Border Classes="step" Classes.done="{Binding IsSaved}">
+              <TextBlock Classes="label" Text="02 SALVAR .TXT" />
+            </Border>
+            <Border Classes="step" Classes.ready="{Binding IsSaved}">
+              <TextBlock Classes="label" Text="03 PRÓXIMO" />
+            </Border>
+          </StackPanel>
+        </Grid>
+
+        <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto" ColumnSpacing="8">
+          <Button x:Name="TranscribeButton" Classes="primary" Content="TRANSCREVER"
+                  Command="{Binding TranscribeCommand}" />
+          <Button Grid.Column="1" x:Name="CancelButton" Content="CANCELAR" Command="{Binding CancelCommand}" />
+          <Button Grid.Column="2" x:Name="NextButton" Content="PRÓXIMO VÍDEO" Command="{Binding NextCommand}" />
+          <ProgressBar Grid.Column="3" Classes="horus" Margin="12,0,0,0" VerticalAlignment="Center"
+                       Minimum="0" Maximum="100" Value="{Binding Progress}"
+                       IsIndeterminate="{Binding IsDownloading}" />
+          <TextBlock Grid.Column="4" Classes="label" MinWidth="38" TextAlignment="Right" VerticalAlignment="Center"
+                     Text="{Binding Progress, StringFormat={}{0:0}%}" />
+        </Grid>
+      </StackPanel>
+
+      <Border DockPanel.Dock="Bottom" Margin="0,12,0,0" Padding="14,8"
+              Background="{DynamicResource HorusSunkenBrush}"
+              BorderBrush="{DynamicResource HorusLineBrush}" BorderThickness="1">
+        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+          <TextBlock x:Name="StatusText" VerticalAlignment="Center" FontSize="13" TextTrimming="CharacterEllipsis"
+                     Text="{Binding Status}" ToolTip.Tip="{Binding Status}" />
+          <Button Grid.Column="1" Content="COPIAR" Command="{Binding CopyCommand}" />
+          <Button Grid.Column="2" x:Name="SaveButton" Classes="primary" Content="SALVAR .TXT"
+                  Command="{Binding SaveCommand}" />
+        </Grid>
+      </Border>
+
+      <TextBox x:Name="TranscriptBox" Classes="transcript" Margin="0,18,0,0"
+               Text="{Binding Transcript}" IsReadOnly="{Binding IsBusy}"
+               AcceptsReturn="True" TextWrapping="Wrap"
+               PlaceholderText="A transcrição aparecerá aqui. Adicione um arquivo e clique em Transcrever." />
+    </DockPanel>
+  </Grid>
+</UserControl>

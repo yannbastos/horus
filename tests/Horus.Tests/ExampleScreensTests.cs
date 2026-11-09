@@ -11,6 +11,7 @@ namespace Horus.Tests;
 public class ExampleScreensTests
 {
     [AvaloniaTheory]
+    [InlineData("NavTranscription", "TranscriptionView")]
     [InlineData("NavHome", "HomeView")]
     [InlineData("NavList", "ListView")]
     [InlineData("NavReading", "ReadingView")]
@@ -22,7 +23,7 @@ public class ExampleScreensTests
 
         window.GetControl<RadioButton>(option).IsChecked = true;
 
-        foreach (var name in new[] { "HomeView", "ListView", "ReadingView", "SettingsView" })
+        foreach (var name in new[] { "TranscriptionView", "HomeView", "ListView", "ReadingView", "SettingsView" })
         {
             Assert.Equal(name == screen, window.GetControl<UserControl>(name).IsVisible);
         }

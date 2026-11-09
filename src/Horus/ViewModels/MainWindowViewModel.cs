@@ -9,4 +9,6 @@ public sealed class MainWindowViewModel
     public IReadOnlyList<ExampleCard> ExampleCards => ExampleData.Cards;
 
     public IReadOnlyList<ExampleSubject> ExampleSubjects => ExampleData.Subjects;
+
+    public TranscriptionViewModel Transcription { get; } = new();
 }

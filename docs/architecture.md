@@ -11,6 +11,7 @@ src/Horus/              Aplicativo desktop
   app.manifest          Declara compatibilidade com Windows 10 e 11
   Assets/Fonts/         Fontes embutidas e suas licenças
   Theme/                Cores, fontes e estilos visuais
+  Services/             Transcrição (Whisper), conversão de áudio (ffmpeg) e download do YouTube (yt-dlp)
   ViewModels/           Dados e estado apresentados pelas telas
   Views/                Telas em AXAML
   Views/Examples/       Telas temporárias com dados fictícios para avaliar o design
@@ -29,12 +30,21 @@ global.json             Versão mínima do SDK
 | `App` | Carrega o tema Fluent e cria a `MainWindow` com seu ViewModel |
 | `MainWindow` | Define o cabeçalho, a navegação, o rodapé e a área das telas |
 | `Views/Examples`, `ExampleData` | Telas e dados fictícios, sem regras de negócio; devem ser removidos quando houver telas reais |
-| `MainWindowViewModel` | Fornece o nome do aplicativo, a mensagem de status e os dados de exemplo |
+| `MainWindowViewModel` | Fornece o nome do aplicativo, a mensagem de status, os dados de exemplo e o `TranscriptionViewModel` |
+| `TranscriptionView` | Tela de transcrição: arrastar e soltar, diálogos de arquivo, área de transferência e layout |
+| `TranscriptionViewModel` | Fila de até 20 arquivos, transcrição, cancelamento, salvamento e download, sem depender da tela |
+| `TranscriptionService` | Baixa o modelo Whisper uma vez e transcreve o áudio, informando progresso e trechos |
+| `AudioConverter` | Converte qualquer mídia em WAV 16 kHz mono com ffmpeg, em arquivo temporário |
+| `YouTubeDownloadService` | Valida links de um único vídeo e executa o yt-dlp com argumentos seguros |
+| `ViewConverters` | Exibe nome e pasta de um caminho de arquivo |
 | `Theme/Tokens.axaml` | Define as cores dos temas claro e escuro e as fontes |
 | `Theme/Styles.axaml` | Aplica os tokens à janela, aos textos e aos botões |
 | `MainWindowTests` | Abre a janela em modo headless e confere o conteúdo exibido |
 | `ThemeTests` | Confere contraste, carregamento das fontes e troca de tema |
 | `ExampleScreensTests` | Confere a navegação e a opção de tema das telas de exemplo |
+| `TranscriptionViewModelTests` | Confere as regras da fila, do salvamento e do download com transcrições simuladas |
+| `TranscriptionViewTests` | Abre a janela em modo headless e confere a tela de transcrição |
+| `YouTubeDownloadTests`, `YouTubeIntegrationTests` | Validam links e argumentos do yt-dlp; o teste de integração (`Category=Network`) usa a internet |
 
 ## Frameworks e dependências
 
@@ -43,6 +53,8 @@ global.json             Versão mínima do SDK
 | `Avalonia`, `Avalonia.Desktop` | Interface desktop multiplataforma |
 | `Avalonia.Themes.Fluent` | Base dos controles, personalizada pelo tema do HORUS |
 | `Avalonia.Fonts.Inter` | Fonte de texto consistente entre sistemas operacionais |
+| `CommunityToolkit.Mvvm` | Propriedades observáveis e comandos da tela de transcrição |
+| `Whisper.net`, `Whisper.net.Runtime`, `Whisper.net.Runtime.Cuda.Windows` | Transcrição local; o runtime CUDA é usado se houver GPU NVIDIA compatível |
 | `xunit.v3`, `xunit.runner.visualstudio`, `Microsoft.NET.Test.Sdk` | Execução dos testes |
 | `Avalonia.Headless.XUnit` | Testes de interface sem abrir janelas na tela |
 
@@ -52,9 +64,17 @@ global.json             Versão mínima do SDK
 
 Todo o código do aplicativo fica em `src/Horus`. O scaffold anterior tinha camadas Domain, Application e Infrastructure, mas elas estavam vazias e foram removidas. Ainda não há regras de negócio ou persistência que justifiquem essa separação. Novos projetos só devem surgir quando houver uma necessidade concreta.
 
-### MVVM sem biblioteca
+### MVVM com CommunityToolkit.Mvvm
 
-Views e ViewModels ficam separados porque esse é o padrão natural do Avalonia e permite testar a lógica sem depender da tela. Como as telas atuais só exibem valores fixos, não há necessidade de `INotifyPropertyChanged` nem de comandos. Uma biblioteca como o `CommunityToolkit.Mvvm` pode ser avaliada quando surgir a primeira tela com estado.
+Views e ViewModels ficam separados porque esse é o padrão natural do Avalonia e permite testar a lógica sem depender da tela. A tela de transcrição tem estado e comandos, por isso usa o `CommunityToolkit.Mvvm`. As telas de exemplo continuam exibindo valores fixos.
+
+A View injeta no ViewModel as funções que dependem da janela (diálogos de arquivo e área de transferência). Os testes substituem essas funções, a transcrição e o download por versões simuladas.
+
+### Transcrição
+
+Funcionalidade trazida do antigo app Thot, com as mesmas regras: a fila conta o arquivo atual no limite de 20, a conclusão pausa a fila e só o salvamento bem-sucedido da versão atual do texto libera **Próximo vídeo**. Uma revisão do texto é registrada antes do salvamento para que edições feitas durante o diálogo não liberem o avanço.
+
+Os modelos ficam em `%LOCALAPPDATA%\Horus\models`; modelos já existentes em `%LOCALAPPDATA%\Thot\models` são reaproveitados. ffmpeg e yt-dlp são programas externos, procurados na pasta do app, no `PATH` e, no caso do yt-dlp, em `%LOCALAPPDATA%\Horus\tools` e `%LOCALAPPDATA%\Thot\tools`.
 
 ### Tema visual
 
@@ -81,7 +101,8 @@ O teste abre a janela real e confere o que ela apresenta, sem depender de um amb
 - `Avalonia.Desktop` e `UsePlatformDetect()` selecionam a plataforma durante a execução.
 - O código atual não usa WPF, Windows Forms nem APIs exclusivas do Windows.
 - O `app.manifest` e o `OutputType` `WinExe` só têm efeito no Windows.
-- O código atual não acessa o sistema de arquivos. Quando isso mudar, use `Path.Combine` e `Environment.GetFolderPath`, nunca caminhos fixos.
+- O acesso a arquivos usa `Path.Combine` e `Environment.GetFolderPath`, sem caminhos fixos. ffmpeg e yt-dlp são procurados com o nome do executável de cada sistema.
+- O runtime CUDA do Whisper é exclusivo do Windows; nas demais plataformas a transcrição usa a CPU.
 - O aplicativo ainda não foi compilado nem executado no Linux.
 
 ### Composição visual HORUS
@@ -90,7 +111,7 @@ As telas de exemplo combinam a geometria reta e as divisórias do launcher com s
 
 A tela inicial apresenta uma faixa de abertura com essa ilustração. As órbitas executam uma animação de entrada de 2,4 segundos e depois ficam estáticas. Cards e botões usam transições curtas de cor ao passar o ponteiro. Não há animação contínua durante a leitura. Os temas claro e escuro continuam usando os mesmos tokens dinâmicos, com contraste dos textos verificado pelos testes existentes.
 
-Essas telas continuam sendo exemplos com dados fictícios. A mudança visual não adiciona funcionalidades de estudo nem dependências.
+Essas telas continuam sendo exemplos com dados fictícios. A tela de transcrição usa a mesma linguagem visual: painel lateral rebaixado com fontes, opções e fila; etapas numeradas (transcrever, salvar, próximo) que se preenchem conforme o progresso; e uma área de leitura em Inter para o texto.
 
 ## Laboratório visual em React
 

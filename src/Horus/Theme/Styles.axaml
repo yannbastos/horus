@@ -141,4 +141,79 @@
     <Setter Property="BorderBrush" Value="{DynamicResource HorusAccentInkBrush}" />
   </Style>
 
+  <!-- Campos de texto -->
+  <Style Selector="TextBox">
+    <Setter Property="Background" Value="{DynamicResource HorusBackgroundBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource HorusInkBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource HorusLineStrongBrush}" />
+    <Setter Property="CaretBrush" Value="{DynamicResource HorusInkBrush}" />
+  </Style>
+  <Style Selector="TextBox:pointerover">
+    <Setter Property="Foreground" Value="{DynamicResource HorusInkBrush}" />
+  </Style>
+  <Style Selector="TextBox:pointerover /template/ Border#PART_BorderElement">
+    <Setter Property="Background" Value="{DynamicResource HorusBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource HorusInkBrush}" />
+  </Style>
+  <Style Selector="TextBox:focus">
+    <Setter Property="Foreground" Value="{DynamicResource HorusInkBrush}" />
+  </Style>
+  <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+    <Setter Property="Background" Value="{DynamicResource HorusBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource HorusAccentInkBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+  </Style>
+
+  <!-- Área de leitura e edição da transcrição -->
+  <Style Selector="TextBox.transcript">
+    <Setter Property="Padding" Value="24,20" />
+    <Setter Property="FontSize" Value="16" />
+    <Setter Property="LineHeight" Value="27" />
+    <Setter Property="BorderBrush" Value="{DynamicResource HorusLineBrush}" />
+  </Style>
+  <Style Selector="TextBox.transcript:pointerover /template/ Border#PART_BorderElement">
+    <Setter Property="BorderBrush" Value="{DynamicResource HorusLineStrongBrush}" />
+  </Style>
+
+  <!-- Área para soltar arquivos -->
+  <Style Selector="Border.dropZone">
+    <Setter Property="Background" Value="{DynamicResource HorusBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource HorusLineStrongBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Transitions">
+      <Transitions><BrushTransition Property="BorderBrush" Duration="0:0:0.18" /></Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Border.dropZone:pointerover, Border.dropZone.dragging">
+    <Setter Property="BorderBrush" Value="{DynamicResource HorusAccentInkBrush}" />
+  </Style>
+
+  <!-- Etapas: transcrever, salvar e avançar -->
+  <Style Selector="Border.step">
+    <Setter Property="Padding" Value="10,5" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource HorusLineBrush}" />
+  </Style>
+  <Style Selector="Border.step.done">
+    <Setter Property="Background" Value="{DynamicResource HorusInvertBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource HorusInvertBackgroundBrush}" />
+  </Style>
+  <Style Selector="Border.step.done TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource HorusInvertForegroundBrush}" />
+  </Style>
+  <Style Selector="Border.step.ready">
+    <Setter Property="BorderBrush" Value="{DynamicResource HorusAccentInkBrush}" />
+  </Style>
+  <Style Selector="Border.step.ready TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource HorusAccentInkBrush}" />
+  </Style>
+
+  <Style Selector="ProgressBar.horus">
+    <Setter Property="MinHeight" Value="3" />
+    <Setter Property="Height" Value="3" />
+    <Setter Property="CornerRadius" Value="0" />
+    <Setter Property="Foreground" Value="{DynamicResource HorusAccentInkBrush}" />
+    <Setter Property="Background" Value="{DynamicResource HorusLineBrush}" />
+  </Style>
+
 </Styles>

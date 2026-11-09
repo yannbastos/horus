@@ -13,7 +13,28 @@ Mais detalhes em [docs/vision.md](docs/vision.md).
 
 ## Estado atual
 
-**Em desenvolvimento inicial.** Hoje o aplicativo abre uma janela com o nome HORUS, um aviso de que está em desenvolvimento e telas de exemplo com dados fictícios, usadas para avaliar o design. Apenas a navegação entre as telas e a troca entre os temas claro e escuro funcionam. Ainda não há nenhuma funcionalidade de estudo.
+**Em desenvolvimento inicial.** A primeira funcionalidade real é a **Transcrição** de áudio e vídeo, trazida do antigo app Thot. As telas Início, Lista e Leitura continuam sendo exemplos com dados fictícios, usadas para avaliar o design. Em Ajustes, apenas a troca entre os temas claro e escuro funciona.
+
+## Transcrição
+
+Transcreve áudio e vídeo para texto, 100% offline, com [Whisper.net](https://github.com/sandrohanea/whisper.net).
+
+1. Arraste arquivos (mp3, wav, m4a, mp4, mkv, ...) para a tela ou use **Selecionar arquivos**.
+2. A fila é FIFO, com **até 20 arquivos incluindo o atual**. O primeiro da fila é o atual.
+3. Escolha o modelo e o idioma (ou deixe a detecção automática) e clique em **Transcrever**.
+4. Ao concluir, o app **para e mantém o resultado**. Revise, edite e use **Salvar .txt**. **Copiar** não libera a fila.
+5. Só depois de salvar com sucesso, clique em **Próximo vídeo**. Editar o texto exige salvar novamente.
+
+Em erro ou cancelamento, o arquivo atual e o texto parcial são preservados e **Transcrever** tenta de novo o mesmo arquivo. A fila existe apenas durante a sessão: salve o texto antes de fechar o app.
+
+**YouTube:** cole o link de um vídeo e clique em **Baixar e adicionar à fila**. O vídeo entra no final da fila, sem substituir o resultado atual. Baixe apenas conteúdo que você tem autorização para salvar.
+
+Dependências externas:
+
+- **ffmpeg** no `PATH` ou na pasta do app (`winget install Gyan.FFmpeg`).
+- Para o YouTube: **yt-dlp** e **Node.js 22+** (`winget install yt-dlp.yt-dlp` e `winget install OpenJS.NodeJS.LTS`). O app também procura o yt-dlp em `%LOCALAPPDATA%\Horus\tools` e `%LOCALAPPDATA%\Thot\tools`.
+
+Os modelos são baixados na primeira vez para `%LOCALAPPDATA%\Horus\models`. Modelos que já estejam em `%LOCALAPPDATA%\Thot\models` são reaproveitados. Com GPU NVIDIA e CUDA 12, o runtime CUDA é usado automaticamente; senão, roda na CPU.
 
 As próximas etapas estão em [docs/roadmap.md](docs/roadmap.md).
 
@@ -70,10 +91,14 @@ dotnet run --project src/Horus
 ## Executar os testes
 
 ```powershell
-dotnet test Horus.slnx
+dotnet test Horus.slnx --filter "Category!=Network"
 ```
 
-Os testes não abrem janelas na tela, pois usam o modo headless do Avalonia.
+Os testes não abrem janelas na tela, pois usam o modo headless do Avalonia. O teste de integração do YouTube baixa um vídeo público curto e exige internet, yt-dlp e Node.js:
+
+```powershell
+dotnet test Horus.slnx --filter "Category=Network"
+```
 
 ## Suporte ao Linux
 
