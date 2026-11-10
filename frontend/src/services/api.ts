@@ -4,9 +4,12 @@ export type HermesStatus = {
   message: string; checked_at: string | null; version: string | null; features: string[];
 };
 export type JobStatus = 'queued' | 'running' | 'cancel_requested' | 'succeeded' | 'failed' | 'cancelled' | 'interrupted' | 'blocked';
+export type FactoryPayload = { operation: 'factory.profile' | 'factory.render.preview'; channel_id: string; video_id: string | null };
+export type TranscriptionPayload = { operation: 'transcription.run'; path: string; model: string; language: string };
+export type DownloadPayload = { operation: 'youtube.download'; url: string; directory: string };
 export type Job = {
   id: string; status: JobStatus; attempt: number; created_at: string; updated_at: string;
-  payload: { operation: 'factory.profile' | 'factory.render.preview'; channel_id: string; video_id: string | null };
+  payload: FactoryPayload | TranscriptionPayload | DownloadPayload;
   error: string | null; result: unknown;
 };
 export type JobEvent = { sequence: number; kind: string; message: string; job?: Job };

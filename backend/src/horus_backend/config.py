@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -51,12 +52,19 @@ class Settings:
     factory_root: Path | None = field(default_factory=discover_factory)
     # Apenas configuração do operador/testes. Nunca aceitar executável vindo da API.
     factory_command: tuple[str, ...] | None = None
+    # Somente testes substituem o subprocesso de transcrição/download.
+    worker_command: tuple[str, ...] | None = None
     hermes_executable: Path | None = field(default_factory=discover_hermes)
     hermes_config: Path = field(default_factory=hermes_connection_file)
     origins: tuple[str, ...] = (
         "http://localhost:1420", "http://127.0.0.1:1420",
         "http://tauri.localhost", "https://tauri.localhost", "tauri://localhost",
     )
+
+    def worker(self) -> tuple[str, ...]:
+        if self.worker_command:
+            return self.worker_command
+        return (sys.executable,) if getattr(sys, "frozen", False) else (sys.executable, "-m", "horus_backend")
 
     def command(self) -> tuple[str, ...] | None:
         if self.factory_command:

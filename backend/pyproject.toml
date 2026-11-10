@@ -9,6 +9,9 @@ dependencies = ["fastapi>=0.115,<1", "uvicorn>=0.34,<1"]
 test = ["pytest>=8,<10", "httpx>=0.28,<1"]
 bundle = ["pyinstaller>=6.12,<7"]
 measure = ["psutil>=7,<8"]
+# Executado somente em subprocesso de tarefa; não é importado na inicialização da API.
+# PyAV 15+ removeu argumentos usados pelo faster-whisper 1.2; 14.3+ não publica wheel Windows.
+transcription = ["faster-whisper>=1.1,<2", "av>=11,<14.3", "yt-dlp>=2025.1"]
 
 [project.scripts]
 horus-backend = "horus_backend.__main__:main"

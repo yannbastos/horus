@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import hmac
+import importlib.util
 import json
+import os
 import secrets
+import shutil
+import tempfile
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -24,6 +29,12 @@ from .storage import Store
 class MediaRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     path: str = Field(min_length=1, max_length=4096)
+
+
+class TranscriptSave(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    path: str = Field(min_length=1, max_length=4096)
+    text: str = Field(max_length=20_000_000)
 
 
 def create_app(settings: Settings, shutdown=None, ready=None):
@@ -194,6 +205,35 @@ def create_app(settings: Settings, shutdown=None, ready=None):
         if stat.st_size != item["size"] or stat.st_mtime_ns != item["modified_ns"]:
             raise HTTPException(409, "O arquivo mudou. Selecione-o novamente antes de reproduzir.")
         return FileResponse(path)
+
+    @app.get("/v1/transcription")
+    async def transcription_status():
+        # Presença apenas; Whisper e yt-dlp não são importados no processo da API.
+        return {"engine": importlib.util.find_spec("faster_whisper") is not None,
+                "downloader": importlib.util.find_spec("yt_dlp") is not None or shutil.which("yt-dlp") is not None,
+                "ffmpeg": shutil.which("ffmpeg") is not None}
+
+    @app.post("/v1/transcriptions/save")
+    async def save_transcript(request: TranscriptSave):
+        # O caminho vem do diálogo nativo de salvar; somente .txt em pasta existente.
+        path = Path(request.path).expanduser()
+        if path.suffix.lower() != ".txt":
+            raise HTTPException(400, "Salve a transcrição como arquivo .txt.")
+        if not path.parent.is_dir() or path.is_dir():
+            raise HTTPException(400, "Pasta de destino inválida.")
+        temporary = None
+        try:
+            with tempfile.NamedTemporaryFile("w", encoding="utf-8", newline="", dir=path.parent,
+                                             prefix=".horus-", suffix=".tmp", delete=False) as handle:
+                temporary = handle.name
+                handle.write(request.text)
+            os.replace(temporary, path)
+        except OSError as error:
+            if temporary:
+                with contextlib.suppress(OSError):
+                    os.remove(temporary)
+            raise HTTPException(400, f"Não foi possível salvar: {error.strerror or error}") from error
+        return {"path": str(path.resolve())}
 
     @app.post("/v1/shutdown")
     async def stop():

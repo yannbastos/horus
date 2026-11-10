@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react';
 import { api, observeJob, terminalStatuses } from '../services/api';
-import type { Connection, Job, JobEvent } from '../services/api';
+import type { Connection, FactoryPayload, Job, JobEvent } from '../services/api';
+
+// Transcrições e downloads têm tela própria; aqui ficam somente as operações da fábrica.
+type FactoryJob = Job & { payload: FactoryPayload };
+const isFactoryJob = (job: Job): job is FactoryJob => job.payload.operation.startsWith('factory.');
 
 const statusLabels = {
   queued: 'Na fila', running: 'Em execução', cancel_requested: 'Cancelando',
   succeeded: 'Concluído', failed: 'Falhou', cancelled: 'Cancelado', interrupted: 'Interrompido', blocked: 'Bloqueado',
 };
 
-function JobDetails({ job, connection, refresh }: { job: Job; connection: Connection; refresh: () => Promise<void> }) {
+function JobDetails({ job, connection, refresh }: { job: FactoryJob; connection: Connection; refresh: () => Promise<void> }) {
   const [events, setEvents] = useState<JobEvent[]>([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -47,7 +51,7 @@ function JobDetails({ job, connection, refresh }: { job: Job; connection: Connec
 }
 
 export default function JobWorkspace({ connection }: { connection: Connection | null }) {
-  const [jobs, setJobs] = useState<Job[]>([]);
+  const [jobs, setJobs] = useState<FactoryJob[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [channel, setChannel] = useState('canal01');
   const [video, setVideo] = useState('');
@@ -55,13 +59,13 @@ export default function JobWorkspace({ connection }: { connection: Connection | 
   const [busy, setBusy] = useState(false);
   async function refresh() {
     if (!connection) return;
-    const list = await api<Job[]>(connection, '/v1/jobs');
+    const list = (await api<Job[]>(connection, '/v1/jobs')).filter(isFactoryJob);
     setJobs(list);
     setSelected(previous => previous ?? list[0]?.id ?? null);
   }
   useEffect(() => { void refresh().catch(reason => setError(String(reason))); }, [connection]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function submit(operation: Job['payload']['operation']) {
+  async function submit(operation: FactoryPayload['operation']) {
     if (!connection) return;
     setBusy(true); setError('');
     try {

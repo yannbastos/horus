@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 import { EyeMark } from './components/Identity';
 import { navigation, Overview, Preview, SectionHeader, sections } from './components/Sections';
 import type { Page } from './components/Sections';
-import { connectDesktop, nativeDesktop, openLegacy } from './platform/desktop';
+import { connectDesktop, nativeDesktop } from './platform/desktop';
 import { api } from './services/api';
 import type { Connection, HermesStatus } from './services/api';
 import type { Theme } from './features/Settings';
@@ -10,6 +10,7 @@ import type { Theme } from './features/Settings';
 const Library = lazy(() => import('./features/Library'));
 const JobWorkspace = lazy(() => import('./features/JobWorkspace'));
 const Settings = lazy(() => import('./features/Settings'));
+const Transcription = lazy(() => import('./features/Transcription'));
 
 export default function App() {
   const [page, setPage] = useState<Page>('overview');
@@ -21,7 +22,9 @@ export default function App() {
   const [connection, setConnection] = useState<Connection | null>(null);
   const [hermes, setHermes] = useState<HermesStatus | null>(null);
   const [backendError, setBackendError] = useState('');
-  const [legacyError, setLegacyError] = useState('');
+  // Montada na primeira visita e mantida oculta depois, preservando fila e texto ao trocar de tela.
+  const [transcriptionOpened, setTranscriptionOpened] = useState(false);
+  useEffect(() => { if (page === 'transcription') setTranscriptionOpened(true); }, [page]);
   useEffect(() => {
     const media = matchMedia('(prefers-color-scheme: dark)');
     const change = () => setSystemDark(media.matches);
@@ -57,10 +60,11 @@ export default function App() {
         {page === 'overview' ? <Overview navigate={setPage} />
           : page === 'settings' ? <Settings theme={theme} setTheme={setTheme} connection={connection} connect={setConnection} hermes={hermes} onHermesStatus={setHermes} />
           : page === 'library' ? <Library connection={connection} />
-          : page === 'transcription' ? <div className="page"><p className="eyebrow accent">TRANSCRIÇÃO</p><h1>Áudio e vídeo em texto.</h1><div className="empty-state"><span className="tag">MIGRAÇÃO INCREMENTAL</span><h2>Seu trabalho continua preservado.</h2><p className="muted">A transcrição com Whisper permanece disponível no aplicativo Avalonia. A migração dessa ferramenta será validada antes de substituir seu fluxo de fila, revisão e salvamento.</p><div className="actions"><button className="button primary" disabled={!nativeDesktop} onClick={() => { void openLegacy().catch(reason => setLegacyError(String(reason))); }}>ABRIR TRANSCRIÇÃO ATUAL</button><button className="button" onClick={() => setPage('library')}>VISUALIZAR ARQUIVOS</button></div>{legacyError && <p className="error" role="alert">{legacyError}</p>}</div></div>
+          : page === 'transcription' ? null
           : <div className="page"><SectionHeader section={sections[page]} />{(page === 'production' || page === 'channels') && <JobWorkspace connection={connection} />}<Preview section={sections[page]} /></div>}
+        {(transcriptionOpened || page === 'transcription') && <Transcription connection={connection} hidden={page !== 'transcription'} />}
       </Suspense></main>
-      <footer><span>{backendError ? `Backend indisponível: ${backendError}` : connection ? 'Backend local conectado' : nativeDesktop ? 'Preparando backend local…' : 'Prévia no navegador'}</span><span>Transcrição no desktop atual · Orquestração e módulos editoriais em preparação.</span></footer>
+      <footer><span>{backendError ? `Backend indisponível: ${backendError}` : connection ? 'Backend local conectado' : nativeDesktop ? 'Preparando backend local…' : 'Prévia no navegador'}</span><span>Transcrição local com Whisper · Orquestração e módulos editoriais em preparação.</span></footer>
     </div>
   </div>;
 }

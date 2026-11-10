@@ -4,18 +4,20 @@ import asyncio
 import contextlib
 import json
 import os
-from typing import Literal
+from pathlib import Path
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
 
 from .config import Settings
 from .processes import OwnedProcess
 from .storage import Store
+from .transcriber import FILE_MARKER, LANGUAGES, MODELS, is_youtube_url
 
 TERMINAL = {"succeeded", "failed", "cancelled", "interrupted", "blocked"}
 
 
-class JobRequest(BaseModel):
+class FactoryRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     operation: Literal["factory.profile", "factory.render.preview"]
     channel_id: str = Field(default="canal01", pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
@@ -26,6 +28,38 @@ class JobRequest(BaseModel):
         if self.operation == "factory.render.preview" and not self.video_id:
             raise ValueError("Informe o identificador do vídeo para renderizar.")
         return self
+
+
+class TranscriptionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    operation: Literal["transcription.run"]
+    path: str = Field(min_length=1, max_length=4096)
+    model: Literal[MODELS] = "small"  # type: ignore[valid-type]
+    language: Literal[LANGUAGES] = "auto"  # type: ignore[valid-type]
+
+
+class DownloadRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    operation: Literal["youtube.download"]
+    url: str = Field(max_length=2048)
+    directory: str = Field(min_length=1, max_length=4096)
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, value: str):
+        if not is_youtube_url(value):
+            raise ValueError("Informe um link válido de vídeo do YouTube.")
+        return value
+
+
+JobRequest = Annotated[FactoryRequest | TranscriptionRequest | DownloadRequest, Field(discriminator="operation")]
+_parse_request = TypeAdapter(JobRequest).validate_python
+# Sem limite fixo para tarefas longas de mídia; o operador pode cancelar.
+TIMEOUTS = {"factory.profile": 30, "factory.render.preview": 3600}
+
+
+def transcript(segments: list[str]) -> str:
+    return "".join(f"{text}\n" for text in segments)
 
 
 class JobManager:
@@ -86,6 +120,17 @@ class JobManager:
         return self.store.get_job(job_id)
 
     def command(self, request: JobRequest):
+        if isinstance(request, TranscriptionRequest):
+            path = Path(request.path).expanduser()
+            if not path.is_file():
+                raise ValueError("Arquivo de mídia não encontrado. Verifique se ele foi movido ou removido.")
+            return [*self.settings.worker(), "transcribe", "--path", str(path.resolve()), "--model", request.model,
+                    "--language", request.language, "--models-dir", str(self.settings.data_dir / "models")]
+        if isinstance(request, DownloadRequest):
+            directory = Path(request.directory).expanduser()
+            if not directory.is_dir():
+                raise ValueError("Pasta de destino não encontrada.")
+            return [*self.settings.worker(), "download", "--url", request.url, "--directory", str(directory.resolve())]
         command = self.settings.command()
         if not command:
             raise ValueError("CLI fabrica indisponível. Prepare a fábrica e configure FABRICA_HOME.")
@@ -103,7 +148,23 @@ class JobManager:
         return [*command, "render", "--canal", request.channel_id, "--video", request.video_id,
                 "--composicao", "short", "--rascunho"]
 
-    async def _read(self, reader, job_id: str, kind: str, captured: list[str]):
+    async def _line(self, job_id: str, kind: str, line: str, notes: dict | None):
+        # Subprocessos do Hórus enviam NDJSON; demais linhas seguem como log bruto.
+        if notes is not None:
+            if kind == "stdout" and line.startswith("{"):
+                with contextlib.suppress(ValueError):
+                    item = json.loads(line)
+                    if isinstance(item, dict) and item.get("type") in {"status", "progress", "segment"}:
+                        kind, line = item["type"], str(item.get("message", ""))
+                        if kind == "segment":
+                            notes["segments"].append(line)
+            elif kind == "stdout" and line.startswith(FILE_MARKER):
+                notes["file"] = line[len(FILE_MARKER):].strip()
+            elif kind == "stderr":
+                notes["errors"] = [*notes["errors"][-11:], line.strip()]
+        await self.emit(job_id, kind, line)
+
+    async def _read(self, reader, job_id: str, kind: str, captured: list[str], notes: dict | None = None):
         # Leitura incremental também aceita ferramentas que atualizam o console com CR.
         import codecs
         decoder = codecs.getincrementaldecoder("utf-8")("replace")
@@ -118,13 +179,13 @@ class JobManager:
             pending = lines.pop()
             for line in lines:
                 if line.strip():
-                    await self.emit(job_id, kind, line)
+                    await self._line(job_id, kind, line, notes)
             if len(pending) > 4000:
                 await self.emit(job_id, kind, pending[:2000])
                 pending = ""
         pending += decoder.decode(b"", final=True)
         if pending.strip():
-            await self.emit(job_id, kind, pending)
+            await self._line(job_id, kind, pending, notes)
 
     async def _work(self):
         while True:
@@ -140,25 +201,27 @@ class JobManager:
         job_id = job["id"]
         self.active_id = job_id
         try:
-            request = JobRequest.model_validate(job["payload"])
+            request = _parse_request(job["payload"])
             command = self.command(request)
             self.store.update(job_id, "running", new_attempt=True)
             await self.emit(job_id, "state", "running")
             env = {**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONUTF8": "1"}
             env.pop("HORUS_API_TOKEN", None)
             env.pop("HORUS_MANAGED", None)
-            if self.settings.factory_root:
+            factory = isinstance(request, FactoryRequest)
+            if factory and self.settings.factory_root:
                 env["FABRICA_HOME"] = str(self.settings.factory_root)
                 env["PYTHONPATH"] = str(self.settings.factory_root / "scripts")
-            self.active_process = await OwnedProcess.start(command, env=env, cwd=self.settings.factory_root)
+            self.active_process = await OwnedProcess.start(command, env=env, cwd=self.settings.factory_root if factory else None)
             if self.store.get_job(job_id)["status"] == "cancel_requested":
                 await self.active_process.stop()
             output: list[str] = []
+            notes = None if factory else {"segments": [], "file": None, "errors": []}
             process = self.active_process.process
-            readers = asyncio.gather(self._read(process.stdout, job_id, "stdout", output),
-                                     self._read(process.stderr, job_id, "stderr", []))
+            readers = asyncio.gather(self._read(process.stdout, job_id, "stdout", output, notes),
+                                     self._read(process.stderr, job_id, "stderr", [], notes))
             try:
-                await asyncio.wait_for(process.wait(), timeout=30 if request.operation == "factory.profile" else 3600)
+                await asyncio.wait_for(process.wait(), timeout=TIMEOUTS.get(request.operation))
                 await readers
             except BaseException:
                 await self.active_process.stop()
@@ -167,13 +230,16 @@ class JobManager:
                     await readers
                 raise
             current = self.store.get_job(job_id)
+            # Texto parcial preservado em cancelamento ou falha, como no desktop Avalonia.
+            partial = {"text": transcript(notes["segments"]), "partial": True} if notes and notes["segments"] else None
             if current["status"] == "cancel_requested":
-                self.store.update(job_id, "cancelled")
+                self.store.update(job_id, "cancelled", result=partial)
             elif process.returncode != 0:
-                self.store.update(job_id, "failed", error=f"O comando encerrou com código {process.returncode}. Consulte os logs.")
+                detail = " ".join(notes["errors"][-3:]) if notes and notes["errors"] else "Consulte os logs."
+                self.store.update(job_id, "failed", result=partial,
+                                  error=f"O comando encerrou com código {process.returncode}. {detail}")
             else:
-                result = json.loads("".join(output)) if request.operation == "factory.profile" else {"message": "Render de rascunho concluído."}
-                self.store.update(job_id, "succeeded", result=result)
+                self.store.update(job_id, "succeeded", result=self._result(request, output, notes))
         except asyncio.CancelledError:
             if self.active_process:
                 await self.active_process.stop()
@@ -191,6 +257,19 @@ class JobManager:
             self.active_process = None
             self.active_id = None
             await self.emit(job_id, "state", self.store.get_job(job_id)["status"])
+
+    @staticmethod
+    def _result(request, output: list[str], notes: dict | None):
+        if request.operation == "factory.profile":
+            return json.loads("".join(output))
+        if request.operation == "factory.render.preview":
+            return {"message": "Render de rascunho concluído."}
+        if request.operation == "transcription.run":
+            return {"text": transcript(notes["segments"])}
+        file = Path(notes["file"]) if notes["file"] else None
+        if not file or not file.is_file():
+            raise ValueError("yt-dlp não retornou um arquivo de vídeo válido.")
+        return {"path": str(file.resolve())}
 
     async def close(self):
         if self.worker:

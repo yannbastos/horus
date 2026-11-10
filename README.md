@@ -8,7 +8,7 @@ O projeto começa pela operação de um canal no YouTube. A expansão para outro
 
 [Visão do produto](docs/vision.md) · [Roadmap](docs/roadmap.md) · [Arquitetura atual](docs/architecture.md) · [Planejamento técnico](docs/planejamento/README.md)
 
-**Migração em andamento:** React/TypeScript + Tauri 2, Rust apenas para integrações nativas, Python/FastAPI e SQLite. A prova de conceito local já possui interface web, tarefas persistentes, logs e integração limitada com o CLI da fábrica. O build Tauri e o instalador Windows já foram gerados; abertura e conexão automática ao backend foram verificadas. O desktop C#/Avalonia continua disponível, incluindo transcrição. Consulte [como executar e os limites da migração](docs/migracao-local.md).
+**Migração em andamento:** React/TypeScript + Tauri 2, Rust apenas para integrações nativas, Python/FastAPI e SQLite. A prova de conceito local já possui interface web, tarefas persistentes, logs e integração limitada com o CLI da fábrica. O build Tauri e o instalador Windows já foram gerados; abertura e conexão automática ao backend foram verificadas. A transcrição foi portada para a nova interface; o desktop C#/Avalonia continua disponível até a validação de equivalência. Consulte [como executar e os limites da migração](docs/migracao-local.md).
 
 ## O que já funciona
 

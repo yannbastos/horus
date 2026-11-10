@@ -27,7 +27,9 @@ test('preserva navegação, temas e organização nos tamanhos do desktop', asyn
   await page.getByRole('button', { name: 'Produção', exact: true }).click();
   await expect(page.getByRole('button', { name: 'CONSULTAR PERFIL' })).toBeDisabled();
   await page.getByRole('button', { name: 'Transcrição', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'ABRIR TRANSCRIÇÃO ATUAL' })).toBeDisabled();
+  await expect(page.getByRole('heading', { name: /Áudio e vídeo/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'TRANSCREVER', exact: true })).toBeDisabled();
+  await page.screenshot({ path: 'test-results/transcription-light-1040.png' });
   expect(errors).toEqual([]);
 });
 
@@ -83,4 +85,80 @@ test('verifica Hermes por ação explícita e atualiza o estado sem enviar promp
   await expect(panel.getByText('O Hermes recusou a credencial local.')).toBeVisible();
   await expect(page.locator('.integration')).toContainText('CLI localizado');
   expect(requests.every(request => ['GET /health', 'GET /v1/hermes', 'GET /v1/diagnostics', 'POST /v1/hermes/probe'].includes(request))).toBe(true);
+});
+
+test('transcreve a fila, exige salvar antes de avançar e preserva o estado entre telas', async ({ page }) => {
+  const submitted: { path: string; model: string; language: string }[] = [];
+  await page.route('http://127.0.0.1:8765/**', async route => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    const headers = { 'Access-Control-Allow-Origin': 'http://127.0.0.1:1420',
+      'Access-Control-Allow-Headers': 'authorization,content-type,idempotency-key', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' };
+    if (request.method() === 'OPTIONS') { await route.fulfill({ status: 204, headers }); return; }
+    if (path === '/v1/jobs' && request.method() === 'POST') {
+      const payload = request.postDataJSON();
+      submitted.push(payload);
+      await route.fulfill({ status: 202, headers, json: { id: `job${submitted.length}`, status: 'queued', attempt: 0, payload, error: null, result: null } });
+      return;
+    }
+    const events = path.match(/^\/v1\/jobs\/(job\d+)\/events$/);
+    if (events) {
+      const payload = submitted[Number(events[1].slice(3)) - 1];
+      const name = payload.path.split(/[\\/]/).pop();
+      const lines = [
+        { sequence: 1, kind: 'status', message: 'Transcrevendo...' },
+        { sequence: 2, kind: 'segment', message: `Texto de ${name}.` },
+        { sequence: 3, kind: 'progress', message: '100' },
+        { kind: 'complete', job: { id: events[1], status: 'succeeded', attempt: 1, payload, error: null, result: { text: `Texto de ${name}.\n` } } },
+      ];
+      await route.fulfill({ status: 200, headers: { ...headers, 'Content-Type': 'application/x-ndjson' }, body: lines.map(line => JSON.stringify(line)).join('\n') + '\n' });
+      return;
+    }
+    const body = path === '/health' ? { status: 'ready' }
+      : path === '/v1/hermes' ? { state: 'not_checked', connected: false, cli_available: false, configured: false, message: '', checked_at: null, version: null, features: [] }
+      : path === '/v1/diagnostics' ? { checks: [], notice: '' }
+      : path === '/v1/transcription' ? { engine: true, downloader: true, ffmpeg: false }
+      : null;
+    await route.fulfill({ status: body ? 200 : 404, headers, json: body });
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Ajustes', exact: true }).click();
+  await page.getByLabel('Token da sessão').fill('browser-test-session-token-0123456789');
+  await page.getByRole('button', { name: 'CONECTAR BACKEND', exact: true }).click();
+  await page.getByRole('button', { name: 'Transcrição', exact: true }).click();
+  for (const file of ['C:/midia/primeiro.mp3', 'C:/midia/segundo.mp4']) {
+    await page.getByLabel('Caminho local do arquivo').fill(file);
+    await page.getByRole('button', { name: 'ADICIONAR À FILA', exact: true }).click();
+  }
+  await expect(page.getByLabel('Arquivos na fila')).toHaveText('2/20');
+  await page.getByLabel('Modelo').selectOption('tiny');
+  await page.getByLabel('Idioma').selectOption('pt');
+  await page.getByRole('button', { name: 'TRANSCREVER', exact: true }).click();
+  const transcript = page.getByRole('textbox', { name: 'Transcrição', exact: true });
+  await expect(transcript).toHaveValue('Texto de primeiro.mp3.\n');
+  expect(submitted[0]).toEqual({ operation: 'transcription.run', path: 'C:/midia/primeiro.mp3', model: 'tiny', language: 'pt' });
+  const next = page.getByRole('button', { name: 'PRÓXIMO VÍDEO', exact: true });
+  await expect(next).toBeDisabled();
+  await page.getByRole('button', { name: 'Biblioteca', exact: true }).click();
+  await page.getByRole('button', { name: 'Transcrição', exact: true }).click();
+  await expect(transcript).toHaveValue('Texto de primeiro.mp3.\n');
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'SALVAR .TXT', exact: true }).click();
+  expect((await download).suggestedFilename()).toBe('primeiro.txt');
+  await expect(next).toBeEnabled();
+  await transcript.fill('Texto revisado.');
+  await expect(next).toBeDisabled();
+  await expect(page.getByRole('status').filter({ hasText: 'Texto editado' })).toBeVisible();
+  const second = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'SALVAR .TXT', exact: true }).click();
+  await second;
+  await next.click();
+  await expect(page.getByRole('heading', { name: 'segundo.mp4' })).toBeVisible();
+  await expect(transcript).toHaveValue('Texto de segundo.mp4.\n');
+  await expect(page.getByLabel('Arquivos na fila')).toHaveText('1/20');
+  const downloadButton = page.getByRole('button', { name: 'BAIXAR E ADICIONAR À FILA' });
+  await expect(downloadButton).toBeDisabled();
+  await page.getByLabel('Link do YouTube').fill('https://youtu.be/dQw4w9WgXcQ');
+  await expect(downloadButton).toBeEnabled();
+  await page.screenshot({ path: 'test-results/transcription-flow-1320.png' });
 });
