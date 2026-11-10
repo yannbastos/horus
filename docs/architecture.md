@@ -29,6 +29,8 @@ global.json             Versão mínima do SDK
 | `Program` | Inicia o aplicativo e configura a plataforma e a fonte Inter |
 | `App` | Carrega o tema Fluent e cria a `MainWindow` com seu ViewModel |
 | `MainWindow` | Define o cabeçalho, a navegação, o rodapé e a área das telas |
+| `OverviewView` | Tela inicial audiovisual com atalhos de navegação e indicação das capacidades disponíveis e planejadas |
+| `WorkspacePreviewView`, `WorkspaceSection` | Apresentam conteúdo editorial das prévias Radar, Biblioteca, Produção, Canais e Memória, sem backend ou dados operacionais |
 | `Views/Examples`, `ExampleData` | Telas e dados fictícios, sem regras de negócio; devem ser removidos quando houver telas reais |
 | `MainWindowViewModel` | Fornece o nome do aplicativo, a mensagem de status, os dados de exemplo e o `TranscriptionViewModel` |
 | `TranscriptionView` | Tela de transcrição: arrastar e soltar, diálogos de arquivo, área de transferência e layout |
@@ -44,6 +46,7 @@ global.json             Versão mínima do SDK
 | `ExampleScreensTests` | Confere a navegação e a opção de tema das telas de exemplo |
 | `TranscriptionViewModelTests` | Confere as regras da fila, do salvamento e do download com transcrições simuladas |
 | `TranscriptionViewTests` | Abre a janela em modo headless e confere a tela de transcrição |
+| `WorkspaceLayoutTests` | Verifica atalhos, preservação da fila ao navegar e visibilidade da ação principal em dois tamanhos e temas; pode exportar imagens para inspeção |
 | `YouTubeDownloadTests`, `YouTubeIntegrationTests` | Validam links e argumentos do yt-dlp; o teste de integração (`Category=Network`) usa a internet |
 
 ## Frameworks e dependências
@@ -95,6 +98,16 @@ O teste abre a janela real e confere o que ela apresenta, sem depender de um amb
 ### .NET 10
 
 É uma versão LTS, com suporte de longo prazo e compatível com Windows e Linux. O `global.json` exige o SDK 10 e aceita atualizações dentro dessa versão principal.
+
+## Layout desktop audiovisual
+
+O usuário autorizou uma primeira evolução visual do aplicativo desktop após o planejamento. A janela abre na Visão geral, com navegação lateral para Radar, Biblioteca, Produção, Canais, Memória, Transcrição e Ajustes. A transcrição conserva o mesmo ViewModel e a mesma fila ao navegar. Os botões da Visão geral mudam a tela por eventos da View, sem executar ações de produção.
+
+As cinco áreas futuras usam um mesmo controle de prévia com conteúdo editorial imutável. Não há métricas, produções, canais ou memórias carregados nessas telas. O cartão Hermes informa integração pendente; não é uma verificação de conexão. A integração real permanece fora do escopo deste incremento.
+
+O layout usa os tokens existentes, fontes embutidas e estilos específicos para a barra lateral e os painéis. A janela padrão mede 1320 × 840, com mínimo de 1040 × 680 e rolagem vertical no conteúdo. Início, Lista e Leitura antigos permanecem no código como exemplos, mas não aparecem na navegação principal.
+
+Para inspeção visual, `WorkspaceLayoutTests` exporta PNGs quando `HORUS_LAYOUT_PREVIEW_DIR` está definida. Os arquivos gerados em `artifacts/` são ignorados pelo Git. Imagens selecionadas para revisão estão em [layout-desktop.md](layout-desktop.md).
 
 ## Compatibilidade futura com Linux
 

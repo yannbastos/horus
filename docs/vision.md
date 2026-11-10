@@ -59,7 +59,7 @@ As integrações ainda precisam ser validadas na instalação real. A primeira e
 
 - O código desktop permanece em C#/.NET e Avalonia; não houve migração para outra stack.
 - Transcrição e download existem; a plataforma integrada ainda não está pronta.
-- O layout audiovisual tem uma branch própria, identificada no README.
+- O layout audiovisual Avalonia está integrado à branch principal e serve de referência para a migração sem redesign.
 - Publicação inicialmente manual; sem promessa de receita ou monetização.
 - Sem alegação de acesso à retenção privada de concorrentes.
 - Coleta, indicadores e históricos dependem das capacidades e permissões vigentes das APIs.

@@ -30,7 +30,7 @@ Registro em 2026-11-10. Estado: planejamento, sem implementação da integraçã
 | [horus-storybook](https://github.com/yannbastos/horus-storybook) | Laboratório visual React/Storybook |
 | [hermes-agent](https://github.com/NousResearch/hermes-agent) | Dependência externa; não criar fork nesta etapa |
 
-O pacote inicial foi incorporado às branches principais dos quatro repositórios. O layout audiovisual permanece em `feat/layout-desktop-audiovisual`. Os históricos foram mantidos separados; nenhuma migração para monorepo foi aprovada.
+O pacote inicial foi incorporado às branches principais dos quatro repositórios. O layout audiovisual de `feat/layout-desktop-audiovisual` também foi integrado à principal do Hórus. Os históricos foram mantidos separados; nenhuma migração para monorepo foi aprovada.
 
 ## Como interpretar a documentação existente
 

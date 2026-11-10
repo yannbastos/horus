@@ -12,24 +12,24 @@ O projeto começa pela operação de um canal no YouTube. A expansão para outro
 
 ## O que já funciona
 
-O aplicativo desktop atual usa **C#/.NET e Avalonia**. Ele permite importar áudio e vídeo, baixar um vídeo do YouTube, transcrever localmente com Whisper, revisar o texto e salvar o resultado. Há temas claro, escuro e do sistema e testes automatizados de interface e comportamento.
+O aplicativo desktop atual usa **C#/.NET e Avalonia** e abre na **Visão geral**, com navegação lateral e atalhos. Ele permite importar áudio e vídeo, baixar um vídeo do YouTube, transcrever localmente com Whisper, revisar o texto e salvar o resultado. Acesse a transcrição pelo menu ou por **Abrir transcrição**. Há temas claro, escuro e do sistema e testes automatizados de interface e comportamento.
 
 | Capacidade | Situação |
 |---|---|
 | Download e transcrição de áudio/vídeo | Implementados no desktop; exigem as ferramentas descritas abaixo |
 | Fila de transcrição, edição e salvamento | Implementados; a fila não persiste ao fechar o app |
-| Layout desktop audiovisual | Primeira versão disponível na [branch de layout](https://github.com/yannbastos/horus/tree/feat/layout-desktop-audiovisual), ainda separada da principal |
+| Layout desktop audiovisual | Primeira versão integrada à branch principal; [capturas e limites](docs/layout-desktop.md) |
 | Radar, análise editorial e memória operacional | Planejados; sem integração operacional no desktop |
 | Integração com Hermes e fábrica Python | Planejada; diagnóstico da instalação real ainda pendente |
 | Publicação automática e múltiplos canais | Evolução futura; publicação inicialmente manual |
 
-As telas antigas de Início, Lista e Leitura na branch principal são exemplos com dados fictícios. Não representam uma operação audiovisual conectada. Em Ajustes, a troca de tema funciona; os demais controles são demonstrações.
+Radar, Biblioteca, Produção, Canais e Memória são prévias de layout, identificadas como em preparação, sem operações ou métricas simuladas. As telas antigas de Início, Lista e Leitura permanecem no código como exemplos, fora da navegação principal. Em Ajustes, a troca de tema funciona; os demais controles são demonstrações.
 
 ## Prévia do desktop audiovisual
 
-![Prévia do layout audiovisual do Hórus em tema escuro](https://raw.githubusercontent.com/yannbastos/horus/feat/layout-desktop-audiovisual/docs/previews/desktop-dark.png)
+![Prévia do layout audiovisual do Hórus em tema escuro](docs/previews/desktop-dark.png)
 
-Captura do aplicativo Avalonia na branch `feat/layout-desktop-audiovisual`. A prévia reorganiza a navegação e preserva a transcrição; os demais módulos aparecem como em preparação. [Capturas e limites do layout](https://github.com/yannbastos/horus/blob/feat/layout-desktop-audiovisual/docs/layout-desktop.md).
+Captura do aplicativo Avalonia integrado à branch principal. O layout reorganiza a navegação e preserva a transcrição; os demais módulos aparecem como em preparação. [Capturas e limites do layout](docs/layout-desktop.md).
 
 ## Para onde o Hórus está evoluindo
 

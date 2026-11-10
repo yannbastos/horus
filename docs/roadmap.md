@@ -14,7 +14,7 @@ Evolução incremental da plataforma audiovisual, sem datas prometidas. Consulte
 | Testes automatizados de comportamento e interface | Existentes |
 | Fábrica Python e render de Short | Em repositório separado, parcialmente consolidados |
 | Base de conhecimento e catálogo visual | Em repositórios separados |
-| Primeira prévia do layout audiovisual desktop | Desenvolvida na branch `feat/layout-desktop-audiovisual`, ainda separada da principal |
+| Primeira prévia do layout audiovisual desktop | Integrada à branch principal; permanece em Avalonia até validar a migração |
 
 ## Próximas fases
 

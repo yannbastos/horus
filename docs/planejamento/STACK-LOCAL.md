@@ -24,7 +24,7 @@ FastAPI é a fonte oficial do estado das produções; Hermes coordena agentes e 
 
 ## 2. Auditoria e reaproveitamento
 
-Leitura realizada sem modificar código, instalar ferramentas ou executar integração. Referências locais: Hórus `3f6a97c`, fábrica `87102ac`, Storybook `cf3cf7b`, estudos `1cecfd4`. O layout audiovisual está na branch `feat/layout-desktop-audiovisual`, commit `7ce68c4`, e não na principal.
+Leitura realizada sem modificar código, instalar ferramentas ou executar integração. Referências locais: Hórus `3f6a97c`, fábrica `87102ac`, Storybook `cf3cf7b`, estudos `1cecfd4`. Na auditoria, o layout estava somente em `feat/layout-desktop-audiovisual`, commit `7ce68c4`; posteriormente foi integrado à branch principal. A migração tecnológica continua apenas planejada.
 
 | Componente | Evidência | Tratamento |
 |---|---|---|

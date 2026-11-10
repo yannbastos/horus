@@ -6,6 +6,8 @@ Você está retomando uma conversa de planejamento de 2026-11-10. O usuário pre
 
 ## Leia antes de agir
 
+O layout audiovisual Avalonia foi incorporado à branch principal, preservando a stack local planejada. Leia [a referência visual](../layout-desktop.md) para a migração sem redesign. Isso não implementa Tauri/FastAPI nem integrações operacionais.
+
 1. `AGENTS.md` e `docs/architecture.md` deste repositório.
 2. [Visão atual](VISAO.md), [diagnóstico](DIAGNOSTICO.md) e [plano](PLANO.md).
 3. [Memória da conversa](CONVERSA.md) para não reviver propostas substituídas.
