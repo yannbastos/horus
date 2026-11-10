@@ -67,6 +67,29 @@ def test_authentication_is_required(client):
     assert response.status_code == 401
 
 
+def test_diagnostics_reports_presence_without_running_tools(client, monkeypatch):
+    import subprocess
+    from horus_backend import diagnostics
+
+    def unexpected_process(*args, **kwargs):
+        pytest.fail("O diagnóstico não deve executar ferramentas.")
+
+    monkeypatch.setattr(subprocess, "Popen", unexpected_process)
+    monkeypatch.setattr(diagnostics.shutil, "which", lambda name: "/private/bin/node" if name == "node" else None)
+    response = client.get("/v1/diagnostics")
+    assert response.status_code == 200
+    report = response.json()
+    checks = {check["id"]: check for check in report["checks"]}
+    assert checks["factory"]["available"] is True
+    assert checks["node"]["available"] is True
+    assert checks["ffmpeg"]["available"] is False
+    assert checks["hermes"]["available"] is False
+    assert report["hermes_connected"] is False
+    assert "/private" not in response.text
+    assert TOKEN not in response.text
+    assert client.get("/v1/diagnostics", headers={"Authorization": "Bearer wrong"}).status_code == 401
+
+
 def test_foreign_origin_is_rejected_even_with_token(client):
     assert client.get("/health", headers={"Origin": "https://example.org"}).status_code == 403
 

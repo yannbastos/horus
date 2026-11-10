@@ -61,6 +61,8 @@ O build empacota Python em diretório próprio via PyInstaller antes de gerar o 
 
 ## Segurança, estado e recuperação
 
+Em Ajustes, com o backend conectado, o diagnóstico local consulta `GET /v1/diagnostics` e mostra a presença do comando da fábrica, FFmpeg, ffprobe, Node e Hermes. A consulta não executa ferramentas, expõe caminhos ou credenciais, instala dependências nem verifica versões. Presença não certifica renderização, licenças ou integração Hermes. A atualização é manual, sem consulta periódica em repouso.
+
 - API vinculada somente a `127.0.0.1`, com token aleatório e origens permitidas. O desktop escolhe porta livre e transmite as credenciais em memória.
 - SQLite armazena tarefas, eventos e referências de mídia. `HORUS_DATA_DIR` permite escolher uma pasta no SSD; o padrão do backend independente é `%LOCALAPPDATA%/Horus/workspace`. O desktop usa seu diretório local pelo identificador Tauri. Para compartilhar dados entre os dois modos, configure o mesmo diretório e não execute dois backends simultaneamente sobre ele.
 - Tarefas aguardando execução sobrevivem ao reinício. As que estavam executando passam a interrompidas e exigem nova tentativa explícita. Chaves de idempotência protegem contra submissão duplicada.

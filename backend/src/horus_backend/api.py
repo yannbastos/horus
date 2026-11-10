@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from .config import Settings
+from .diagnostics import diagnose
 from .jobs import JobManager, JobRequest, TERMINAL
 from .storage import Store
 
@@ -69,6 +70,10 @@ def create_app(settings: Settings, shutdown=None, ready=None):
     @app.get("/v1/jobs")
     async def jobs():
         return store.list_jobs()
+
+    @app.get("/v1/diagnostics")
+    async def diagnostics():
+        return diagnose(settings)
 
     @app.post("/v1/jobs", status_code=202)
     async def submit(request: JobRequest, idempotency_key: str | None = Header(default=None, max_length=128)):
