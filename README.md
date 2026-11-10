@@ -1,5 +1,7 @@
 # HORUS
 
+> **Planejamento da evolução audiovisual:** leia [o contexto e a carta de continuidade](docs/planejamento/README.md). A direção escolhida integra Hermes Agent e a fábrica Python independente, sem fork inicial. Essa integração ainda não foi implementada; a descrição abaixo apresenta o aplicativo existente.
+
 O HORUS é um aplicativo desktop de estudos e aprendizagem, gratuito e open source. Ele vai reunir técnicas de estudo, revisão e organização que funcionaram na prática para o seu idealizador, para que outras pessoas também possam usá-las.
 
 ## Objetivos

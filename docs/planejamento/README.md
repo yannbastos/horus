@@ -1,0 +1,30 @@
+# Continuidade do Hórus audiovisual
+
+Registro em 2026-11-10. Estado: planejamento, sem implementação da integração.
+
+**Comece pela [carta ao próximo Codex](CARTA-AO-CODEX.md).**
+
+## Documentos
+
+- [Visão e decisões](VISAO.md): direção escolhida pelo usuário e limites de autorização.
+- [Diagnóstico](DIAGNOSTICO.md): evidências locais, pesquisa do Hermes e questões ainda abertas.
+- [Plano de aplicação](PLANO.md): tarefas, critérios de aceite e inspeção na máquina principal.
+- [Memória da conversa](CONVERSA.md): evolução das decisões e orientações substituídas.
+
+## Repositórios
+
+| Repositório | Papel |
+|---|---|
+| [horus](https://github.com/yannbastos/horus) | Aplicativo existente e referência central deste planejamento |
+| [fabrica-canais](https://github.com/yannbastos/fabrica-canais) | Motor Python/CLI e Remotion, independente |
+| [estudos-videos-claude](https://github.com/yannbastos/estudos-videos-claude) | Fontes, transcrições e resumos existentes |
+| [horus-storybook](https://github.com/yannbastos/horus-storybook) | Laboratório visual React/Storybook |
+| [hermes-agent](https://github.com/NousResearch/hermes-agent) | Dependência externa; não criar fork nesta etapa |
+
+Estes documentos ficam inicialmente na branch `docs/planejamento-horus-hermes-2026-11-10` dos quatro repositórios. Não presumir que já foram incorporados às branches principais. Os históricos dos projetos foram mantidos separados; nenhuma migração para monorepo foi aprovada.
+
+## Como interpretar a documentação existente
+
+`docs/architecture.md` descreve o aplicativo implementado. A visão e o roadmap anteriores descrevem sua origem como ferramenta de estudos. A nova direção audiovisual está em `VISAO.md`; isso não transforma funcionalidades planejadas em existentes nem autoriza reescrita do aplicativo.
+
+Este pacote é uma síntese revisada do contexto disponível, não uma exportação literal do chat. Não contém configurações privadas, credenciais, mídia ou transcrições de raciocínio interno.
