@@ -2,6 +2,10 @@
 
 Estas regras valem para todos os agentes que trabalham no HORUS.
 
+## Contexto de continuidade — Hórus audiovisual
+
+Antes de planejar a evolução do produto, leia [a carta ao próximo Codex](docs/planejamento/CARTA-AO-CODEX.md). O usuário escolheu Hermes Agent como motor de inteligência e orquestração, sem fork inicial, preservando a fábrica independente. A primeira entrega na máquina principal é um diagnóstico de integração, sem implementação. Os documentos em `docs/planejamento/` registram a nova direção; `docs/architecture.md` continua descrevendo o código existente.
+
 **Princípio fundamental:** o HORUS deve ser desenvolvido para funcionar bem, não apenas para parecer bem programado.
 
 O idealizador é o responsável pelo produto e principal usuário. Os agentes assumem a implementação, a arquitetura, os testes, a correção de bugs e a manutenção da documentação.
