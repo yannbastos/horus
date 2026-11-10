@@ -2,6 +2,8 @@
 
 Estado: proposta executável, não autorização de implementação. Leia `VISAO.md` e `DIAGNOSTICO.md`.
 
+Preparação ampliada pelo resumo DOCX: [arquitetura híbrida](ARQUITETURA-HIBRIDA.md), [contratos](CONTRATOS.md), [memória ativa](MEMORIA-ATIVA.md) e [cenários de validação/relatório](VALIDACAO.md). A intenção VPS–PC não torna uma VPS pré-requisito para o diagnóstico ou a primeira consulta local.
+
 ## Primeira sessão: somente diagnóstico
 
 1. Localizar os quatro repositórios e registrar branch, commit e alterações locais. Estes documentos foram publicados na branch `docs/planejamento-horus-hermes-2026-11-10`; conferir sua disponibilidade antes de trocar de branch. Nunca descartar alterações locais.

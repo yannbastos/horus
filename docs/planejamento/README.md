@@ -12,6 +12,8 @@ Registro em 2026-11-10. Estado: planejamento, sem implementação da integraçã
 - [Memória da conversa](CONVERSA.md): evolução das decisões e orientações substituídas.
 - [Arquitetura híbrida](ARQUITETURA-HIBRIDA.md): responsabilidades VPS–PC, indisponibilidade e recuperação, ainda propostas.
 - [Memória ativa](MEMORIA-ATIVA.md): fontes oficiais, evidências e validação de aprendizados.
+- [Mapa de contratos](CONTRATOS.md): direções de comunicação e especificação externa da fábrica.
+- [Plano de validação](VALIDACAO.md): cenários de falha, portões de aceite e modelo do relatório local; testes ainda não executados.
 - [Fonte recebida](fontes/RESUMO-ARQUITETURA-MEMORIA-ATIVA.md): texto extraído do DOCX fornecido, com hash de origem; não confundir relatos com auditoria.
 
 ## Repositórios

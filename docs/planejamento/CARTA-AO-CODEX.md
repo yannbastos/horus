@@ -9,6 +9,7 @@ Você está retomando uma conversa de planejamento de 2026-11-10. O usuário pre
 3. [Memória da conversa](CONVERSA.md) para não reviver propostas substituídas.
 4. Instruções próprias da fábrica e dos estudos antes de trabalhar neles.
 5. [Arquitetura híbrida](ARQUITETURA-HIBRIDA.md) e [memória ativa](MEMORIA-ATIVA.md), acrescentadas a partir do resumo DOCX do usuário. VPS, armazenamento e integrações especializadas são intenções a validar. O primeiro teste pode continuar inteiramente no PC, sem contratar VPS.
+6. [Contratos](CONTRATOS.md) e [validação](VALIDACAO.md): exemplos são sintéticos, contratos são rascunhos e cenários de testes não foram executados. Usar o modelo de relatório para documentar a inspeção real.
 
 ## O que o usuário escolheu
 
