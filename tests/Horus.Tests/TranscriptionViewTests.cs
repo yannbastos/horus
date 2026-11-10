@@ -8,13 +8,15 @@ namespace Horus.Tests;
 public class TranscriptionViewTests
 {
     [AvaloniaFact]
-    public void Transcription_is_the_screen_shown_at_startup()
+    public void Overview_is_shown_at_startup_and_transcription_remains_available()
     {
         var window = new MainWindow { DataContext = new MainWindowViewModel() };
         window.Show();
 
+        Assert.True(window.GetControl<OverviewView>("HomeView").IsVisible);
+        Assert.False(window.GetControl<TranscriptionView>("TranscriptionView").IsVisible);
+        window.GetControl<RadioButton>("NavTranscription").IsChecked = true;
         Assert.True(window.GetControl<TranscriptionView>("TranscriptionView").IsVisible);
-        Assert.False(window.GetControl<UserControl>("HomeView").IsVisible);
 
         window.Close();
     }

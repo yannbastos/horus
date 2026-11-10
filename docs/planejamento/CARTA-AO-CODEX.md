@@ -2,6 +2,8 @@
 
 Você está retomando uma conversa de planejamento de 2026-11-10. O usuário preparou este material em uma máquina secundária para continuar na principal. Ele quer continuidade e execução objetiva, mas **a implementação da plataforma ainda não foi aprovada**.
 
+**Atualização de escopo:** posteriormente o usuário autorizou trabalhar no layout do app desktop Avalonia. A primeira prévia navegável está descrita em [layout-desktop.md](../layout-desktop.md). Isso autoriza a evolução visual solicitada, mas não integrações com Hermes/fábrica, instalações ou chamadas pagas. O diagnóstico operacional na máquina principal continua pendente.
+
 ## Leia antes de agir
 
 1. `AGENTS.md` e `docs/architecture.md` deste repositório.
@@ -17,7 +19,7 @@ Hórus será uma plataforma audiovisual construída sobre Hermes Agent, sem fork
 
 **Não implementar agora um orquestrador próprio completo em C# ou Python.** Essa foi uma proposta anterior do assistente, substituída pela decisão do usuário de avaliar e aproveitar Hermes. Uma camada persistente de regras/aprovações pode ser necessária, mas deve ser justificada pelo diagnóstico real.
 
-O usuário não quer começar pela interface. Sua primeira entrega é o diagnóstico Hermes–fábrica, baseado na instalação principal. Não presumir recursos do upstream disponíveis na versão instalada.
+A ordem original priorizava o diagnóstico antes da interface; o usuário depois autorizou adiantar somente o layout desktop. Para a integração operacional, a primeira entrega continua sendo o diagnóstico Hermes–fábrica na instalação principal. Não presumir recursos do upstream disponíveis na versão instalada.
 
 ## Primeira resposta e ação esperadas
 

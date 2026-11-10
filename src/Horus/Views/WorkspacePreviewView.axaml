@@ -1,0 +1,38 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Horus.ViewModels"
+             x:Class="Horus.Views.WorkspacePreviewView"
+             x:DataType="vm:WorkspaceSection">
+  <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Margin="32,30" Spacing="26">
+      <StackPanel Spacing="10">
+        <TextBlock Classes="label" Foreground="{DynamicResource HorusAccentInkBrush}" Text="{Binding Caption}" />
+        <TextBlock x:Name="SectionTitleText" Classes="display" FontSize="30" Text="{Binding Title}" />
+        <TextBlock Classes="muted" FontSize="14" MaxWidth="670" HorizontalAlignment="Left" TextWrapping="Wrap" Text="{Binding Description}" />
+      </StackPanel>
+      <Border Background="{DynamicResource HorusSunkenBrush}" BorderBrush="{DynamicResource HorusLineBrush}" BorderThickness="1" Padding="36">
+        <StackPanel Spacing="18" MaxWidth="570" HorizontalAlignment="Left">
+          <Border Classes="tag" HorizontalAlignment="Left"><TextBlock Classes="label" FontSize="9" Text="PRÉVIA DE LAYOUT · EM PREPARAÇÃO" /></Border>
+          <Path Data="M 0,0 L 34,0 L 34,34 L 0,34 Z M 10,17 L 24,17 M 17,10 L 17,24"
+                Stroke="{DynamicResource HorusAccentInkBrush}" StrokeThickness="1" Width="35" Height="35" HorizontalAlignment="Left" Margin="0,8,0,0" />
+          <TextBlock Classes="display" FontSize="24" TextWrapping="Wrap" Text="{Binding EmptyTitle}" />
+          <TextBlock Classes="muted" TextWrapping="Wrap" Text="{Binding EmptyDescription}" />
+        </StackPanel>
+      </Border>
+      <TextBlock Classes="label" Text="O QUE ESTE ESPAÇO VAI REUNIR" />
+      <ItemsControl ItemsSource="{Binding Features}">
+        <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="3" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:WorkspaceFeature">
+            <Border Classes="workspaceCard" Margin="0,0,10,0">
+              <StackPanel Spacing="12">
+                <TextBlock Classes="display" FontSize="16" TextWrapping="Wrap" Text="{Binding Title}" />
+                <TextBlock Classes="muted" FontSize="13" TextWrapping="Wrap" Text="{Binding Description}" />
+              </StackPanel>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

@@ -141,6 +141,47 @@
     <Setter Property="BorderBrush" Value="{DynamicResource HorusAccentInkBrush}" />
   </Style>
 
+  <!-- Navegação do espaço audiovisual: estilos locais à nova barra lateral. -->
+  <Style Selector="RadioButton.sidebar">
+    <Setter Property="MinHeight" Value="42" />
+    <Setter Property="Padding" Value="14,12" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="FontFamily" Value="{StaticResource HorusBodyFont}" />
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="Foreground" Value="{DynamicResource HorusMutedBrush}" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Background="{TemplateBinding Background}"
+                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="2,0,0,0">
+          <ContentPresenter Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                            Foreground="{TemplateBinding Foreground}"
+                            Padding="{TemplateBinding Padding}" />
+        </Border>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="RadioButton.sidebar:pointerover">
+    <Setter Property="Foreground" Value="{DynamicResource HorusInkBrush}" />
+    <Setter Property="Background" Value="{DynamicResource HorusBackgroundBrush}" />
+  </Style>
+  <Style Selector="RadioButton.sidebar:checked">
+    <Setter Property="Foreground" Value="{DynamicResource HorusAccentInkBrush}" />
+    <Setter Property="Background" Value="{DynamicResource HorusBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource HorusAccentInkBrush}" />
+  </Style>
+  <Style Selector="RadioButton.sidebar:focus-visible">
+    <Setter Property="BorderBrush" Value="{DynamicResource HorusInkBrush}" />
+  </Style>
+  <Style Selector="Border.workspaceCard">
+    <Setter Property="Background" Value="{DynamicResource HorusBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource HorusLineBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Padding" Value="20" />
+  </Style>
+
   <!-- Campos de texto -->
   <Style Selector="TextBox">
     <Setter Property="Background" Value="{DynamicResource HorusBackgroundBrush}" />

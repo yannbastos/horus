@@ -6,63 +6,78 @@
         x:Class="Horus.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="{Binding AppName}"
-        Width="1180"
-        Height="760"
-        MinWidth="720"
-        MinHeight="480"
+        Width="1320" Height="840" MinWidth="1040" MinHeight="680"
         WindowStartupLocation="CenterScreen">
-  <DockPanel>
-    <Border DockPanel.Dock="Top"
-            Height="52"
-            BorderBrush="{DynamicResource HorusLineBrush}"
-            BorderThickness="0,0,0,1">
-      <Grid ColumnDefinitions="Auto,*,Auto">
-        <Border Padding="20,0"
-                BorderBrush="{DynamicResource HorusLineBrush}"
-                BorderThickness="0,0,1,0">
-          <TextBlock x:Name="AppNameText"
-                     Classes="display"
-                     Text="{Binding AppName}"
-                     VerticalAlignment="Center"
-                     FontSize="18"
-                     LetterSpacing="2" />
-        </Border>
-        <StackPanel Grid.Column="1"
-                    Orientation="Horizontal"
-                    VerticalAlignment="Center"
-                    Margin="16,0"
-                    Spacing="4">
-          <RadioButton x:Name="NavTranscription" Classes="segment" GroupName="Nav" Content="TRANSCRIÇÃO" IsChecked="True" />
-          <RadioButton x:Name="NavHome" Classes="segment" GroupName="Nav" Content="INÍCIO" />
-          <RadioButton x:Name="NavList" Classes="segment" GroupName="Nav" Content="LISTA" />
-          <RadioButton x:Name="NavReading" Classes="segment" GroupName="Nav" Content="LEITURA" />
-          <RadioButton x:Name="NavSettings" Classes="segment" GroupName="Nav" Content="AJUSTES" />
+  <Grid ColumnDefinitions="216,*">
+    <Border Background="{DynamicResource HorusSunkenBrush}"
+            BorderBrush="{DynamicResource HorusLineBrush}" BorderThickness="0,0,1,0">
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Top" Margin="24,30,24,26" Spacing="8">
+          <Grid ColumnDefinitions="28,*">
+            <Path Data="M 1,12 Q 13,-1 25,12 Q 13,25 1,12 M 13,7 A 5,5 0 1 1 12.9,7"
+                  Stroke="{DynamicResource HorusAccentInkBrush}" StrokeThickness="1.5"
+                  Width="26" Height="25" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="1" x:Name="AppNameText" Classes="display"
+                       Text="{Binding AppName}" FontSize="23" LetterSpacing="3" Margin="8,0,0,0" />
+          </Grid>
+          <TextBlock Classes="label" FontSize="9" LetterSpacing="1.1" Text="INTELIGÊNCIA AUDIOVISUAL" />
         </StackPanel>
-        <Border Grid.Column="2"
-                Classes="tag"
-                VerticalAlignment="Center"
-                Margin="16,0">
-          <TextBlock x:Name="StatusMessageText"
-                     Classes="label"
-                     Text="{Binding StatusMessage}" />
-        </Border>
-      </Grid>
+        <StackPanel DockPanel.Dock="Bottom" Margin="16,12,16,20" Spacing="16">
+          <Border BorderBrush="{DynamicResource HorusLineBrush}" BorderThickness="1" Padding="12">
+            <StackPanel Spacing="7">
+              <TextBlock Classes="label" FontSize="10" Text="HERMES AGENT" />
+              <StackPanel Orientation="Horizontal" Spacing="7">
+                <Ellipse Width="6" Height="6" Fill="{DynamicResource HorusWarnBrush}" VerticalAlignment="Center" />
+                <TextBlock Classes="muted" FontSize="12" Text="Integração pendente" />
+              </StackPanel>
+            </StackPanel>
+          </Border>
+          <RadioButton x:Name="NavSettings" Classes="sidebar" GroupName="Nav" Content="Ajustes" />
+          <TextBlock Classes="label" FontSize="9" Text="SEU ESPAÇO DE CRIAÇÃO" HorizontalAlignment="Center" />
+        </StackPanel>
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Margin="12,0" Spacing="4">
+            <TextBlock Classes="label" FontSize="9" Text="ESPAÇO DE TRABALHO" Margin="12,0,0,12" />
+            <RadioButton x:Name="NavHome" Classes="sidebar" GroupName="Nav" Content="Visão geral" IsChecked="True" />
+            <RadioButton x:Name="NavRadar" Classes="sidebar" GroupName="Nav" Content="Radar" />
+            <RadioButton x:Name="NavLibrary" Classes="sidebar" GroupName="Nav" Content="Biblioteca" />
+            <RadioButton x:Name="NavProduction" Classes="sidebar" GroupName="Nav" Content="Produção" />
+            <RadioButton x:Name="NavChannels" Classes="sidebar" GroupName="Nav" Content="Canais" />
+            <RadioButton x:Name="NavMemory" Classes="sidebar" GroupName="Nav" Content="Memória" />
+            <TextBlock Classes="label" FontSize="9" Text="FERRAMENTAS" Margin="12,24,0,10" />
+            <RadioButton x:Name="NavTranscription" Classes="sidebar" GroupName="Nav" Content="Transcrição" />
+          </StackPanel>
+        </ScrollViewer>
+      </DockPanel>
     </Border>
-
-    <Border DockPanel.Dock="Bottom"
-            Padding="20,8"
-            BorderBrush="{DynamicResource HorusLineBrush}"
-            BorderThickness="0,1,0,0">
-      <TextBlock Classes="label"
-                 Text="TRANSCRIÇÃO FUNCIONAL · INÍCIO, LISTA E LEITURA SÃO TELAS DE EXEMPLO COM DADOS FICTÍCIOS" />
-    </Border>
-
-    <Panel>
-      <views:TranscriptionView x:Name="TranscriptionView" DataContext="{Binding Transcription}" IsVisible="{Binding #NavTranscription.IsChecked}" />
-      <examples:HomeExampleView x:Name="HomeView" IsVisible="{Binding #NavHome.IsChecked}" />
-      <examples:ListExampleView x:Name="ListView" IsVisible="{Binding #NavList.IsChecked}" />
-      <examples:ReadingExampleView x:Name="ReadingView" IsVisible="{Binding #NavReading.IsChecked}" />
-      <examples:SettingsExampleView x:Name="SettingsView" IsVisible="{Binding #NavSettings.IsChecked}" />
-    </Panel>
-  </DockPanel>
+    <DockPanel Grid.Column="1">
+      <Border DockPanel.Dock="Top" Padding="28,17" BorderBrush="{DynamicResource HorusLineBrush}" BorderThickness="0,0,0,1">
+        <Grid ColumnDefinitions="*,Auto">
+          <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+            <TextBlock Classes="label" Text="HORUS" Foreground="{DynamicResource HorusAccentInkBrush}" />
+            <TextBlock Classes="muted" Text="/" />
+            <TextBlock Classes="label" Text="CENTRAL AUDIOVISUAL" />
+          </StackPanel>
+          <Border Grid.Column="1" Classes="tag">
+            <TextBlock x:Name="StatusMessageText" Classes="label" FontSize="9" Text="{Binding StatusMessage}" />
+          </Border>
+        </Grid>
+      </Border>
+      <Border DockPanel.Dock="Bottom" Padding="28,10" BorderBrush="{DynamicResource HorusLineBrush}" BorderThickness="0,1,0,0">
+        <TextBlock Classes="muted" FontSize="11" TextWrapping="Wrap"
+                   Text="Prévia da plataforma audiovisual · Transcrição disponível · Radar, produção e Hermes ainda não integrados." />
+      </Border>
+      <Panel>
+        <views:OverviewView x:Name="HomeView" IsVisible="{Binding #NavHome.IsChecked}"
+                            TranscriptionRequested="OpenTranscription" RadarRequested="OpenRadar" />
+        <views:WorkspacePreviewView x:Name="RadarView" IsVisible="{Binding #NavRadar.IsChecked}" DataContext="{Binding Radar}" />
+        <views:WorkspacePreviewView x:Name="LibraryView" IsVisible="{Binding #NavLibrary.IsChecked}" DataContext="{Binding Library}" />
+        <views:WorkspacePreviewView x:Name="ProductionView" IsVisible="{Binding #NavProduction.IsChecked}" DataContext="{Binding Production}" />
+        <views:WorkspacePreviewView x:Name="ChannelsView" IsVisible="{Binding #NavChannels.IsChecked}" DataContext="{Binding Channels}" />
+        <views:WorkspacePreviewView x:Name="MemoryView" IsVisible="{Binding #NavMemory.IsChecked}" DataContext="{Binding Memory}" />
+        <views:TranscriptionView x:Name="TranscriptionView" IsVisible="{Binding #NavTranscription.IsChecked}" DataContext="{Binding Transcription}" />
+        <examples:SettingsExampleView x:Name="SettingsView" IsVisible="{Binding #NavSettings.IsChecked}" />
+      </Panel>
+    </DockPanel>
+  </Grid>
 </Window>

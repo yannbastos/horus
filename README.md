@@ -2,7 +2,7 @@
 
 > **Planejamento da evolução audiovisual:** leia [o contexto e a carta de continuidade](docs/planejamento/README.md). A direção escolhida integra Hermes Agent e a fábrica Python independente, sem fork inicial. Essa integração ainda não foi implementada; a descrição abaixo apresenta o aplicativo existente.
 
-O HORUS é um aplicativo desktop de estudos e aprendizagem, gratuito e open source. Ele vai reunir técnicas de estudo, revisão e organização que funcionaram na prática para o seu idealizador, para que outras pessoas também possam usá-las.
+O HORUS é um aplicativo desktop em evolução para uma plataforma de inteligência audiovisual. A versão atual reúne transcrição local e uma prévia navegável do espaço de pesquisa, biblioteca, produção, canais e memória. A integração com Hermes Agent e com a fábrica de vídeos ainda será implementada, conforme o planejamento.
 
 ## Objetivos
 
@@ -15,7 +15,9 @@ Mais detalhes em [docs/vision.md](docs/vision.md).
 
 ## Estado atual
 
-**Em desenvolvimento inicial.** A primeira funcionalidade real é a **Transcrição** de áudio e vídeo, trazida do antigo app Thot. As telas Início, Lista e Leitura continuam sendo exemplos com dados fictícios, usadas para avaliar o design. Em Ajustes, apenas a troca entre os temas claro e escuro funciona.
+**Em desenvolvimento inicial.** O aplicativo abre na **Visão geral**, com navegação lateral e atalhos. A funcionalidade real é a **Transcrição** de áudio e vídeo, trazida do antigo app Thot; acesse-a pelo menu ou por **Abrir transcrição**. Radar, Biblioteca, Produção, Canais e Memória são prévias de layout, identificadas como em preparação, sem métricas simuladas ou operações externas. Em Ajustes, a troca de tema funciona; os demais controles são exemplos.
+
+Veja [as prévias e os limites do layout desktop](docs/layout-desktop.md).
 
 ## Transcrição
 
