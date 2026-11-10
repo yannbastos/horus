@@ -2,6 +2,8 @@
 
 Fonte: decisões expressas pelo usuário na conversa de 2026-11-10. Estado: planejamento arquitetural.
 
+**Atualização vigente:** a stack e a migração local estão em [STACK-LOCAL.md](STACK-LOCAL.md). React/TypeScript + Tauri 2, Rust apenas nativo, Python/FastAPI e SQLite foram definidos pelo usuário. Sem VPS nesta etapa e sem mudança de design. O código implementado continua Avalonia até migração aprovada e validada.
+
 ## Direção escolhida
 
 Hórus será uma plataforma de inteligência audiovisual para pesquisar, estudar, planejar, produzir e acompanhar conteúdos digitais. Hermes Agent será seu motor de inteligência e orquestração, por integrações externas, **sem fork ou alteração de seu código-fonte inicialmente**.
@@ -56,10 +58,9 @@ O agente não pode dispensar bloqueios de licença, orçamento ou aprovação si
 
 ## Hipóteses que ainda não são decisões de implementação
 
-O documento de referência recebido posteriormente acrescenta uma intenção de operação híbrida: Hermes e automações na VPS, produção pesada no PC Windows, armazenamento audiovisual local e memória ativa. Veja [a arquitetura proposta](ARQUITETURA-HIBRIDA.md) e [a memória ativa](MEMORIA-ATIVA.md). Hostinger, Epidemic Sound, armazenamento citado e agentes especializados não devem ser presumidos contratados, disponíveis ou integrados.
+O documento de referência acrescentava uma intenção VPS–PC. Essa parte foi substituída pelo escopo local de [STACK-LOCAL.md](STACK-LOCAL.md). A arquitetura híbrida permanece histórica. Armazenamento, serviços de áudio e agentes especializados não devem ser presumidos contratados, disponíveis ou integrados.
 
-- Interface web local no Windows é uma possibilidade preferida no planejamento; stack e destino do Avalonia ainda precisam de decisão concreta.
-- FastAPI, React e SQLite foram propostos, não instalados nem escolhidos como obrigação.
+- React/TypeScript, Tauri 2, Rust mínimo, FastAPI e SQLite são a direção definida, ainda sem implementação. Avalonia será preservado durante a validação; sua remoção não foi autorizada.
 - MCP e servidor HTTP são candidatos de integração, condicionados à versão instalada.
 - Usar a persistência de execuções do Hermes e adicionar somente os registros de domínio necessários é uma proposta a investigar.
 - Não há autorização para fundir repositórios, reescrever transcrição em Python, remover Avalonia ou criar infraestrutura nova.

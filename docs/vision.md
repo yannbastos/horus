@@ -32,6 +32,8 @@ Essas áreas são visão de produto. O estado implementado deve ser conferido no
 
 ## Responsabilidades escolhidas
 
+A direção tecnológica oficial é React/TypeScript, Tauri 2 com Rust mínimo, Python/FastAPI e SQLite. A migração será incremental e preservará o design atual. O código desktop implementado ainda é C#/Avalonia. Veja [o plano de stack e prova de conceito](planejamento/STACK-LOCAL.md).
+
 | Componente | Responsabilidade |
 |---|---|
 | Hórus | Plataforma, interface, regras de negócio, aprovações e organização da operação |
@@ -40,7 +42,7 @@ Essas áreas são visão de produto. O estado implementado deve ser conferido no
 | Base de estudos | Referências atribuídas, transcrições e resumos para consulta |
 | Storybook | Referências e componentes de design |
 
-As integrações ainda precisam ser validadas na instalação real. A proposta híbrida de VPS e PC não implica contratação, conexão ou serviço já disponível.
+As integrações ainda precisam ser validadas na instalação real. A primeira etapa é local no Windows, sem VPS; a proposta híbrida anterior permanece apenas como histórico.
 
 ## Princípios
 

@@ -8,6 +8,8 @@ O projeto começa pela operação de um canal no YouTube. A expansão para outro
 
 [Visão do produto](docs/vision.md) · [Roadmap](docs/roadmap.md) · [Arquitetura atual](docs/architecture.md) · [Planejamento técnico](docs/planejamento/README.md)
 
+**Direção da migração:** React/TypeScript + Tauri 2, Rust apenas para integrações nativas, Python/FastAPI e SQLite. A primeira prova será local no Windows, sem VPS e sem redesign. O desktop implementado continua em C#/Avalonia; consulte [o plano de migração](docs/planejamento/STACK-LOCAL.md) antes de iniciar alterações.
+
 ## O que já funciona
 
 O aplicativo desktop atual usa **C#/.NET e Avalonia**. Ele permite importar áudio e vídeo, baixar um vídeo do YouTube, transcrever localmente com Whisper, revisar o texto e salvar o resultado. Há temas claro, escuro e do sistema e testes automatizados de interface e comportamento.
@@ -50,7 +52,7 @@ Esses módulos descrevem a direção do produto, não funcionalidades prontas. O
 | [Estudos de vídeos](https://github.com/yannbastos/estudos-videos-claude) | Base inicial de fontes, transcrições e resumos |
 | [Laboratório visual](https://github.com/yannbastos/horus-storybook) | Componentes e referências de interface em React/Storybook |
 
-A operação híbrida com Hermes em VPS e produção pesada no PC é uma proposta em avaliação. As tecnologias atuais não foram substituídas; uma eventual migração da interface exige decisão própria. Consulte [o planejamento de integração](docs/planejamento/README.md).
+A primeira etapa será inteiramente local, sem VPS. A stack de destino foi definida, mas os componentes atuais serão preservados até a migração incremental ser aprovada e validada. Consulte [o planejamento de integração](docs/planejamento/README.md).
 
 ## Transcrição
 

@@ -2,6 +2,8 @@
 
 Evolução incremental da plataforma audiovisual, sem datas prometidas. Consulte o [README](../README.md) para o estado disponível e a [visão](vision.md) para os objetivos.
 
+**Próximo marco tecnológico:** revisar e aprovar a prova de conceito [React/Tauri/FastAPI/SQLite local](planejamento/STACK-LOCAL.md), preservando o design, o Avalonia e a fábrica durante a validação. Essa direção substitui a hipótese de VPS nesta etapa; não significa migração já implementada.
+
 ## Base existente
 
 | Entrega | Estado |

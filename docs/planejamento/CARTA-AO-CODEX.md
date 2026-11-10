@@ -2,6 +2,8 @@
 
 Você está retomando uma conversa de planejamento de 2026-11-10. O usuário preparou este material em uma máquina secundária para continuar na principal. Ele quer continuidade e execução objetiva, mas **a implementação da plataforma ainda não foi aprovada**.
 
+**Leia primeiro [STACK-LOCAL.md](STACK-LOCAL.md).** A direção oficial agora é React/TypeScript + Tauri 2, Rust restrito a integrações nativas, FastAPI e SQLite. A prova de conceito será local no Windows, sem VPS. Preserve rigorosamente o design do desktop audiovisual; não recuperar a navegação antiga do Storybook como referência principal. O plano está registrado para aprovação; não iniciar instalação ou implementação por causa do commit.
+
 ## Leia antes de agir
 
 1. `AGENTS.md` e `docs/architecture.md` deste repositório.
@@ -15,9 +17,9 @@ Você está retomando uma conversa de planejamento de 2026-11-10. O usuário pre
 
 Hórus será uma plataforma audiovisual construída sobre Hermes Agent, sem fork inicial. Hermes é o motor de inteligência e orquestração. A fábrica Python continua independente e seu CLI permanece funcional sem agentes ou interface. Claude Code/Codex são ferramentas de desenvolvimento e supervisão, não serviços obrigatórios da operação final.
 
-**Não implementar agora um orquestrador próprio completo em C# ou Python.** Essa foi uma proposta anterior do assistente, substituída pela decisão do usuário de avaliar e aproveitar Hermes. Uma camada persistente de regras/aprovações pode ser necessária, mas deve ser justificada pelo diagnóstico real.
+**Não duplicar a inteligência/orquestração do Hermes ou o motor da fábrica.** Na nova stack, FastAPI será responsável pelas regras e pelo estado técnico das tarefas, enquanto Hermes coordena agentes por interfaces externas. Não confundir supervisão persistente de subprocessos com criar outro agente autônomo.
 
-O usuário não quer começar pela interface. Sua primeira entrega é o diagnóstico Hermes–fábrica, baseado na instalação principal. Não presumir recursos do upstream disponíveis na versão instalada.
+A ordem inicial foi revista: o usuário autorizou o layout desktop e depois definiu uma prova de conceito da nova stack, com equivalência visual e sem redesign. O diagnóstico do Hermes instalado continua necessário antes de integrá-lo. Não presumir recursos do upstream disponíveis localmente.
 
 ## Primeira resposta e ação esperadas
 

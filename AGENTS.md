@@ -4,6 +4,8 @@ Estas regras valem para todos os agentes que trabalham no HORUS.
 
 ## Contexto de continuidade — Hórus audiovisual
 
+**Direção tecnológica vigente:** leia [docs/planejamento/STACK-LOCAL.md](docs/planejamento/STACK-LOCAL.md). O usuário definiu React/TypeScript, Tauri 2 com Rust mínimo, Python/FastAPI e SQLite, preservando fábrica/Remotion e Hermes externo. A primeira etapa é local no Windows, **sem VPS e sem redesign**. A migração está planejada, não implementada; preservar Avalonia e o layout da branch audiovisual até validar equivalência. O commit documental não autoriza instalar dependências ou implementar a prova de conceito.
+
 Antes de planejar a evolução do produto, leia [a carta ao próximo Codex](docs/planejamento/CARTA-AO-CODEX.md). O usuário escolheu Hermes Agent como motor de inteligência e orquestração, sem fork inicial, preservando a fábrica independente. A primeira entrega na máquina principal é um diagnóstico de integração, sem implementação. Os documentos em `docs/planejamento/` registram a nova direção; `docs/architecture.md` continua descrevendo o código existente.
 
 **Princípio fundamental:** o HORUS deve ser desenvolvido para funcionar bem, não apenas para parecer bem programado.

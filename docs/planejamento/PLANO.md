@@ -1,5 +1,7 @@
 # Plano de aplicação na máquina principal
 
+> **Atualização de direção:** [STACK-LOCAL.md](STACK-LOCAL.md) define a stack e a prova de conceito atuais. A primeira etapa é local, sem VPS e sem redesign. As fases e hipóteses abaixo são planejamento anterior; aplicar somente o que for compatível com essa decisão mais recente.
+
 Estado: proposta executável, não autorização de implementação. Leia `VISAO.md` e `DIAGNOSTICO.md`.
 
 Preparação ampliada pelo resumo DOCX: [arquitetura híbrida](ARQUITETURA-HIBRIDA.md), [contratos](CONTRATOS.md), [memória ativa](MEMORIA-ATIVA.md) e [cenários de validação/relatório](VALIDACAO.md). A intenção VPS–PC não torna uma VPS pré-requisito para o diagnóstico ou a primeira consulta local.
