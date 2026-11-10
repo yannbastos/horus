@@ -1,49 +1,69 @@
 # Visão do produto
 
+## Propósito
+
+O Hórus é uma plataforma de inteligência audiovisual em desenvolvimento. Seu propósito é reunir pesquisa, análise de referências, planejamento editorial, produção assistida por IA e acompanhamento de resultados, mantendo o operador no controle das decisões.
+
+O projeto surgiu como aplicativo de estudos. A transcrição e o trabalho com materiais de referência continuam úteis; a direção atual amplia o foco para criação audiovisual original e operação de canais.
+
 ## Problema
 
-Quem estuda por conta própria costuma encontrar técnicas de estudo, revisão e organização espalhadas em lugares e ferramentas diferentes. Descobrir o que funciona e manter isso como rotina dá trabalho.
+Hoje referências, transcrições, roteiros, produção, revisões e decisões ficam espalhados entre ferramentas. O Hórus pretende conectar essas etapas com rastreabilidade, sem exigir que o operador reconstrua o contexto de cada vídeo a cada sessão.
 
-O HORUS pretende reunir, em um único aplicativo gratuito, técnicas que funcionaram na prática para o seu idealizador.
+O objetivo é reduzir trabalho repetitivo e preservar qualidade, não gerar o maior volume possível de conteúdo.
 
-As técnicas que farão parte do produto ainda serão definidas e registradas na etapa de requisitos do [roadmap](roadmap.md).
+## Público e validação inicial
 
-## Público-alvo
+O uso inicial é a operação de um canal no YouTube pelo idealizador do projeto, com uma rotina compatível com trabalho e estudos. A expansão para outros canais, TikTok e Reels depende da validação do primeiro fluxo.
 
-- Estudantes
-- Universitários
-- Autodidatas
-- Pessoas interessadas em melhorar seus processos de aprendizagem
+Um segundo canal só deve ser considerado depois de validar Shorts e vídeos longos do primeiro, incluindo tempo de produção, custos e revisão humana.
 
-O idealizador do projeto também é o principal usuário: o HORUS precisa ser útil no uso diário dele.
+## Áreas do produto
 
-## Objetivos gerais
+- **Radar:** organizar oportunidades e referências com dados acessíveis e origem identificada.
+- **Análise audiovisual:** estudar formatos, narrativa, títulos, thumbnails e recursos de comunicação.
+- **Planejamento:** transformar pesquisa em propostas originais, briefings e roteiros aprovados.
+- **Produção:** acionar e acompanhar a fábrica independente, suas revisões e entregas.
+- **Canais:** manter identidade, público, formatos e preferências editoriais.
+- **Resultados:** acompanhar métricas autorizadas, custos e experimentos.
+- **Memória operacional:** preservar decisões e aprendizados validados, associados a evidências.
 
-- Entregar um aplicativo estável, útil e intuitivo, que possa ser usado todos os dias.
-- Disponibilizar as ferramentas gratuitamente, como projeto open source.
-- Permitir que outras pessoas colaborem com o projeto no futuro.
+Essas áreas são visão de produto. O estado implementado deve ser conferido no [README](../README.md) e na [arquitetura atual](architecture.md).
 
-## Princípios do produto
+## Responsabilidades escolhidas
 
-- **Simplicidade:** o aplicativo deve ser fácil de usar.
-- **Privacidade:** o usuário controla os próprios dados.
-- **Necessidades reais:** cada funcionalidade precisa resolver um problema concreto.
-- **Acessibilidade e boa experiência:** a interface deve atender bem a quem a utiliza.
-- **Evolução incremental:** o produto cresce em etapas pequenas e verificáveis.
-- **Qualidade sustentável:** código limpo e documentação clara, sem complexidade desnecessária.
+| Componente | Responsabilidade |
+|---|---|
+| Hórus | Plataforma, interface, regras de negócio, aprovações e organização da operação |
+| Hermes Agent | Motor de inteligência e orquestração previsto, integrado externamente sem fork inicial |
+| Fábrica Python | Execução técnica independente pelo CLI, preservando voz, alinhamento e render existentes |
+| Base de estudos | Referências atribuídas, transcrições e resumos para consulta |
+| Storybook | Referências e componentes de design |
 
-O princípio central é que o HORUS deve ser desenvolvido para funcionar bem, não apenas para parecer bem programado.
+As integrações ainda precisam ser validadas na instalação real. A proposta híbrida de VPS e PC não implica contratação, conexão ou serviço já disponível.
 
-## Limites da primeira versão
+## Princípios
 
-A primeira versão utilizável será o MVP do roadmap, e seu escopo depende da definição dos requisitos. Até lá, valem estes limites:
+1. **Originalidade:** referências ajudam a compreender estruturas e assuntos; não autorizam cópia de roteiros ou vídeos.
+2. **Controle editorial:** aprovações humanas identificam a versão revisada.
+3. **Rastreabilidade:** registrar fontes, entradas, resultados, licenças e consumo.
+4. **Evidência:** separar fato observado, estimativa, hipótese e alegação de terceiros.
+5. **Privacidade:** manter credenciais protegidas e enviar a serviços externos apenas o necessário para operações autorizadas.
+6. **Independência:** a fábrica deve funcionar sem interface, Hermes ou agente de desenvolvimento permanentemente aberto.
+7. **Simplicidade:** reutilizar componentes e adicionar infraestrutura quando sua necessidade for demonstrada.
+8. **Sustentabilidade:** acompanhar tempo e custo antes de ampliar a operação.
 
-- O suporte é apenas para Windows 10 e 11.
-- Não há funcionalidades de estudo implementadas.
-- Dashboards, flashcards, cronômetros, autenticação e banco de dados só entram com aprovação explícita.
+## Limites atuais
 
-## Visão de longo prazo
+- O código desktop permanece em C#/.NET e Avalonia; não houve migração para outra stack.
+- Transcrição e download existem; a plataforma integrada ainda não está pronta.
+- O layout audiovisual tem uma branch própria, identificada no README.
+- Publicação inicialmente manual; sem promessa de receita ou monetização.
+- Sem alegação de acesso à retenção privada de concorrentes.
+- Coleta, indicadores e históricos dependem das capacidades e permissões vigentes das APIs.
+- Foco atual em Windows; Linux precisa de validação própria.
+- A licença geral do projeto ainda não foi definida.
 
-- Consolidar o HORUS como uma ferramenta de estudos completa e confiável para o uso diário.
-- Executar também no Linux, especialmente no Arch Linux.
-- Manter uma comunidade open source capaz de contribuir com o projeto.
+## Desenvolvimento
+
+As próximas entregas e critérios estão no [roadmap](roadmap.md). A especificação detalhada e o contexto de continuidade estão no [planejamento técnico](planejamento/README.md). Requisitos de longo prazo não devem ser apresentados como funcionalidades implementadas.
