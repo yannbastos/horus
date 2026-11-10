@@ -33,6 +33,12 @@ Registro preparado em 2026-11-10 a pedido do usuário para transferir contexto p
 - O upstream consultado é mutável. Conferir versão e contratos na máquina principal antes de implementar API/MCP/cron.
 - O upload de contexto não autoriza chamadas pagas ou implementação automática na próxima sessão.
 
+## Continuação — documento de memória ativa e preparação remota
+
+11. O usuário forneceu `Horus_Resumo_Arquitetura_Memoria_Ativa.docx`. O texto acrescenta intenção de Hermes em VPS, produção no PC, armazenamento local e memória ativa. Também menciona Claude/Codex/Antigravity e Epidemic Sound como possibilidades a investigar. O arquivo não comprova contratação, instalação ou integração. Seu texto foi preservado em [fontes](fontes/RESUMO-ARQUITETURA-MEMORIA-ATIVA.md), com hash de origem.
+12. O assistente apontou que relatos de licenças e skills funcionais precisam ser confrontados com as lacunas reais já auditadas; propôs preparar arquitetura híbrida, contratos, memória, custos e cenários de falha sem instalar serviços.
+13. O usuário autorizou iniciar essa preparação e fazer commits e pushes progressivos nos projetos. O incremento em andamento é documental e não modifica Hermes, motor da fábrica, fontes de estudo ou interface.
+
 ## Pergunta operacional que guia a retomada
 
 Qual é o menor caminho comprovado para o Hermes instalado consultar e, futuramente, operar a fábrica independente, mantendo aprovações, licenças, custos e resultados rastreáveis, sem modificar o core do Hermes?

@@ -56,6 +56,8 @@ O agente não pode dispensar bloqueios de licença, orçamento ou aprovação si
 
 ## Hipóteses que ainda não são decisões de implementação
 
+O documento de referência recebido posteriormente acrescenta uma intenção de operação híbrida: Hermes e automações na VPS, produção pesada no PC Windows, armazenamento audiovisual local e memória ativa. Veja [a arquitetura proposta](ARQUITETURA-HIBRIDA.md) e [a memória ativa](MEMORIA-ATIVA.md). Hostinger, Epidemic Sound, armazenamento citado e agentes especializados não devem ser presumidos contratados, disponíveis ou integrados.
+
 - Interface web local no Windows é uma possibilidade preferida no planejamento; stack e destino do Avalonia ainda precisam de decisão concreta.
 - FastAPI, React e SQLite foram propostos, não instalados nem escolhidos como obrigação.
 - MCP e servidor HTTP são candidatos de integração, condicionados à versão instalada.
@@ -65,5 +67,7 @@ O agente não pode dispensar bloqueios de licença, orçamento ou aprovação si
 ## Autorização e ambiente
 
 O usuário estava fora da máquina principal e proibiu baixar ou instalar Hermes nesta máquina. Autorizou publicar documentos e contexto nos repositórios existentes. **Isso não autoriza a implementação da plataforma, instalação de dependências, alterações no Hermes, chamadas pagas, mensagens externas ou publicação de vídeos.**
+
+Na continuação, autorizou iniciar a preparação da arquitetura híbrida, contratos, memória e critérios de teste, com commits e pushes progressivos nas branches de planejamento. O escopo deste incremento permanece documental; integrações executáveis precisam de proposta concreta e aprovação.
 
 A primeira entrega na máquina principal deve ser um diagnóstico da integração real. Apresentar o planejamento e obter aprovação antes de implementá-lo.

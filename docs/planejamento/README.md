@@ -10,6 +10,9 @@ Registro em 2026-11-10. Estado: planejamento, sem implementação da integraçã
 - [Diagnóstico](DIAGNOSTICO.md): evidências locais, pesquisa do Hermes e questões ainda abertas.
 - [Plano de aplicação](PLANO.md): tarefas, critérios de aceite e inspeção na máquina principal.
 - [Memória da conversa](CONVERSA.md): evolução das decisões e orientações substituídas.
+- [Arquitetura híbrida](ARQUITETURA-HIBRIDA.md): responsabilidades VPS–PC, indisponibilidade e recuperação, ainda propostas.
+- [Memória ativa](MEMORIA-ATIVA.md): fontes oficiais, evidências e validação de aprendizados.
+- [Fonte recebida](fontes/RESUMO-ARQUITETURA-MEMORIA-ATIVA.md): texto extraído do DOCX fornecido, com hash de origem; não confundir relatos com auditoria.
 
 ## Repositórios
 
