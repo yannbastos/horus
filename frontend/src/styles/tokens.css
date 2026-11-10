@@ -1,0 +1,34 @@
+[data-theme="dark"] {
+  color-scheme: dark;
+  --Background: #111122;
+  --Sunken: #0B0B18;
+  --Ink: #F1F0F8;
+  --InkStrong: #FFFFFF;
+  --Muted: #B3B1C8;
+  --Faint: #9996B2;
+  --Line: #F2F1EE26;
+  --LineStrong: #F2F1EE66;
+  --AccentInk: #AAA5FF;
+  --InvertBackground: #AAA5FF;
+  --InvertForeground: #0B0B0C;
+  --Good: #3FD6B8;
+  --Warn: #FFC14D;
+  --Bad: #FF6259;
+}
+[data-theme="light"] {
+  color-scheme: light;
+  --Background: #F1F0F8;
+  --Sunken: #E7E6F0;
+  --Ink: #19182B;
+  --InkStrong: #000000;
+  --Muted: #545168;
+  --Faint: #625E77;
+  --Line: #10101429;
+  --LineStrong: #10101466;
+  --AccentInk: #4939B8;
+  --InvertBackground: #4939B8;
+  --InvertForeground: #F1F0F8;
+  --Good: #0A7563;
+  --Warn: #8A5800;
+  --Bad: #B3261E;
+}

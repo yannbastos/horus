@@ -8,7 +8,7 @@ O projeto começa pela operação de um canal no YouTube. A expansão para outro
 
 [Visão do produto](docs/vision.md) · [Roadmap](docs/roadmap.md) · [Arquitetura atual](docs/architecture.md) · [Planejamento técnico](docs/planejamento/README.md)
 
-**Direção da migração:** React/TypeScript + Tauri 2, Rust apenas para integrações nativas, Python/FastAPI e SQLite. A primeira prova será local no Windows, sem VPS e sem redesign. O desktop implementado continua em C#/Avalonia; consulte [o plano de migração](docs/planejamento/STACK-LOCAL.md) antes de iniciar alterações.
+**Migração em andamento:** React/TypeScript + Tauri 2, Rust apenas para integrações nativas, Python/FastAPI e SQLite. A prova de conceito local já possui interface web, tarefas persistentes, logs e integração limitada com o CLI da fábrica. O shell Tauri ainda precisa ser compilado e validado com o toolchain nativo. O desktop C#/Avalonia continua disponível, incluindo transcrição. Consulte [como executar e os limites da migração](docs/migracao-local.md).
 
 ## O que já funciona
 
@@ -20,10 +20,11 @@ O aplicativo desktop atual usa **C#/.NET e Avalonia** e abre na **Visão geral**
 | Fila de transcrição, edição e salvamento | Implementados; a fila não persiste ao fechar o app |
 | Layout desktop audiovisual | Primeira versão integrada à branch principal; [capturas e limites](docs/layout-desktop.md) |
 | Radar, análise editorial e memória operacional | Planejados; sem integração operacional no desktop |
-| Integração com Hermes e fábrica Python | Planejada; diagnóstico da instalação real ainda pendente |
+| Integração com Hermes | Planejada; diagnóstico da instalação real ainda pendente |
+| Nova base React/FastAPI/SQLite | Interface, player local, fila, logs, cancelamento e recuperação; consulta ao CLI real validada. Tauri e render real ainda pendentes de validação |
 | Publicação automática e múltiplos canais | Evolução futura; publicação inicialmente manual |
 
-Radar, Biblioteca, Produção, Canais e Memória são prévias de layout, identificadas como em preparação, sem operações ou métricas simuladas. As telas antigas de Início, Lista e Leitura permanecem no código como exemplos, fora da navegação principal. Em Ajustes, a troca de tema funciona; os demais controles são demonstrações.
+No Avalonia, Radar, Biblioteca, Produção, Canais e Memória são prévias de layout, identificadas como em preparação, sem operações ou métricas simuladas. As telas antigas de Início, Lista e Leitura permanecem no código como exemplos, fora da navegação principal. A nova base React adiciona operações limitadas da fábrica e mídia local, descritas no guia de migração.
 
 ## Prévia do desktop audiovisual
 
@@ -52,7 +53,7 @@ Esses módulos descrevem a direção do produto, não funcionalidades prontas. O
 | [Estudos de vídeos](https://github.com/yannbastos/estudos-videos-claude) | Base inicial de fontes, transcrições e resumos |
 | [Laboratório visual](https://github.com/yannbastos/horus-storybook) | Componentes e referências de interface em React/Storybook |
 
-A primeira etapa será inteiramente local, sem VPS. A stack de destino foi definida, mas os componentes atuais serão preservados até a migração incremental ser aprovada e validada. Consulte [o planejamento de integração](docs/planejamento/README.md).
+A primeira etapa é inteiramente local, sem VPS. A migração incremental foi autorizada e está em andamento; os componentes atuais serão preservados até validar a equivalência funcional. Consulte [o planejamento de integração](docs/planejamento/README.md).
 
 ## Transcrição
 

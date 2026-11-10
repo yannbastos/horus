@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main",
+  "description": "Janela principal: diálogos locais. Sem shell, escrita em disco ou SQL expostos ao frontend.",
+  "windows": ["main"],
+  "permissions": ["core:default", "dialog:allow-open"]
+}

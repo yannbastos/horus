@@ -2,6 +2,10 @@
 
 Este documento descreve apenas o que está implementado hoje.
 
+## Migração incremental em andamento
+
+O aplicativo C#/Avalonia descrito abaixo permanece preservado. A nova base fica em `frontend/` (React/TypeScript e shell Tauri) e `backend/` (FastAPI, SQLite e fila sequencial). Consulte [execução, responsabilidades e limites](migracao-local.md). A interface React e o backend possuem verificações próprias; a presença do código Rust não significa que o desktop Tauri já tenha sido compilado ou validado nesta máquina.
+
 ## Organização dos projetos
 
 ```text
