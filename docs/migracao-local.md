@@ -1,5 +1,7 @@
 # Migração local — primeira prova de conceito
 
+**Validação posterior em 2026-11-10:** render real pelo backend, cancelamento da árvore Node/Chrome, preservação dos estados e seleção/reprodução de MP4 no desktop foram exercitados. Consulte [resultados, comandos e limites](validacao-local-2026-11-10.md). As pendências históricas abaixo devem ser lidas com essa atualização; instalação NSIS e equivalência completa da transcrição continuam pendentes.
+
 Implementação iniciada após autorização do usuário em 2026-11-10. O Avalonia não foi removido e continua utilizável até a equivalência ser aceita. A ferramenta de Transcrição foi portada para React + backend (ver seção própria); o atalho para abrir o Avalonia saiu da tela, mas o comando nativo `open_legacy` continua no Tauri.
 
 O posicionamento vigente é exclusivamente audiovisual. A interface e o catálogo visual usam mídia, roteiros, produção, canais e resultados como domínio; a entrada principal abre Produção. A antiga área Memória aparece como Histórico operacional, voltada a execuções e revisões. Telas e dados de demonstração da proposta anterior foram removidos do Avalonia. Documentos e capturas atuais refletem essa direção. A pré-release `v0.1.0-alpha.1` foi gerada antes desta revisão e não recebe alterações automaticamente.

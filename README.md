@@ -2,6 +2,8 @@
 
 **Plataforma de inteligência audiovisual em desenvolvimento.**
 
+Validação local recente: render de rascunho real pelo backend, cancelamento da árvore, persistência e seleção/reprodução de MP4 no Tauri foram exercitados. A árvore desktop foi medida com WebView2 incluído; consulte [resultados e limites](docs/validacao-local-2026-11-10.md). A instalação NSIS e a equivalência completa da transcrição continuam pendentes.
+
 Pesquisar oportunidades, planejar vídeos originais e gerenciar a operação audiovisual. O Hórus está sendo construído para reunir pesquisa audiovisual, planejamento editorial, produção assistida por IA e acompanhamento de canais em um único espaço.
 
 O projeto começa pela operação de um canal no YouTube. A expansão para outros canais e formatos virá depois da validação do fluxo, da qualidade e dos custos.

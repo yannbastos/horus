@@ -21,6 +21,8 @@ Build release e instalador Windows foram gerados. A interface abriu, conectou ao
 
 ## Próximas prioridades
 
+Atualização de validação: consulte [o relatório local de 2026-11-10](../validacao-local-2026-11-10.md) antes de repetir os testes. Render real via API em TestClient, cancelamento da árvore, persistência e seleção/reprodução de MP4 no Tauri já foram exercitados; isso não certifica todo o fluxo pela tela Produção nem instalação NSIS.
+
 Validar diálogos e reprodução nativos, render real e cancelamento, persistência entre aberturas, encerramento e consumo de recursos. Depois evoluir produção e Radar conforme contratos validados. Diagnosticar a instalação real do Hermes antes de implementar adaptadores.
 
 A conexão de diagnóstico já foi validada no desktop. Antes de enviar análises ao Hermes, configurar modelo/provedor no perfil exclusivo e definir orçamento. Nenhum endpoint de inferência é exposto pelo Hórus neste incremento; não usar `hermes -z` para contornar os controles.

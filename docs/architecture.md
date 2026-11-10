@@ -4,6 +4,8 @@ Este documento descreve apenas o que está implementado hoje.
 
 ## Migração incremental em andamento
 
+Validação posterior: render de rascunho real pela API em TestClient, cancelamento de sua árvore de subprocessos e persistência foram exercitados; seleção e reprodução de MP4 também passaram na janela Tauri release. Consulte o [relatório local e seus limites](validacao-local-2026-11-10.md). Isso atualiza as pendências históricas desta seção, sem certificar instalação NSIS ou produção editorial.
+
 O aplicativo C#/Avalonia descrito abaixo permanece preservado. A nova base fica em `frontend/` (React/TypeScript e shell Tauri) e `backend/` (FastAPI, SQLite e fila sequencial). Consulte [execução, responsabilidades e limites](migracao-local.md). O build release Tauri e a geração do instalador NSIS passaram no Windows; abertura, conexão automática, consulta real de perfil e fechamento do backend foram verificados. Instalação, render real, diálogos e reprodução nativa ainda exigem validação. A transcrição também existe na nova base (`frontend/src/features/Transcription.tsx` e `backend/src/horus_backend/transcriber.py`); ver limites em [migração](migracao-local.md#transcrição).
 
 O backend inclui `hermes.py`, adaptador de diagnóstico da API externa Hermes. O painel Ajustes consulta saúde e capacidades com autenticação, sem enviar prompts ou importar o core do agente. A preparação Windows usa um perfil exclusivo e credenciais privadas fora do Git. Consulte [integração Hermes](integracao-hermes.md) para configuração, escopo e validação.

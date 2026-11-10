@@ -2,7 +2,7 @@
 
 Evolução incremental da plataforma audiovisual, sem datas prometidas. Consulte o [README](../README.md) para o estado disponível e a [visão](vision.md) para os objetivos.
 
-**Próximo marco tecnológico:** concluir a validação da prova de conceito [React/Tauri/FastAPI/SQLite local](migracao-local.md), preservando o design, a transcrição Avalonia e a fábrica. O build desktop e o instalador existem; mídia nativa, render real e desempenho ainda precisam de validação.
+**Próximo marco tecnológico:** concluir a validação da prova de conceito [React/Tauri/FastAPI/SQLite local](migracao-local.md), preservando o design, a transcrição Avalonia e a fábrica. O build desktop e o instalador existem. Render e cancelamento reais pelo backend, além de seleção/reprodução de MP4 nativas, foram exercitados; veja o [relatório e limites](validacao-local-2026-11-10.md). Instalação NSIS e equivalência completa da transcrição continuam pendentes.
 
 ## Base existente
 
