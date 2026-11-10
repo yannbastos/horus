@@ -1,0 +1,24 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "HORUS",
+  "version": "0.1.0",
+  "identifier": "com.horus.audiovisual",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "node scripts/bundle-backend.mjs && npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [{ "label": "main", "title": "HORUS", "width": 1320, "height": 840, "minWidth": 1040, "minHeight": 680, "center": true }],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; media-src 'self' blob: http://127.0.0.1:*; connect-src ipc: http://ipc.localhost http://127.0.0.1:* http://localhost:*"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": ["icons/icon.ico", "icons/128x128.png", "icons/32x32.png"],
+    "resources": { "../../backend/dist/horus-backend/": "backend/" }
+  }
+}

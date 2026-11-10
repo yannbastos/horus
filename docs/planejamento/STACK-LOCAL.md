@@ -1,6 +1,6 @@
 # Stack oficial e planejamento da migração local
 
-Decisão fornecida pelo usuário em 2026-11-10. Estado: direção tecnológica definida e planejamento para revisão; **nenhuma migração foi implementada por este documento**. O pedido posterior de commit autoriza registrar o plano, não instalar dependências, implementar a prova de conceito ou publicar em remoto.
+Decisão fornecida pelo usuário em 2026-11-10. Posteriormente, o usuário autorizou iniciar a troca de linguagens. A implementação incremental está descrita em [migração local](../migracao-local.md); este documento preserva o planejamento e seus critérios, sem presumir que todos foram concluídos.
 
 Esta direção substitui a proposta anterior de VPS–PC e as alternativas de stack ainda abertas. A primeira etapa é local no Windows; Linux será validado depois. Não utilizar VPS, PostgreSQL/Supabase ou banco vetorial nesta etapa. O aplicativo Avalonia permanece disponível durante a transição.
 
@@ -24,7 +24,7 @@ FastAPI é a fonte oficial do estado das produções; Hermes coordena agentes e 
 
 ## 2. Auditoria e reaproveitamento
 
-Leitura realizada sem modificar código, instalar ferramentas ou executar integração. Referências locais: Hórus `3f6a97c`, fábrica `87102ac`, Storybook `cf3cf7b`, estudos `1cecfd4`. Na auditoria, o layout estava somente em `feat/layout-desktop-audiovisual`, commit `7ce68c4`; posteriormente foi integrado à branch principal. A migração tecnológica continua apenas planejada.
+Auditoria original realizada sem modificar código, instalar ferramentas ou executar integração. Referências locais: Hórus `3f6a97c`, fábrica `87102ac`, Storybook `cf3cf7b`, estudos `1cecfd4`. Na auditoria, o layout estava somente em `feat/layout-desktop-audiovisual`, commit `7ce68c4`; posteriormente foi integrado à branch principal. Consulte o documento de migração para o estado posterior à autorização de implementação.
 
 | Componente | Evidência | Tratamento |
 |---|---|---|
