@@ -10,7 +10,11 @@ if (!existsSync(python)) {
 }
 const result = spawnSync(python, ['-m', 'PyInstaller', '--noconfirm', '--clean', '--onedir',
   '--name', 'horus-backend', '--distpath', 'dist', '--workpath', 'build/work', '--specpath', 'build',
-  '--paths', 'src', '--collect-submodules', 'uvicorn', '--collect-submodules', 'horus_backend', 'launcher.py'],
+  '--paths', 'src', '--collect-submodules', 'uvicorn', '--collect-submodules', 'horus_backend',
+  // Transcrição roda no mesmo executável (subcomando "transcribe"/"download"); bibliotecas nativas e assets inclusos.
+  '--collect-all', 'faster_whisper', '--collect-all', 'ctranslate2', '--collect-all', 'av',
+  '--collect-all', 'tokenizers', '--collect-submodules', 'yt_dlp', '--collect-submodules', 'huggingface_hub',
+  'launcher.py'],
 { cwd: backend, stdio: 'inherit', shell: false });
 if (result.error) throw result.error;
 process.exit(result.status ?? 1);

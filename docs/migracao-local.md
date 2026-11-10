@@ -75,7 +75,9 @@ Porte da ferramenta Avalonia, com as mesmas regras: fila de até 20 arquivos, um
 
 Verificado em 2026-11-10: testes do backend com subprocesso simulado (streaming de trechos, cancelamento com texto parcial, falha com motivo, download, salvamento e regra de URL); teste de interface com backend simulado (fila, salvar antes de avançar, edição após salvar, preservação entre telas, validação de URL); e uma transcrição real pela interface no navegador, com backend real e modelo `tiny` em CPU, de um WAV gerado por síntese de voz (~2 s após o modelo baixado). Com idioma automático, o `tiny` identificou incorretamente o idioma da voz sintética; com `en`, o texto saiu correto.
 
-Não verificado: download real do YouTube, GPU/CUDA, modelos maiores, áudio longo, arquivos de vídeo, diálogos e arrastar no Tauri, e transcrição no instalador. O empacotamento PyInstaller ainda não inclui `faster_whisper`, `ctranslate2`, `av` e `yt_dlp`; o backend empacotado informa motor ausente até esse ajuste e sua validação. Rede corporativa com inspeção TLS pode bloquear o download dos modelos.
+O empacotamento PyInstaller inclui `faster_whisper`, `ctranslate2`, `av`, `tokenizers` e `yt_dlp`; o backend empacotado (277 MB; instalador NSIS 80 MiB) transcreveu o mesmo WAV pelo subcomando `transcribe`.
+
+Não verificado: download real do YouTube, GPU/CUDA, modelos maiores, áudio longo, arquivos de vídeo, diálogos e arrastar no Tauri, e a instalação do NSIS. Rede corporativa com inspeção TLS pode bloquear o download dos modelos.
 
 ## Segurança, estado e recuperação
 
