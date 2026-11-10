@@ -86,4 +86,15 @@ node frontend/scripts/bundle-backend.mjs
 
 Os testes de interface usam Edge instalado, sem baixar outro navegador. Os testes do backend usam um CLI simulado para exercitar falhas e cancelamento; `smoke.py` exige a fábrica real e consulta `canal01`, verifica persistência após reiniciar e encerramento por EOF. A medição desse script cobre apenas o backend e seus filhos, não o aplicativo desktop inteiro.
 
-Pendências para aceitar a prova completa: compilar e abrir o Tauri; conferir diálogos e fechamento da árvore de processos no executável; executar render real com os materiais preparados; reproduzir vídeo no WebView2; medir RAM/CPU/inicialização do build desktop de produção e comparar telas com Avalonia. As metas de 250 MB e três segundos ainda não são resultados comprovados. A transcrição só poderá substituir o Avalonia após migração e testes de equivalência específicos.
+### Primeira validação nativa — Windows, 2026-11-10
+
+- Rust/Cargo 1.99.1, alvo `stable-x86_64-pc-windows-msvc`, Build Tools 2022 com C++ e Windows SDK; WebView2 já presente.
+- `npm --prefix frontend run desktop:build` passou e gerou `frontend/src-tauri/target/release/horus-desktop.exe` e o instalador NSIS `bundle/nsis/HORUS_0.1.0_x64-setup.exe` (15,41 MiB). O instalador foi gerado, mas sua instalação ainda não foi testada.
+- Corrigida a feature `Win32_System_Threading` do `windows-sys`, necessária à estrutura de limites dos Job Objects. `Cargo.lock` registra as versões resolvidas para o aplicativo.
+- Executável release aberto com interface React carregada e indicação de backend conectado. Backend Python empacotado iniciou automaticamente, com escuta em `127.0.0.1` e porta dinâmica.
+- Consulta de `canal01` acionada na tela Canais concluiu pelo CLI real e exibiu logs e resultado. O perfil ainda aponta campos editoriais não definidos e documentos ausentes; esta consulta não valida prontidão para produzir/publicar.
+- Fechamento normal da janela encerrou o aplicativo e o backend observado; uma nova abertura reconectou automaticamente. Cancelamento de uma árvore de render real continua pendente.
+
+O executável de desenvolvimento fica acompanhado de `backend/` no diretório release; não distribua somente o `.exe`. Os artefatos de build permanecem ignorados pelo Git. O instalador ainda não é uma release publicada.
+
+Pendências para aceitar a prova completa: testar a instalação NSIS e diálogos nativos; executar render real com os materiais preparados e conferir cancelamento de sua árvore de processos; reproduzir vídeo no WebView2; medir RAM/CPU/inicialização do build desktop de produção e comparar telas nos tamanhos e temas previstos. As metas de 250 MB e três segundos ainda não são resultados comprovados. A transcrição só poderá substituir o Avalonia após migração e testes de equivalência específicos.

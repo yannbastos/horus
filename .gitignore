@@ -32,6 +32,7 @@ Thumbs.db
 node_modules/
 frontend/dist/
 frontend/src-tauri/target/
+frontend/src-tauri/gen/schemas/
 backend/dist/
 backend/build/
 .venv/
