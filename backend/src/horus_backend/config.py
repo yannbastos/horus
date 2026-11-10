@@ -23,6 +23,27 @@ def discover_factory() -> Path | None:
     return None
 
 
+def discover_hermes() -> Path | None:
+    configured = os.environ.get("HORUS_HERMES_EXECUTABLE")
+    if configured:
+        path = Path(configured).expanduser()
+        return path if path.is_file() else None
+    executable = shutil.which("hermes")
+    if executable:
+        return Path(executable)
+    if os.name == "nt":
+        local = os.environ.get("LOCALAPPDATA")
+        if local:
+            path = Path(local) / "hermes/bin/hermes.exe"
+            if path.is_file():
+                return path
+    return None
+
+
+def hermes_connection_file() -> Path:
+    return Path(os.environ.get("HORUS_HERMES_CONFIG", default_data_dir() / "integrations/hermes.json"))
+
+
 @dataclass(frozen=True)
 class Settings:
     token: str
@@ -30,6 +51,8 @@ class Settings:
     factory_root: Path | None = field(default_factory=discover_factory)
     # Apenas configuração do operador/testes. Nunca aceitar executável vindo da API.
     factory_command: tuple[str, ...] | None = None
+    hermes_executable: Path | None = field(default_factory=discover_hermes)
+    hermes_config: Path = field(default_factory=hermes_connection_file)
     origins: tuple[str, ...] = (
         "http://localhost:1420", "http://127.0.0.1:1420",
         "http://tauri.localhost", "https://tauri.localhost", "tauri://localhost",

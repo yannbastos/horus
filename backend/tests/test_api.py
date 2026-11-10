@@ -35,7 +35,8 @@ else:
     print(json.dumps({'id': channel, 'has_api_token': 'HORUS_API_TOKEN' in os.environ}), flush=True)
 ''', encoding="utf-8")
     return Settings(token=TOKEN, data_dir=tmp_path / "data", factory_root=tmp_path,
-                    factory_command=(sys.executable, str(script)))
+                    factory_command=(sys.executable, str(script)), hermes_executable=None,
+                    hermes_config=tmp_path / "hermes.json")
 
 
 @pytest.fixture

@@ -11,7 +11,7 @@ O usuário definiu foco exclusivo em inteligência e operação audiovisual: opo
 - React/TypeScript e Tauri 2 compõem o novo desktop.
 - FastAPI e SQLite centralizam regras, tarefas e persistência.
 - CLI `fabrica` e Remotion continuam independentes; não criar outro motor.
-- Hermes será integrado por interfaces externas; não baixar, instalar ou modificar seu core sem autorização.
+- Hermes possui diagnóstico autenticado por API externa, validado com o CLI Windows 0.23.1 e perfil exclusivo `horus`. Não modificar seu core. Veja [integração Hermes](../integracao-hermes.md).
 - Avalonia mantém transcrição com Whisper, revisão e salvamento até equivalência funcional.
 - Storybook é um catálogo separado de exemplos audiovisuais, sem backend operacional.
 
@@ -22,6 +22,8 @@ Build release e instalador Windows foram gerados. A interface abriu, conectou ao
 ## Próximas prioridades
 
 Validar diálogos e reprodução nativos, render real e cancelamento, persistência entre aberturas, encerramento e consumo de recursos. Depois evoluir produção e Radar conforme contratos validados. Diagnosticar a instalação real do Hermes antes de implementar adaptadores.
+
+A conexão de diagnóstico já foi validada no desktop. Antes de enviar análises ao Hermes, configurar modelo/provedor no perfil exclusivo e definir orçamento. Nenhum endpoint de inferência é exposto pelo Hórus neste incremento; não usar `hermes -z` para contornar os controles.
 
 ## Controles
 

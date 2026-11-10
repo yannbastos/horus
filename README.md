@@ -22,7 +22,7 @@ A nova interface desktop usa **React/TypeScript e Tauri 2**, com backend **FastA
 | Fila de transcrição, edição e salvamento | Implementados; a fila não persiste ao fechar o app |
 | Layout desktop audiovisual | Primeira versão integrada à branch principal; [capturas e limites](docs/layout-desktop.md) |
 | Radar, análise editorial e histórico operacional | Planejados; sem integração operacional no desktop |
-| Integração com Hermes | Planejada; diagnóstico da instalação real ainda pendente |
+| Integração com Hermes | CLI Windows identificado, API local autenticada e painel de diagnóstico implementados; análise e orquestração ainda pendentes |
 | Nova base React/FastAPI/SQLite | Interface, player local, fila, logs, cancelamento e recuperação; consulta ao CLI real validada. Tauri compilado no Windows; render real ainda pendente de validação |
 | Publicação automática e múltiplos canais | Evolução futura; publicação inicialmente manual |
 
@@ -55,6 +55,8 @@ Esses módulos descrevem a direção do produto, não funcionalidades prontas. O
 | [Laboratório visual](https://github.com/yannbastos/horus-storybook) | Componentes e referências de interface em React/Storybook |
 
 A primeira etapa é inteiramente local, sem VPS. A migração incremental foi autorizada e está em andamento; os componentes atuais serão preservados até validar a equivalência funcional. Consulte [o planejamento de integração](docs/planejamento/README.md).
+
+A conexão local com o Hermes CLI está descrita em [integração Hermes](docs/integracao-hermes.md). A verificação usa somente a API de diagnóstico; não envia prompts ou inicia produções.
 
 ## Transcrição
 

@@ -19,7 +19,7 @@ backend/smoke.py              Integração real e medição isolada do backend
 src/Horus/                   Desktop Avalonia preservado
 ```
 
-Fluxo: React → API FastAPI → fila SQLite → CLI `fabrica` existente. O frontend não executa comandos arbitrários nem contém regras da produção. Há uma tarefa técnica por vez. O backend funciona sem Tauri. Hermes, Radar, análise editorial, aprovações de roteiro e publicação não estão integrados nesta prova.
+Fluxo: React → API FastAPI → fila SQLite → CLI `fabrica` existente. O frontend não executa comandos arbitrários nem contém regras da produção. Há uma tarefa técnica por vez. O backend funciona sem Tauri. O Hermes possui [diagnóstico de conexão autenticada](integracao-hermes.md); sua execução de agentes, Radar, análise editorial, aprovações de roteiro e publicação ainda não estão integrados nesta prova.
 
 Operações expostas: consulta de perfil em JSON e render de rascunho `short`. Render exige projeto já preparado na fábrica; não gera roteiro, voz ou assets. Um render bem-sucedido não equivale a aprovação editorial, liberação de licenças ou conteúdo pronto para publicar.
 

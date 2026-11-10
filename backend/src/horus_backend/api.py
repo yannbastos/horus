@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .config import Settings
 from .diagnostics import diagnose
+from .hermes import HermesConnector
 from .jobs import JobManager, JobRequest, TERMINAL
 from .storage import Store
 
@@ -30,6 +31,7 @@ def create_app(settings: Settings, shutdown=None, ready=None):
         raise ValueError("A API exige um token local aleatório de pelo menos 24 caracteres.")
     store = Store(settings.data_dir / "horus.sqlite3")
     manager = JobManager(store, settings)
+    hermes = HermesConnector(settings)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -65,7 +67,15 @@ def create_app(settings: Settings, shutdown=None, ready=None):
     @app.get("/health")
     async def health():
         return {"status": "ready", "factory_available": settings.command() is not None,
-                "hermes_connected": False, "version": "0.1.0"}
+                "hermes_connected": hermes.status()["connected"], "version": "0.1.0"}
+
+    @app.get("/v1/hermes")
+    async def hermes_status():
+        return hermes.status()
+
+    @app.post("/v1/hermes/probe")
+    async def probe_hermes():
+        return await hermes.probe()
 
     @app.get("/v1/jobs")
     async def jobs():

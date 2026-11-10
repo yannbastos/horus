@@ -6,6 +6,8 @@ Este documento descreve apenas o que está implementado hoje.
 
 O aplicativo C#/Avalonia descrito abaixo permanece preservado. A nova base fica em `frontend/` (React/TypeScript e shell Tauri) e `backend/` (FastAPI, SQLite e fila sequencial). Consulte [execução, responsabilidades e limites](migracao-local.md). O build release Tauri e a geração do instalador NSIS passaram no Windows; abertura, conexão automática, consulta real de perfil e fechamento do backend foram verificados. Instalação, render real, diálogos e reprodução nativa ainda exigem validação.
 
+O backend inclui `hermes.py`, adaptador de diagnóstico da API externa Hermes. O painel Ajustes consulta saúde e capacidades com autenticação, sem enviar prompts ou importar o core do agente. A preparação Windows usa um perfil exclusivo e credenciais privadas fora do Git. Consulte [integração Hermes](integracao-hermes.md) para configuração, escopo e validação.
+
 ## Organização dos projetos
 
 ```text

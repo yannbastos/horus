@@ -1,4 +1,8 @@
 export type Connection = { baseUrl: string; token: string };
+export type HermesStatus = {
+  state: string; connected: boolean; cli_available: boolean; configured: boolean;
+  message: string; checked_at: string | null; version: string | null; features: string[];
+};
 export type JobStatus = 'queued' | 'running' | 'cancel_requested' | 'succeeded' | 'failed' | 'cancelled' | 'interrupted' | 'blocked';
 export type Job = {
   id: string; status: JobStatus; attempt: number; created_at: string; updated_at: string;
