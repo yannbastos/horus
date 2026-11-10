@@ -1,25 +1,60 @@
-# HORUS
+# Hórus
 
-> **Planejamento da evolução audiovisual:** leia [o contexto e a carta de continuidade](docs/planejamento/README.md). A direção escolhida integra Hermes Agent e a fábrica Python independente, sem fork inicial. Essa integração ainda não foi implementada; a descrição abaixo apresenta o aplicativo existente.
+**Plataforma de inteligência audiovisual em desenvolvimento.**
 
-O HORUS é um aplicativo desktop de estudos e aprendizagem, gratuito e open source. Ele vai reunir técnicas de estudo, revisão e organização que funcionaram na prática para o seu idealizador, para que outras pessoas também possam usá-las.
+Pesquisar referências, compreender conteúdos e transformar conhecimento em histórias originais. O Hórus está sendo construído para reunir pesquisa audiovisual, planejamento editorial, produção assistida por IA e acompanhamento de canais em um único espaço.
 
-## Objetivos
+O projeto começa pela operação de um canal no YouTube. A expansão para outros canais e formatos virá depois da validação do fluxo, da qualidade e dos custos.
 
-- Oferecer ferramentas de estudo simples e fáceis de usar.
-- Manter os dados sob o controle do usuário, com respeito à privacidade.
-- Evoluir aos poucos, a partir de necessidades reais de quem estuda.
-- Manter código e documentação compreensíveis para futuros colaboradores.
+[Visão do produto](docs/vision.md) · [Roadmap](docs/roadmap.md) · [Arquitetura atual](docs/architecture.md) · [Planejamento técnico](docs/planejamento/README.md)
 
-Mais detalhes em [docs/vision.md](docs/vision.md).
+## O que já funciona
 
-## Estado atual
+O aplicativo desktop atual usa **C#/.NET e Avalonia**. Ele permite importar áudio e vídeo, baixar um vídeo do YouTube, transcrever localmente com Whisper, revisar o texto e salvar o resultado. Há temas claro, escuro e do sistema e testes automatizados de interface e comportamento.
 
-**Em desenvolvimento inicial.** A primeira funcionalidade real é a **Transcrição** de áudio e vídeo, trazida do antigo app Thot. As telas Início, Lista e Leitura continuam sendo exemplos com dados fictícios, usadas para avaliar o design. Em Ajustes, apenas a troca entre os temas claro e escuro funciona.
+| Capacidade | Situação |
+|---|---|
+| Download e transcrição de áudio/vídeo | Implementados no desktop; exigem as ferramentas descritas abaixo |
+| Fila de transcrição, edição e salvamento | Implementados; a fila não persiste ao fechar o app |
+| Layout desktop audiovisual | Primeira versão disponível na [branch de layout](https://github.com/yannbastos/horus/tree/feat/layout-desktop-audiovisual), ainda separada da principal |
+| Radar, análise editorial e memória operacional | Planejados; sem integração operacional no desktop |
+| Integração com Hermes e fábrica Python | Planejada; diagnóstico da instalação real ainda pendente |
+| Publicação automática e múltiplos canais | Evolução futura; publicação inicialmente manual |
+
+As telas antigas de Início, Lista e Leitura na branch principal são exemplos com dados fictícios. Não representam uma operação audiovisual conectada. Em Ajustes, a troca de tema funciona; os demais controles são demonstrações.
+
+## Prévia do desktop audiovisual
+
+![Prévia do layout audiovisual do Hórus em tema escuro](https://raw.githubusercontent.com/yannbastos/horus/feat/layout-desktop-audiovisual/docs/previews/desktop-dark.png)
+
+Captura do aplicativo Avalonia na branch `feat/layout-desktop-audiovisual`. A prévia reorganiza a navegação e preserva a transcrição; os demais módulos aparecem como em preparação. [Capturas e limites do layout](https://github.com/yannbastos/horus/blob/feat/layout-desktop-audiovisual/docs/layout-desktop.md).
+
+## Para onde o Hórus está evoluindo
+
+- **Radar:** descobrir e organizar oportunidades a partir de dados e fontes acessíveis.
+- **Análise audiovisual:** estudar narrativa, ganchos, títulos, thumbnails e formatos, separando observação de hipótese.
+- **Planejamento editorial:** desenvolver ideias originais, briefings e roteiros sujeitos à aprovação.
+- **Produção:** acompanhar a fábrica de vídeos, revisões e arquivos finais.
+- **Canais e resultados:** reunir perfis editoriais, custos, métricas autorizadas e experimentos.
+- **Memória operacional:** preservar decisões e aprendizados validados, com origem rastreável.
+
+Esses módulos descrevem a direção do produto, não funcionalidades prontas. O sistema deve preservar aprovação humana, verificação de licenças e controle de custos.
+
+## Como os projetos se conectam
+
+| Componente | Papel |
+|---|---|
+| **Hórus — este repositório** | Aplicativo e referência central do produto e do planejamento |
+| [Hermes Agent](https://github.com/NousResearch/hermes-agent) | Motor de inteligência e orquestração previsto, por integração externa e sem fork inicial |
+| [Fábrica de canais](https://github.com/yannbastos/fabrica-canais) | Motor independente Python/CLI e Remotion; não exige o desktop para funcionar |
+| [Estudos de vídeos](https://github.com/yannbastos/estudos-videos-claude) | Base inicial de fontes, transcrições e resumos |
+| [Laboratório visual](https://github.com/yannbastos/horus-storybook) | Componentes e referências de interface em React/Storybook |
+
+A operação híbrida com Hermes em VPS e produção pesada no PC é uma proposta em avaliação. As tecnologias atuais não foram substituídas; uma eventual migração da interface exige decisão própria. Consulte [o planejamento de integração](docs/planejamento/README.md).
 
 ## Transcrição
 
-Transcreve áudio e vídeo para texto, 100% offline, com [Whisper.net](https://github.com/sandrohanea/whisper.net).
+O processamento da transcrição é local, com [Whisper.net](https://github.com/sandrohanea/whisper.net). O primeiro download do modelo e a obtenção de vídeos do YouTube exigem internet.
 
 1. Arraste arquivos (mp3, wav, m4a, mp4, mkv, ...) para a tela ou use **Selecionar arquivos**.
 2. A fila é FIFO, com **até 20 arquivos incluindo o atual**. O primeiro da fila é o atual.
@@ -36,7 +71,7 @@ Dependências externas:
 - **ffmpeg** no `PATH` ou na pasta do app (`winget install Gyan.FFmpeg`).
 - Para o YouTube: **yt-dlp** e **Node.js 22+** (`winget install yt-dlp.yt-dlp` e `winget install OpenJS.NodeJS.LTS`). O app também procura o yt-dlp em `%LOCALAPPDATA%\Horus\tools`.
 
-Os modelos são baixados na primeira vez para `%LOCALAPPDATA%\Horus\models`. Com GPU NVIDIA e CUDA 12, o runtime CUDA é usado automaticamente; senão, roda na CPU.
+Os modelos são baixados na primeira vez para `%LOCALAPPDATA%\Horus\models`. A execução usa CPU ou runtime CUDA conforme os recursos e a configuração do ambiente.
 
 As próximas etapas estão em [docs/roadmap.md](docs/roadmap.md).
 
