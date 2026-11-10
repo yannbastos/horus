@@ -35,6 +35,7 @@ frontend/src-tauri/target/
 frontend/src-tauri/gen/schemas/
 backend/dist/
 backend/build/
+backend/.cache/
 .venv/
 __pycache__/
 *.py[cod]

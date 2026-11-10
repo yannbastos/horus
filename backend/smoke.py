@@ -22,7 +22,7 @@ def main():
     token = secrets.token_hex(32)
     with tempfile.TemporaryDirectory(prefix='horus-smoke-') as data:
         env = {**os.environ, 'HORUS_API_TOKEN': token, 'HORUS_MANAGED': '1', 'HORUS_DATA_DIR': data}
-        saved_id = None
+        saved_id = failed_id = None
         for attempt in range(2):
             started = time.perf_counter()
             with tempfile.TemporaryFile(mode='w+b') as errors:
@@ -39,6 +39,9 @@ def main():
                         assert client.get('/health').json()['factory_available'], 'Prepare a fábrica antes do teste real.'
                         if saved_id:
                             assert client.get(f'/v1/jobs/{saved_id}').json()['status'] == 'succeeded'
+                            restored_failure = client.get(f'/v1/jobs/{failed_id}').json()
+                            assert restored_failure['status'] == 'failed'
+                            assert 'Pasta do vídeo não encontrada' in restored_failure['error']
                         else:
                             response = client.post('/v1/jobs', json={'operation': 'factory.profile', 'channel_id': 'canal01'})
                             response.raise_for_status()
@@ -51,6 +54,19 @@ def main():
                                 time.sleep(.05)
                             assert job['status'] == 'succeeded', job
                             assert isinstance(job['result'], dict)
+                            # Recusa do CLI real em stdout precisa chegar ao aviso principal da API.
+                            response = client.post('/v1/jobs', json={'operation': 'factory.render.preview',
+                                                   'channel_id': 'canal01', 'video_id': f'horus-missing-{secrets.token_hex(8)}'})
+                            response.raise_for_status()
+                            failed_id = response.json()['id']
+                            deadline = time.monotonic() + 30
+                            while time.monotonic() < deadline:
+                                failed = client.get(f'/v1/jobs/{failed_id}').json()
+                                if failed['status'] not in {'queued', 'running'}:
+                                    break
+                                time.sleep(.05)
+                            assert failed['status'] == 'failed', failed
+                            assert 'Pasta do vídeo não encontrada' in failed['error'], failed
                         native = psutil.Process(process.pid)
                         tree = [native, *native.children(recursive=True)]
                         for item in tree:
@@ -60,7 +76,8 @@ def main():
                                           'backend_ready_seconds': round(startup, 3),
                                           'backend_tree_rss_mb': round(sum(p.memory_info().rss for p in tree) / 1024**2, 1),
                                           'backend_tree_cpu_percent': sum(p.cpu_percent() for p in tree),
-                                          'factory_profile': 'succeeded', 'persistent_history': attempt == 1}))
+                                          'factory_profile': 'succeeded', 'factory_error_reason': True,
+                                          'persistent_history': attempt == 1}))
                 finally:
                     process.stdin.close()
                     try:

@@ -75,3 +75,29 @@ A primeira execução de pytest no sandbox falhou ao criar diretórios temporár
 Continuam pendentes: instalação pelo NSIS; seleção de pasta, salvamento e arrastar arquivos nativos; busca temporal manual no player; recuperação após falha abrupta durante render real; YouTube real; transcrição longa/GPU/modelos maiores; comparação visual completa com Avalonia. O render e seu cancelamento foram exercitados pela API real em TestClient, não por um clique na tela Produção nem pelo backend empacotado.
 
 Na janela desktop já aberta nesta máquina, Ajustes informou CLI Hermes localizado e conexão não configurada. Isso é uma observação da configuração dessa sessão; não foi executada inferência nem modificada a configuração privada.
+
+## Integração posterior com a fábrica atualizada
+
+Após o commit Hórus `05e9c55`, repetida a integração com uma cópia isolada da fábrica cujo HEAD informado era `e19318a` (segurança da publicação). A cópia usada no ensaio permanece em `artifacts/render-validation-8498b2f6b1`; alterações posteriores do Claude no repositório da fábrica não entram automaticamente nesse resultado.
+
+Foi encontrado e corrigido um problema no backend Hórus: falhas do CLI exibiam somente o código de saída e “Consulte os logs”, mesmo quando o motivo estava disponível. O resumo da tarefa agora inclui as três últimas linhas de diagnóstico, limitadas a mil caracteres cada, incluindo recusas `ERRO:` escritas em stdout pelo CLI. O histórico de eventos continua separado. Duas regressões reproduziram a falha antes da correção e passaram depois dela.
+
+| Cenário | Resultado observado |
+|---|---|
+| Pasta do vídeo ausente | Tarefa falhou com motivo disponível no campo `error` |
+| `visual_override` saindo da pasta | CLI recusou; tarefa falhou com motivo visível |
+| Render após as recusas | Fila continuou normalmente; sucesso em 48,02 s, 4.751.408 bytes |
+| Registro de insumos | `rascunho: true` e SHA-256 do MP4 conferidos; cópia do vídeo e registro preservada antes de cancelar outra execução |
+| Publicação da fixture de teste | `publicar checar` retornou código 3, sem gerar pacote ou aprovar materiais |
+| Cancelamento com Chrome iniciado | Estado `cancelled`; oito processos observados encerrados; registro antigo de sucesso não permaneceu na saída cancelada |
+| Fechar backend durante outro render | Oito processos observados encerrados; tarefa `interrupted` após reabrir, tentativa 1, sem execução automática |
+| Persistência | Sucesso, falha e cancelamento mantidos ao recriar a aplicação FastAPI |
+| Interface | Recusa aparece no aviso principal e nos logs; retentativa ocorre somente ao clicar, conforme teste com backend simulado |
+
+A suíte passou em **67 testes backend e 5 testes de interface**, além de TypeScript/build Vite. `smoke.py` agora confere também uma recusa real de render por vídeo ausente e a preservação desse erro após reiniciar. Passou tanto em Python quanto no backend PyInstaller reconstruído; ambos foram exercitados por HTTP real e encerraram por EOF.
+
+O desktop release e o instalador NSIS foram reconstruídos com a correção, sem downloads Cargo (`CARGO_NET_OFFLINE=true`). O instalador gerado tem 79,67 MiB; a instalação não foi executada. O build Tauri usou uma configuração local em `artifacts/tauri-integration-build.json` que omite apenas o `beforeBuildCommand`, porque PyInstaller e build frontend já haviam passado imediatamente antes. O SHA-256 do backend copiado para `target/release/backend/` foi conferido contra o executável empacotado testado e é idêntico. Os artefatos continuam ignorados pelo Git. O cache local Hugging Face gerado durante o empacotamento também foi excluído do versionamento por `.gitignore`.
+
+Os ensaios de render continuam usando FastAPI TestClient com processos reais da fábrica/Remotion; não equivalem a clicar em Produção no desktop. O encerramento durante render foi normal pelo ciclo de vida do backend, não uma falha abrupta do Windows. O Hórus continua expondo somente consulta de perfil e render de rascunho da fábrica; solicitações de publicação não são aceitas pela API. Não foram criadas aprovações, consumidas APIs pagas ou alterados arquivos no repositório da fábrica.
+
+`smoke_render.py` foi ampliado com esses cenários. Execuções futuras registram também os hashes do código copiado da fábrica/Remotion, pois o HEAD sozinho não identifica alterações locais feitas em paralelo.

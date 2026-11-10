@@ -23,6 +23,9 @@ channel = sys.argv[sys.argv.index('--canal') + 1]
 if channel == 'failure':
     print('Falha técnica de teste', file=sys.stderr, flush=True)
     sys.exit(3)
+if channel == 'factoryerror':
+    print('ERRO: caminho fora da pasta do vídeo', flush=True)
+    sys.exit(1)
 if channel == 'broken':
     print('não é JSON', flush=True)
 elif channel == 'slow':
@@ -144,6 +147,18 @@ def test_idempotency_prevents_duplicate_execution(client):
 @pytest.mark.parametrize("channel", ["broken", "failure"])
 def test_command_errors_are_not_success(client, channel):
     assert wait_job(client, submit(client, channel)["id"])["status"] == "failed"
+
+
+@pytest.mark.parametrize(('channel', 'reason'), [
+    ('failure', 'Falha técnica de teste'),
+    ('factoryerror', 'ERRO: caminho fora da pasta do vídeo'),
+])
+def test_factory_failure_reason_is_visible_without_opening_logs(client, channel, reason):
+    job = wait_job(client, submit(client, channel)['id'])
+    assert job['status'] == 'failed'
+    assert reason in job['error']
+    events = client.app.state.store.events(job['id'], 0)
+    assert any(reason in event['message'] for event in events)
 
 
 def test_cancel_stops_owned_process_and_queued_work(client):

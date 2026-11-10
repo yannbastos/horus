@@ -148,7 +148,11 @@ class JobManager:
         return [*command, "render", "--canal", request.channel_id, "--video", request.video_id,
                 "--composicao", "short", "--rascunho"]
 
-    async def _line(self, job_id: str, kind: str, line: str, notes: dict | None):
+    async def _line(self, job_id: str, kind: str, line: str, notes: dict | None, failures: list[str] | None = None):
+        # O CLI da fábrica escreve recusas `ERRO:` em stdout; stderr também é diagnóstico.
+        # Manter somente um resumo limitado, além do histórico completo de eventos.
+        if failures is not None and (kind == 'stderr' or line.lstrip().startswith('ERRO:')):
+            failures[:] = [*failures[-2:], line.strip()[:1000]]
         # Subprocessos do Hórus enviam NDJSON; demais linhas seguem como log bruto.
         if notes is not None:
             if kind == "stdout" and line.startswith("{"):
@@ -160,11 +164,10 @@ class JobManager:
                             notes["segments"].append(line)
             elif kind == "stdout" and line.startswith(FILE_MARKER):
                 notes["file"] = line[len(FILE_MARKER):].strip()
-            elif kind == "stderr":
-                notes["errors"] = [*notes["errors"][-11:], line.strip()]
         await self.emit(job_id, kind, line)
 
-    async def _read(self, reader, job_id: str, kind: str, captured: list[str], notes: dict | None = None):
+    async def _read(self, reader, job_id: str, kind: str, captured: list[str], notes: dict | None = None,
+                    failures: list[str] | None = None):
         # Leitura incremental também aceita ferramentas que atualizam o console com CR.
         import codecs
         decoder = codecs.getincrementaldecoder("utf-8")("replace")
@@ -179,13 +182,13 @@ class JobManager:
             pending = lines.pop()
             for line in lines:
                 if line.strip():
-                    await self._line(job_id, kind, line, notes)
+                    await self._line(job_id, kind, line, notes, failures)
             if len(pending) > 4000:
                 await self.emit(job_id, kind, pending[:2000])
                 pending = ""
         pending += decoder.decode(b"", final=True)
         if pending.strip():
-            await self._line(job_id, kind, pending, notes)
+            await self._line(job_id, kind, pending, notes, failures)
 
     async def _work(self):
         while True:
@@ -216,10 +219,11 @@ class JobManager:
             if self.store.get_job(job_id)["status"] == "cancel_requested":
                 await self.active_process.stop()
             output: list[str] = []
-            notes = None if factory else {"segments": [], "file": None, "errors": []}
+            failures: list[str] = []
+            notes = None if factory else {"segments": [], "file": None}
             process = self.active_process.process
-            readers = asyncio.gather(self._read(process.stdout, job_id, "stdout", output, notes),
-                                     self._read(process.stderr, job_id, "stderr", [], notes))
+            readers = asyncio.gather(self._read(process.stdout, job_id, "stdout", output, notes, failures),
+                                     self._read(process.stderr, job_id, "stderr", [], notes, failures))
             try:
                 await asyncio.wait_for(process.wait(), timeout=TIMEOUTS.get(request.operation))
                 await readers
@@ -235,7 +239,7 @@ class JobManager:
             if current["status"] == "cancel_requested":
                 self.store.update(job_id, "cancelled", result=partial)
             elif process.returncode != 0:
-                detail = " ".join(notes["errors"][-3:]) if notes and notes["errors"] else "Consulte os logs."
+                detail = " ".join(failures) if failures else "Consulte os logs."
                 self.store.update(job_id, "failed", result=partial,
                                   error=f"O comando encerrou com código {process.returncode}. {detail}")
             else:

@@ -1,5 +1,61 @@
 import { expect, test } from '@playwright/test';
 
+test('mostra recusa do render e só repete após uma ação explícita', async ({ page }) => {
+  const reason = 'O comando encerrou com código 1. ERRO: caminho fora da pasta do vídeo';
+  let submissions = 0;
+  let retries = 0;
+  const payload = { operation: 'factory.render.preview', channel_id: 'canal01', video_id: 'fixture' };
+  const job = () => ({ id: 'render-refused', payload, attempt: retries + 1,
+    status: retries ? 'succeeded' : 'failed', error: retries ? null : reason,
+    result: retries ? { message: 'Render de rascunho concluído.' } : null,
+    created_at: '2026-11-10T12:00:00Z', updated_at: '2026-11-10T12:00:00Z' });
+  await page.route('http://127.0.0.1:8765/**', async route => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    const headers = { 'Access-Control-Allow-Origin': 'http://127.0.0.1:1420',
+      'Access-Control-Allow-Headers': 'authorization,content-type,idempotency-key', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' };
+    if (request.method() === 'OPTIONS') { await route.fulfill({ status: 204, headers }); return; }
+    if (path === '/v1/jobs' && request.method() === 'POST') {
+      expect(request.postDataJSON()).toEqual(payload);
+      submissions++;
+      await route.fulfill({ status: 202, headers, json: job() }); return;
+    }
+    if (path.endsWith('/retry')) {
+      expect(request.method()).toBe('POST'); retries++;
+      await route.fulfill({ headers, json: job() }); return;
+    }
+    if (path.endsWith('/events')) {
+      const events = [
+        { sequence: 1, kind: 'stdout', message: retries ? 'Render de rascunho concluído.' : 'ERRO: caminho fora da pasta do vídeo' },
+        { kind: 'complete', job: job() },
+      ];
+      await route.fulfill({ headers: { ...headers, 'Content-Type': 'application/x-ndjson' },
+        body: events.map(event => JSON.stringify(event)).join('\n') + '\n' }); return;
+    }
+    const body = path === '/health' ? { status: 'ready' }
+      : path === '/v1/jobs' ? (submissions ? [job()] : [])
+      : path === '/v1/hermes' ? { state: 'not_checked', connected: false, cli_available: false, configured: false, message: '', checked_at: null, version: null, features: [] }
+      : path === '/v1/diagnostics' ? { checks: [], notice: '' } : null;
+    await route.fulfill({ status: body ? 200 : 404, headers, json: body });
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Ajustes', exact: true }).click();
+  await page.getByLabel('Token da sessão').fill('browser-test-session-token-0123456789');
+  await page.getByRole('button', { name: 'CONECTAR BACKEND', exact: true }).click();
+  await page.getByRole('button', { name: 'Produção', exact: true }).click();
+  await page.getByLabel('Vídeo para rascunho').fill('fixture');
+  await page.getByRole('button', { name: 'RENDERIZAR RASCUNHO', exact: true }).click();
+  await expect(page.getByRole('alert')).toHaveText(reason);
+  await expect(page.getByLabel('Logs da tarefa')).toContainText('ERRO: caminho fora da pasta do vídeo');
+  expect(submissions).toBe(1);
+  expect(retries).toBe(0);
+  await page.getByRole('button', { name: 'TENTAR NOVAMENTE', exact: true }).click();
+  await expect(page.locator('.job-details .tag')).toHaveText('Concluído');
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  expect(submissions).toBe(1);
+  expect(retries).toBe(1);
+});
+
 test('preserva navegação, temas e organização nos tamanhos do desktop', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
