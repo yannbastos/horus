@@ -13,7 +13,7 @@ namespace Horus.Tests;
 public class WorkspaceLayoutTests
 {
     [AvaloniaTheory]
-    [InlineData("OpenTranscriptionButton", "TranscriptionView")]
+    [InlineData("OpenProductionButton", "ProductionView")]
     [InlineData("OpenRadarButton", "RadarView")]
     public void Overview_actions_open_the_corresponding_section(string buttonName, string screenName)
     {
@@ -69,7 +69,7 @@ public class WorkspaceLayoutTests
             window.UpdateLayout();
             AvaloniaHeadlessPlatform.ForceRenderTimerTick();
 
-            var button = window.GetControl<OverviewView>("HomeView").GetControl<Button>("OpenTranscriptionButton");
+            var button = window.GetControl<OverviewView>("HomeView").GetControl<Button>("OpenProductionButton");
             var position = button.TranslatePoint(new Point(), window);
             Assert.NotNull(position);
             Assert.True(button.Bounds.Width > 0);

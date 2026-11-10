@@ -2,7 +2,7 @@
 
 Evolução incremental da plataforma audiovisual, sem datas prometidas. Consulte o [README](../README.md) para o estado disponível e a [visão](vision.md) para os objetivos.
 
-**Próximo marco tecnológico:** revisar e aprovar a prova de conceito [React/Tauri/FastAPI/SQLite local](planejamento/STACK-LOCAL.md), preservando o design, o Avalonia e a fábrica durante a validação. Essa direção substitui a hipótese de VPS nesta etapa; não significa migração já implementada.
+**Próximo marco tecnológico:** concluir a validação da prova de conceito [React/Tauri/FastAPI/SQLite local](migracao-local.md), preservando o design, a transcrição Avalonia e a fábrica. O build desktop e o instalador existem; mídia nativa, render real e desempenho ainda precisam de validação.
 
 ## Base existente
 
@@ -13,8 +13,8 @@ Evolução incremental da plataforma audiovisual, sem datas prometidas. Consulte
 | Fila, revisão e salvamento de transcrição | Implementados, sem persistência da fila entre sessões |
 | Testes automatizados de comportamento e interface | Existentes |
 | Fábrica Python e render de Short | Em repositório separado, parcialmente consolidados |
-| Base de conhecimento e catálogo visual | Em repositórios separados |
-| Primeira prévia do layout audiovisual desktop | Integrada à branch principal; permanece em Avalonia até validar a migração |
+| Catálogo visual | Em repositórios separados |
+| Interface audiovisual React/Tauri | Build Windows e instalador gerados; backend e consulta de perfil validados |
 
 ## Próximas fases
 
@@ -26,7 +26,7 @@ Evolução incremental da plataforma audiovisual, sem datas prometidas. Consulte
 | 3. Análise e planejamento | Relatórios e briefings originais associados às fontes | Separação de observação/hipótese e aprovação por versão |
 | 4. Produção gerenciada | Fila persistente, custos, retomada e aprovações | Uma produção recuperável, sem repetir cobrança ou render por perda de contato |
 | 5. Interface integrada | Conectar telas aos contratos já validados | Mesmas regras e estados pelo CLI e pela interface, sem duplicar o motor |
-| 6. Analytics e memória | Resultados próprios autorizados, experimentos e aprendizados revisados | Evidências, custos e mudanças de regras rastreáveis |
+| 6. Analytics e histórico operacional | Resultados próprios autorizados, experimentos e registros operacionais revisados | Evidências, custos e mudanças de regras rastreáveis |
 | 7. Expansão gradual | Longos, cortes, mais canais e automações adicionais | Canal 01 validado, capacidade e orçamento demonstrados |
 
 O usuário autorizou adiantar o layout desktop como trabalho visual. Isso não implementa as fases operacionais nem dispensa o diagnóstico do ambiente.
@@ -45,7 +45,7 @@ O primeiro vídeo não depende de dashboard completo ou descoberta automatizada.
 ## Pendências transversais
 
 - Definir e documentar licença geral, distribuição e processo de contribuição.
-- Avaliar a stack final da interface antes de qualquer migração.
+- Concluir a validação da stack definida antes de substituir a transcrição Avalonia.
 - Validar compatibilidade Windows e, posteriormente, Linux/Arch Linux.
 - Definir infraestrutura, armazenamento e backup conforme necessidade demonstrada.
 - Proteger segredos, aprovações, orçamento e integridade dos artefatos.

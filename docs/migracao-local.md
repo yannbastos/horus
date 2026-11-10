@@ -2,6 +2,8 @@
 
 Implementação iniciada após autorização do usuário em 2026-11-10. O Avalonia não foi removido. A transcrição Whisper, revisão e salvamento continuam nele; ainda não há equivalência funcional completa no React.
 
+O posicionamento vigente é exclusivamente audiovisual. A interface e o catálogo visual usam mídia, roteiros, produção, canais e resultados como domínio; a entrada principal abre Produção. A antiga área Memória aparece como Histórico operacional, voltada a execuções e revisões. Telas e dados de demonstração da proposta anterior foram removidos do Avalonia. Documentos e capturas atuais refletem essa direção. A pré-release `v0.1.0-alpha.1` foi gerada antes desta revisão e não recebe alterações automaticamente.
+
 ## Estrutura e responsabilidades
 
 ```text

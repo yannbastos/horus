@@ -4,7 +4,7 @@
 
 Estado: proposta executável, não autorização de implementação. Leia `VISAO.md` e `DIAGNOSTICO.md`.
 
-Preparação ampliada pelo resumo DOCX: [arquitetura híbrida](ARQUITETURA-HIBRIDA.md), [contratos](CONTRATOS.md), [memória ativa](MEMORIA-ATIVA.md) e [cenários de validação/relatório](VALIDACAO.md). A intenção VPS–PC não torna uma VPS pré-requisito para o diagnóstico ou a primeira consulta local.
+Preparação ampliada pelo resumo DOCX: [arquitetura híbrida](ARQUITETURA-HIBRIDA.md), [contratos](CONTRATOS.md), [registros operacionais](MEMORIA-ATIVA.md) e [cenários de validação/relatório](VALIDACAO.md). A intenção VPS–PC não torna uma VPS pré-requisito para o diagnóstico ou a primeira consulta local.
 
 ## Primeira sessão: somente diagnóstico
 
@@ -53,10 +53,10 @@ Esforço relativo: P pequeno, M médio, G grande. Não são prazos. Todo teste d
 | 1A Radar: permissões e coleta | Políticas API, `minerar`, cliente YouTube | M; cota e dados | Validação de candidatos, paginação, dados ausentes e limites testados com fixtures |
 | 1B Radar: descoberta e relatório | 1A, persistência necessária | M; amostragem | Candidatos reais, origem/data e limites claros; cálculos/históricos apenas quando permitidos |
 | 2 Integração Hermes | 0A; CLI/skills, depois MCP/API se necessário | M; compatibilidade | Teste de leitura aprovado, relatório e falhas rastreáveis, sem fork |
-| 3 Análise e planejamento | 1, 2 e estudos | M; alucinação/cópia | Briefing com fontes, observações separadas de hipóteses e aprovação por versão |
+| 3 Análise e planejamento | 1 e 2 | M; alucinação/cópia | Briefing com fontes, observações separadas de hipóteses e aprovação por versão |
 | 4 Produção gerenciada | 0B–0D, 2 e 3 | G; duplicação/cobrança | Fila persistente, um render, retomada, orçamento, invalidação de dependências; testes de interrupção |
 | 5 Interface | Contratos validados da fase 4 | G; escopo | Consultar oportunidades, produções e aprovações sem duplicar motor; testes de fluxos |
-| 6 Analytics e memória | Canais próprios autorizados, execuções rastreadas | M; conclusões frágeis | Custos por tentativa, experimentos, dados ausentes/revogação tratados e memória revisável |
+| 6 Analytics e histórico operacional | Canais próprios autorizados, execuções rastreadas | M; conclusões frágeis | Custos por tentativa, experimentos, dados ausentes/revogação tratados e memória revisável |
 | 7 Automação avançada | Shorts e longos do Canal 01 validados | G; ampliação prematura | Agendamentos sem duplicação; isolamento por canal; publicação automática requer aprovação separada |
 
 Antes do segundo canal, criar uma tarefa explícita para longo e cortes: composição 16:9, narração em blocos se necessária, legendas, cortes com ganchos, revisão de sincronismo, tempo e custo. Essa capacidade não existe hoje.

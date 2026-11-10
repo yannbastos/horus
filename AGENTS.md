@@ -4,11 +4,11 @@ Estas regras valem para todos os agentes que trabalham no HORUS.
 
 ## Contexto de continuidade — Hórus audiovisual
 
-**Direção tecnológica vigente:** leia [docs/planejamento/STACK-LOCAL.md](docs/planejamento/STACK-LOCAL.md) e [a prova de conceito](docs/migracao-local.md). O usuário autorizou iniciar a troca de linguagens em 2026-11-10. React/TypeScript e Python/FastAPI/SQLite estão em implementação; o shell Tauri 2 usa Rust somente para integração nativa. Preservar fábrica/Remotion, Hermes externo e o Avalonia até validar equivalência funcional. A primeira etapa é local no Windows, **sem VPS e sem redesign**. A compilação nativa depende da disponibilidade do toolchain; não apresentar código Tauri não compilado como aplicativo validado.
+**Produto vigente:** exclusivamente inteligência e operação audiovisual. Não reintroduzir telas, módulos ou dependência de propostas anteriores. Biblioteca é mídia de produção; Histórico operacional registra execuções, revisões, erros e decisões editoriais. Preserve transcrição, perfis, mídia, licenças e aprovação humana.
 
-Antes de planejar a evolução do produto, leia [a carta ao próximo Codex](docs/planejamento/CARTA-AO-CODEX.md). O usuário escolheu Hermes Agent como motor de inteligência e orquestração, sem fork inicial, preservando a fábrica independente. A primeira entrega na máquina principal é um diagnóstico de integração, sem implementação. Os documentos em `docs/planejamento/` registram a nova direção; `docs/architecture.md` continua descrevendo o código existente.
+**Stack oficial:** React/TypeScript + Tauri 2, Rust nativo mínimo, Python/FastAPI e SQLite. Implementação incremental autorizada. Windows local, sem VPS e sem redesign. Preserve fábrica/CLI/Remotion independentes e Hermes externo sem fork. O Avalonia continua oferecendo transcrição até validar equivalência funcional. Build release e instalador Tauri passaram; não presumir validação de render, mídia ou desempenho.
 
-O usuário posteriormente autorizou adiantar o layout desktop Avalonia: veja [docs/layout-desktop.md](docs/layout-desktop.md). Essa evolução visual não implementa nem autoriza integrações com Hermes/fábrica, chamadas pagas ou instalação de dependências. Preserve a transcrição e identifique áreas futuras como prévias.
+Leia [continuidade técnica](docs/planejamento/CARTA-AO-CODEX.md), [stack local](docs/planejamento/STACK-LOCAL.md) e [migração](docs/migracao-local.md). Documentos históricos não substituem as decisões atuais.
 
 **Princípio fundamental:** o HORUS deve ser desenvolvido para funcionar bem, não apenas para parecer bem programado.
 
@@ -23,7 +23,7 @@ O idealizador é o responsável pelo produto e principal usuário. Os agentes as
 ## Implementação
 
 - Não implemente funcionalidades que não foram solicitadas.
-- Escreva código simples e compreensível, seguindo as convenções oficiais de C# e .NET.
+- Escreva código simples e compreensível, seguindo as convenções de cada linguagem da stack.
 - Não adicione camadas ou abstrações sem uma necessidade concreta.
 - Não adicione dependências sem necessidade.
 - Não exclua nem sobrescreva arquivos sem justificativa.
@@ -39,7 +39,7 @@ O idealizador é o responsável pelo produto e principal usuário. Os agentes as
 4. Simplicidade da arquitetura
 5. Qualidade e cobertura adequada dos testes
 6. Documentação útil e atualizada
-7. Facilidade para estudar e compreender o código no futuro
+7. Facilidade para compreender e manter o código no futuro
 
 ## Testes e verificação
 

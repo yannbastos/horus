@@ -8,7 +8,6 @@ Data: 2026-11-10. Método: leitura de arquivos locais e consulta web à document
 |---|---|---|
 | horus | `adb6383` | C#/Avalonia/.NET 10, download YouTube e transcrição; testes de fila e interface |
 | fabrica-canais | `51e6658` | CLI Python, perfis, ElevenLabs, stable-ts e render Remotion de short |
-| estudos-videos-claude | `27c1269` | 13 fontes com transcrições, resumos e índices, sem timestamps |
 | horus-storybook | `b03f90a` | Catálogo React/Storybook com dados demonstrativos |
 
 Os diretórios locais foram reorganizados durante a conversa. Não transportar caminhos absolutos da máquina de preparação para a principal. As pastas locais de HORUS Web estavam vazias.

@@ -2,29 +2,31 @@
 
 **Plataforma de inteligência audiovisual em desenvolvimento.**
 
-Pesquisar referências, compreender conteúdos e transformar conhecimento em histórias originais. O Hórus está sendo construído para reunir pesquisa audiovisual, planejamento editorial, produção assistida por IA e acompanhamento de canais em um único espaço.
+Pesquisar oportunidades, planejar vídeos originais e gerenciar a operação audiovisual. O Hórus está sendo construído para reunir pesquisa audiovisual, planejamento editorial, produção assistida por IA e acompanhamento de canais em um único espaço.
 
 O projeto começa pela operação de um canal no YouTube. A expansão para outros canais e formatos virá depois da validação do fluxo, da qualidade e dos custos.
 
 [Visão do produto](docs/vision.md) · [Roadmap](docs/roadmap.md) · [Arquitetura atual](docs/architecture.md) · [Planejamento técnico](docs/planejamento/README.md)
 
-**Migração em andamento:** React/TypeScript + Tauri 2, Rust apenas para integrações nativas, Python/FastAPI e SQLite. A prova de conceito local já possui interface web, tarefas persistentes, logs e integração limitada com o CLI da fábrica. O shell Tauri ainda precisa ser compilado e validado com o toolchain nativo. O desktop C#/Avalonia continua disponível, incluindo transcrição. Consulte [como executar e os limites da migração](docs/migracao-local.md).
+**Migração em andamento:** React/TypeScript + Tauri 2, Rust apenas para integrações nativas, Python/FastAPI e SQLite. A prova de conceito local já possui interface web, tarefas persistentes, logs e integração limitada com o CLI da fábrica. O build Tauri e o instalador Windows já foram gerados; abertura e conexão automática ao backend foram verificadas. O desktop C#/Avalonia continua disponível, incluindo transcrição. Consulte [como executar e os limites da migração](docs/migracao-local.md).
 
 ## O que já funciona
 
-O aplicativo desktop atual usa **C#/.NET e Avalonia** e abre na **Visão geral**, com navegação lateral e atalhos. Ele permite importar áudio e vídeo, baixar um vídeo do YouTube, transcrever localmente com Whisper, revisar o texto e salvar o resultado. Acesse a transcrição pelo menu ou por **Abrir transcrição**. Há temas claro, escuro e do sistema e testes automatizados de interface e comportamento.
+[Baixar a prévia Windows](https://github.com/yannbastos/horus/releases/tag/v0.1.0-alpha.1). O instalador inclui o backend; a prévia publicada antecede a revisão mais recente dos textos audiovisuais.
+
+A nova interface desktop usa **React/TypeScript e Tauri 2**, com backend **FastAPI/SQLite**, operações limitadas da fábrica e biblioteca local. O desktop **C#/.NET e Avalonia** permanece como ferramenta de transcrição: importar áudio e vídeo, baixar um vídeo do YouTube, transcrever localmente com Whisper, revisar e salvar o texto. Há temas claro, escuro e do sistema e testes automatizados de interface e comportamento.
 
 | Capacidade | Situação |
 |---|---|
 | Download e transcrição de áudio/vídeo | Implementados no desktop; exigem as ferramentas descritas abaixo |
 | Fila de transcrição, edição e salvamento | Implementados; a fila não persiste ao fechar o app |
 | Layout desktop audiovisual | Primeira versão integrada à branch principal; [capturas e limites](docs/layout-desktop.md) |
-| Radar, análise editorial e memória operacional | Planejados; sem integração operacional no desktop |
+| Radar, análise editorial e histórico operacional | Planejados; sem integração operacional no desktop |
 | Integração com Hermes | Planejada; diagnóstico da instalação real ainda pendente |
-| Nova base React/FastAPI/SQLite | Interface, player local, fila, logs, cancelamento e recuperação; consulta ao CLI real validada. Tauri e render real ainda pendentes de validação |
+| Nova base React/FastAPI/SQLite | Interface, player local, fila, logs, cancelamento e recuperação; consulta ao CLI real validada. Tauri compilado no Windows; render real ainda pendente de validação |
 | Publicação automática e múltiplos canais | Evolução futura; publicação inicialmente manual |
 
-No Avalonia, Radar, Biblioteca, Produção, Canais e Memória são prévias de layout, identificadas como em preparação, sem operações ou métricas simuladas. As telas antigas de Início, Lista e Leitura permanecem no código como exemplos, fora da navegação principal. A nova base React adiciona operações limitadas da fábrica e mídia local, descritas no guia de migração.
+No Avalonia, Radar, Biblioteca, Produção, Canais e Histórico operacional são prévias de layout, identificadas como em preparação, sem operações ou métricas simuladas. As telas e os dados da proposta anterior foram removidos do código. A nova base React adiciona operações limitadas da fábrica e mídia local, descritas no guia de migração.
 
 ## Prévia do desktop audiovisual
 
@@ -35,11 +37,11 @@ Captura do aplicativo Avalonia integrado à branch principal. O layout reorganiz
 ## Para onde o Hórus está evoluindo
 
 - **Radar:** descobrir e organizar oportunidades a partir de dados e fontes acessíveis.
-- **Análise audiovisual:** estudar narrativa, ganchos, títulos, thumbnails e formatos, separando observação de hipótese.
+- **Análise audiovisual:** analisar narrativa, ganchos, títulos, thumbnails e formatos, separando observação de hipótese.
 - **Planejamento editorial:** desenvolver ideias originais, briefings e roteiros sujeitos à aprovação.
 - **Produção:** acompanhar a fábrica de vídeos, revisões e arquivos finais.
 - **Canais e resultados:** reunir perfis editoriais, custos, métricas autorizadas e experimentos.
-- **Memória operacional:** preservar decisões e aprendizados validados, com origem rastreável.
+- **Histórico operacional:** registrar execuções, falhas, revisões e decisões editoriais da produção.
 
 Esses módulos descrevem a direção do produto, não funcionalidades prontas. O sistema deve preservar aprovação humana, verificação de licenças e controle de custos.
 
@@ -50,7 +52,6 @@ Esses módulos descrevem a direção do produto, não funcionalidades prontas. O
 | **Hórus — este repositório** | Aplicativo e referência central do produto e do planejamento |
 | [Hermes Agent](https://github.com/NousResearch/hermes-agent) | Motor de inteligência e orquestração previsto, por integração externa e sem fork inicial |
 | [Fábrica de canais](https://github.com/yannbastos/fabrica-canais) | Motor independente Python/CLI e Remotion; não exige o desktop para funcionar |
-| [Estudos de vídeos](https://github.com/yannbastos/estudos-videos-claude) | Base inicial de fontes, transcrições e resumos |
 | [Laboratório visual](https://github.com/yannbastos/horus-storybook) | Componentes e referências de interface em React/Storybook |
 
 A primeira etapa é inteiramente local, sem VPS. A migração incremental foi autorizada e está em andamento; os componentes atuais serão preservados até validar a equivalência funcional. Consulte [o planejamento de integração](docs/planejamento/README.md).
@@ -80,9 +81,13 @@ As próximas etapas estão em [docs/roadmap.md](docs/roadmap.md).
 
 ## Tecnologias
 
-- C# e .NET 10
-- [Avalonia UI](https://avaloniaui.net/) 12 para a interface desktop
-- xUnit v3 e Avalonia Headless para os testes
+- React/TypeScript e Tauri 2 para o novo desktop, com Rust nas integrações nativas.
+- Python/FastAPI e SQLite para APIs, tarefas e persistência local.
+- CLI `fabrica` e Remotion como motor audiovisual independente.
+- C#/.NET 10 e Avalonia 12 preservados para transcrição durante a migração.
+- Playwright, pytest, xUnit v3 e Avalonia Headless para validação.
+
+As instruções abaixo executam o desktop Avalonia. Para a nova stack e seu build, siga [migração local](docs/migracao-local.md).
 
 ## Pré-requisitos
 

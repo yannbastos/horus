@@ -1,11 +1,11 @@
 # Layout desktop audiovisual — primeira versão
 
-Escopo autorizado: evolução visual do aplicativo Avalonia existente. Não implementa Hermes, Radar, memória, produção ou acesso à fábrica. Não adiciona dependências nem modifica os outros repositórios.
+Escopo autorizado: evolução visual do aplicativo Avalonia existente. Não implementa Hermes, Radar, histórico operacional, produção ou acesso à fábrica. Não adiciona dependências nem modifica os outros repositórios.
 
 ## Organização
 
-- Visão geral como entrada, com identidade orbital e atalhos para Transcrição e prévia do Radar.
-- Navegação lateral: Visão geral, Radar, Biblioteca, Produção, Canais e Memória; Transcrição em Ferramentas e Ajustes no rodapé lateral.
+- Visão geral como entrada, com identidade orbital e atalhos para Produção e prévia do Radar.
+- Navegação lateral: Visão geral, Radar, Biblioteca, Produção, Canais e Histórico operacional; Transcrição em Ferramentas e Ajustes no rodapé lateral.
 - Transcrição existente preservada, com fila e texto mantidos ao trocar de tela.
 - Áreas futuras usam estados de preparação explícitos, sem cards de vídeos fictícios, estatísticas ou progresso que pareçam reais.
 - Tema claro, escuro e do sistema mantidos, com índigo, linhas finas, Archivo Expanded, Inter e Geist Mono.

@@ -43,7 +43,7 @@
             <RadioButton x:Name="NavLibrary" Classes="sidebar" GroupName="Nav" Content="Biblioteca" />
             <RadioButton x:Name="NavProduction" Classes="sidebar" GroupName="Nav" Content="Produção" />
             <RadioButton x:Name="NavChannels" Classes="sidebar" GroupName="Nav" Content="Canais" />
-            <RadioButton x:Name="NavMemory" Classes="sidebar" GroupName="Nav" Content="Memória" />
+            <RadioButton x:Name="NavHistory" Classes="sidebar" GroupName="Nav" Content="Histórico operacional" />
             <TextBlock Classes="label" FontSize="9" Text="FERRAMENTAS" Margin="12,24,0,10" />
             <RadioButton x:Name="NavTranscription" Classes="sidebar" GroupName="Nav" Content="Transcrição" />
           </StackPanel>
@@ -69,12 +69,12 @@
       </Border>
       <Panel>
         <views:OverviewView x:Name="HomeView" IsVisible="{Binding #NavHome.IsChecked}"
-                            TranscriptionRequested="OpenTranscription" RadarRequested="OpenRadar" />
+                            ProductionRequested="OpenProduction" RadarRequested="OpenRadar" />
         <views:WorkspacePreviewView x:Name="RadarView" IsVisible="{Binding #NavRadar.IsChecked}" DataContext="{Binding Radar}" />
         <views:WorkspacePreviewView x:Name="LibraryView" IsVisible="{Binding #NavLibrary.IsChecked}" DataContext="{Binding Library}" />
         <views:WorkspacePreviewView x:Name="ProductionView" IsVisible="{Binding #NavProduction.IsChecked}" DataContext="{Binding Production}" />
         <views:WorkspacePreviewView x:Name="ChannelsView" IsVisible="{Binding #NavChannels.IsChecked}" DataContext="{Binding Channels}" />
-        <views:WorkspacePreviewView x:Name="MemoryView" IsVisible="{Binding #NavMemory.IsChecked}" DataContext="{Binding Memory}" />
+        <views:WorkspacePreviewView x:Name="HistoryView" IsVisible="{Binding #NavHistory.IsChecked}" DataContext="{Binding History}" />
         <views:TranscriptionView x:Name="TranscriptionView" IsVisible="{Binding #NavTranscription.IsChecked}" DataContext="{Binding Transcription}" />
         <examples:SettingsExampleView x:Name="SettingsView" IsVisible="{Binding #NavSettings.IsChecked}" />
       </Panel>

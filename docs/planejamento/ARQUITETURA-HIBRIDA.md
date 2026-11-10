@@ -2,7 +2,7 @@
 
 > **Histórico:** a proposta VPS–PC foi substituída pela decisão de execução local em [STACK-LOCAL.md](STACK-LOCAL.md). Não contratar, configurar ou exigir VPS na primeira etapa. Os cenários de integridade e recuperação abaixo podem servir de referência, mas não são o plano de implantação vigente.
 
-Estado: contrato de responsabilidades proposto, sem infraestrutura instalada. Origem: [documento recebido](fontes/RESUMO-ARQUITETURA-MEMORIA-ATIVA.md). Reavaliar após diagnóstico local do Hermes. Nenhuma contratação, conexão remota ou integração está confirmada.
+Estado: contrato de responsabilidades proposto, sem infraestrutura instalada. Proposta histórica de distribuição de responsabilidades. Reavaliar após diagnóstico local do Hermes. Nenhuma contratação, conexão remota ou integração está confirmada.
 
 ## Objetivo e limites
 
@@ -47,7 +47,7 @@ No primeiro teste, tudo pode continuar no PC principal sem VPS. A separação em
 | Processo local, caminho real, recibo de execução e cancelamento | Adaptador local da fábrica |
 | Configuração editorial atual | `perfil.yaml` versionado; sem segunda configuração concorrente no banco |
 | Entrada utilizada por uma tentativa | Snapshot e hash do perfil/roteiro/briefing daquela execução |
-| Conhecimento durável | Markdown revisado, conforme [memória ativa](MEMORIA-ATIVA.md) |
+| Decisões operacionais | Markdown revisado, conforme [registros operacionais](MEMORIA-ATIVA.md) |
 
 Se a API do Hermes já oferecer alguma dessas garantias, mapear e reutilizar antes de construir a camada correspondente. Não gravar diretamente no banco interno do Hermes. IDs de produção e execução do agente são distintos e relacionados por referência.
 

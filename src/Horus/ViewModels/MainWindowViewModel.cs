@@ -6,10 +6,6 @@ public sealed class MainWindowViewModel
 
     public string StatusMessage => "APLICATIVO EM DESENVOLVIMENTO";
 
-    public IReadOnlyList<ExampleCard> ExampleCards => ExampleData.Cards;
-
-    public IReadOnlyList<ExampleSubject> ExampleSubjects => ExampleData.Subjects;
-
     public TranscriptionViewModel Transcription { get; } = new();
 
     public WorkspaceSection Radar { get; } = new(
@@ -18,20 +14,20 @@ public sealed class MainWindowViewModel
         "A próxima ideia começa com uma boa pergunta.",
         "A pesquisa de vídeos e canais ainda não está conectada. Esta tela apresenta a organização prevista para suas descobertas.",
         [
-            new("Referências", "Vídeos e canais reunidos para estudar formatos e assuntos."),
+            new("Referências", "Vídeos e canais reunidos para analisar formatos e desempenho."),
             new("Observações", "Fontes e sinais públicos, separados de hipóteses sobre desempenho."),
             new("Ideias salvas", "Oportunidades selecionadas por você para aprofundar depois.")
         ]);
 
     public WorkspaceSection Library { get; } = new(
-        "03 / BIBLIOTECA", "Seu repertório, em um lugar.",
-        "A organização prevista para vídeos, transcrições e materiais de referência.",
-        "Toda história começa com repertório.",
+        "03 / BIBLIOTECA", "Sua mídia, em um lugar.",
+        "Vídeos, áudios, transcrições e recursos da produção audiovisual.",
+        "Traga a mídia da sua próxima produção.",
         "A biblioteca ainda não está integrada. Para trabalhar com um arquivo agora, use Transcrição no menu lateral.",
         [
-            new("Materiais", "Referências organizadas por assunto e projeto."),
-            new("Transcrições", "Textos associados aos seus materiais, com espaço para revisão."),
-            new("Conexões", "Anotações e fontes que ajudam a transformar estudo em ideia.")
+            new("Mídia", "Vídeos, áudios e recursos organizados por produção."),
+            new("Transcrições", "Texto para revisar narração, roteiros e legendas."),
+            new("Arquivos finais", "Renders e materiais associados às entregas.")
         ]);
 
     public WorkspaceSection Production { get; } = new(
@@ -56,14 +52,14 @@ public sealed class MainWindowViewModel
             new("Formatos", "Organização de séries, Shorts e vídeos longos.")
         ]);
 
-    public WorkspaceSection Memory { get; } = new(
-        "06 / MEMÓRIA", "Aprendizado que acompanha você.",
-        "Um espaço para reunir decisões, observações e aprendizados que merecem continuar.",
-        "Boas escolhas também deixam referências.",
-        "A memória operacional ainda não está conectada. Nenhuma conversa ou preferência é registrada por esta tela.",
+    public WorkspaceSection History { get; } = new(
+        "06 / HISTÓRICO OPERACIONAL", "Cada produção deixa um registro.",
+        "Execuções, revisões e decisões da operação audiovisual.",
+        "Rastreie o caminho até a entrega.",
+        "O histórico operacional ainda não está conectado. Esta tela não registra execuções ou decisões.",
         [
-            new("Decisões", "Escolhas importantes e os motivos por trás delas."),
-            new("Aprendizados", "O que foi observado, revisado e validado."),
-            new("Experimentos", "Hipóteses e resultados, sem confundir expectativa com evidência.")
+            new("Execuções", "Etapas, falhas e novas tentativas por vídeo."),
+            new("Revisões", "Decisões editoriais associadas à versão aprovada."),
+            new("Resultados", "Custos e métricas das produções, quando disponíveis.")
         ]);
 }

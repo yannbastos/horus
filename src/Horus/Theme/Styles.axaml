@@ -120,16 +120,6 @@
       </Animation>
     </Style.Animations>
   </Style>
-  <Style Selector="Border.studyCard">
-    <Setter Property="Background" Value="{DynamicResource HorusBackgroundBrush}" />
-    <Setter Property="Transitions">
-      <Transitions><BrushTransition Property="Background" Duration="0:0:0.18" /><BrushTransition Property="BorderBrush" Duration="0:0:0.18" /></Transitions>
-    </Setter>
-  </Style>
-  <Style Selector="Border.studyCard:pointerover">
-    <Setter Property="Background" Value="{DynamicResource HorusSunkenBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource HorusAccentInkBrush}" />
-  </Style>
   <Style Selector="Button /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Transitions">
       <Transitions><BrushTransition Property="Background" Duration="0:0:0.14" /><BrushTransition Property="BorderBrush" Duration="0:0:0.14" /></Transitions>

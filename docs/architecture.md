@@ -18,7 +18,7 @@ src/Horus/              Aplicativo desktop
   Services/             Transcrição (Whisper), conversão de áudio (ffmpeg) e download do YouTube (yt-dlp)
   ViewModels/           Dados e estado apresentados pelas telas
   Views/                Telas em AXAML
-  Views/Examples/       Telas temporárias com dados fictícios para avaliar o design
+  Views/Examples/       Ajustes de tema do desktop Avalonia
 tests/Horus.Tests/      Testes automatizados
 docs/                   Documentação do projeto
 Horus.slnx              Solução do .NET
@@ -34,9 +34,9 @@ global.json             Versão mínima do SDK
 | `App` | Carrega o tema Fluent e cria a `MainWindow` com seu ViewModel |
 | `MainWindow` | Define o cabeçalho, a navegação, o rodapé e a área das telas |
 | `OverviewView` | Tela inicial audiovisual com atalhos de navegação e indicação das capacidades disponíveis e planejadas |
-| `WorkspacePreviewView`, `WorkspaceSection` | Apresentam conteúdo editorial das prévias Radar, Biblioteca, Produção, Canais e Memória, sem backend ou dados operacionais |
-| `Views/Examples`, `ExampleData` | Telas e dados fictícios, sem regras de negócio; devem ser removidos quando houver telas reais |
-| `MainWindowViewModel` | Fornece o nome do aplicativo, a mensagem de status, os dados de exemplo e o `TranscriptionViewModel` |
+| `WorkspacePreviewView`, `WorkspaceSection` | Apresentam conteúdo editorial das prévias Radar, Biblioteca, Produção, Canais e Histórico operacional, sem backend ou dados operacionais |
+| `Views/Examples/SettingsExampleView` | Ajustes de aparência do desktop Avalonia |
+| `MainWindowViewModel` | Fornece o nome do aplicativo, a mensagem de status, as seções audiovisuais e o `TranscriptionViewModel` |
 | `TranscriptionView` | Tela de transcrição: arrastar e soltar, diálogos de arquivo, área de transferência e layout |
 | `TranscriptionViewModel` | Fila de até 20 arquivos, transcrição, cancelamento, salvamento e download, sem depender da tela |
 | `TranscriptionService` | Baixa o modelo Whisper uma vez e transcreve o áudio, informando progresso e trechos |
@@ -87,7 +87,7 @@ Os modelos ficam em `%LOCALAPPDATA%\Horus\models`. ffmpeg e yt-dlp são programa
 
 A linguagem visual usa cantos retos, linhas finas, botões de alto contraste e três fontes: Archivo Expanded nos títulos, Inter nos textos e Geist Mono em rótulos curtos. Ela foi inspirada no estilo do [ArtCraft Launcher](https://github.com/storytold/craft-launcher), sem reutilizar sua marca, seus ícones ou seu código.
 
-O tema acompanha a configuração clara ou escura do sistema. As telas devem usar `DynamicResource` com os tokens de `Theme/Tokens.axaml`, nunca cores fixas, para que a troca de tema funcione. Os textos devem ter contraste mínimo de 4,5:1, verificado pelos testes. Textos longos de estudo devem usar Inter, não fontes monoespaçadas.
+O tema acompanha a configuração clara ou escura do sistema. As telas devem usar `DynamicResource` com os tokens de `Theme/Tokens.axaml`, nunca cores fixas, para que a troca de tema funcione. Os textos devem ter contraste mínimo de 4,5:1, verificado pelos testes. Roteiros e transcrições longos devem usar Inter, não fontes monoespaçadas.
 
 Archivo e Geist Mono são embutidas em versões estáticas e distribuídas sob a SIL Open Font License, com as licenças em `Assets/Fonts`. O Inter vem do pacote `Avalonia.Fonts.Inter`.
 
@@ -105,11 +105,11 @@ O teste abre a janela real e confere o que ela apresenta, sem depender de um amb
 
 ## Layout desktop audiovisual
 
-O usuário autorizou uma primeira evolução visual do aplicativo desktop após o planejamento. A janela abre na Visão geral, com navegação lateral para Radar, Biblioteca, Produção, Canais, Memória, Transcrição e Ajustes. A transcrição conserva o mesmo ViewModel e a mesma fila ao navegar. Os botões da Visão geral mudam a tela por eventos da View, sem executar ações de produção.
+O usuário autorizou uma primeira evolução visual do aplicativo desktop após o planejamento. A janela abre na Visão geral, com navegação lateral para Radar, Biblioteca, Produção, Canais, Histórico operacional, Transcrição e Ajustes. A transcrição conserva o mesmo ViewModel e a mesma fila ao navegar. Os botões da Visão geral mudam a tela por eventos da View, sem executar ações de produção.
 
-As cinco áreas futuras usam um mesmo controle de prévia com conteúdo editorial imutável. Não há métricas, produções, canais ou memórias carregados nessas telas. O cartão Hermes informa integração pendente; não é uma verificação de conexão. A integração real permanece fora do escopo deste incremento.
+As cinco áreas futuras usam um mesmo controle de prévia com conteúdo editorial imutável. Não há métricas, produções, canais ou registros operacionais carregados nessas telas. O cartão Hermes informa integração pendente; não é uma verificação de conexão. A integração real permanece fora do escopo deste incremento.
 
-O layout usa os tokens existentes, fontes embutidas e estilos específicos para a barra lateral e os painéis. A janela padrão mede 1320 × 840, com mínimo de 1040 × 680 e rolagem vertical no conteúdo. Início, Lista e Leitura antigos permanecem no código como exemplos, mas não aparecem na navegação principal.
+O layout usa os tokens existentes, fontes embutidas e estilos específicos para a barra lateral e os painéis. A janela padrão mede 1320 × 840, com mínimo de 1040 × 680 e rolagem vertical no conteúdo. As telas antigas de Início, Lista e Leitura foram removidas do código; Ajustes permanece para seleção do tema.
 
 Para inspeção visual, `WorkspaceLayoutTests` exporta PNGs quando `HORUS_LAYOUT_PREVIEW_DIR` está definida. Os arquivos gerados em `artifacts/` são ignorados pelo Git. Imagens selecionadas para revisão estão em [layout-desktop.md](layout-desktop.md).
 
@@ -124,11 +124,11 @@ Para inspeção visual, `WorkspaceLayoutTests` exporta PNGs quando `HORUS_LAYOUT
 
 ### Composição visual HORUS
 
-As telas de exemplo combinam a geometria reta e as divisórias do launcher com superfícies em tons de índigo e a composição gráfica inspirada no Hermes. A identidade é própria: um olho geométrico cercado por órbitas vetoriais, desenhado em AXAML, sem imagens, marcas ou código das referências.
+As telas audiovisuais combinam a geometria reta e as divisórias do launcher com superfícies em tons de índigo e a composição gráfica inspirada no Hermes. A identidade é própria: um olho geométrico cercado por órbitas vetoriais, desenhado em AXAML, sem imagens, marcas ou código das referências.
 
-A tela inicial apresenta uma faixa de abertura com essa ilustração. As órbitas executam uma animação de entrada de 2,4 segundos e depois ficam estáticas. Cards e botões usam transições curtas de cor ao passar o ponteiro. Não há animação contínua durante a leitura. Os temas claro e escuro continuam usando os mesmos tokens dinâmicos, com contraste dos textos verificado pelos testes existentes.
+A Visão geral apresenta uma faixa de abertura com essa ilustração. As órbitas executam uma animação de entrada de 2,4 segundos e depois ficam estáticas. Cards e botões usam transições curtas de cor ao passar o ponteiro. Não há animação contínua durante a leitura. Os temas claro e escuro continuam usando os mesmos tokens dinâmicos, com contraste dos textos verificado pelos testes existentes.
 
-Essas telas continuam sendo exemplos com dados fictícios. A tela de transcrição usa a mesma linguagem visual: painel lateral rebaixado com fontes, opções e fila; etapas numeradas (transcrever, salvar, próximo) que se preenchem conforme o progresso; e uma área de leitura em Inter para o texto.
+As áreas ainda não integradas apresentam estados de preparação. A tela de transcrição usa a mesma linguagem visual: painel lateral rebaixado com fontes, opções e fila; etapas numeradas (transcrever, salvar, próximo) que se preenchem conforme o progresso; e uma área de leitura em Inter para o texto.
 
 ## Laboratório visual em React
 

@@ -6,6 +6,12 @@ test('preserva navegação, temas e organização nos tamanhos do desktop', asyn
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Um novo olhar para criar.' })).toBeVisible();
   await expect(page.getByText('Integração pendente', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'ABRIR PRODUÇÃO', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Da ideia à próxima entrega.' })).toBeVisible();
+  await page.getByRole('button', { name: 'Histórico operacional', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Cada produção deixa um registro.' })).toBeVisible();
+  await page.getByRole('button', { name: 'Biblioteca', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Sua mídia, em um lugar.' })).toBeVisible();
   await page.getByRole('button', { name: 'Ajustes', exact: true }).click();
   await page.getByRole('button', { name: 'ESCURO', exact: true }).click();
   await page.getByRole('button', { name: 'Visão geral', exact: true }).click();

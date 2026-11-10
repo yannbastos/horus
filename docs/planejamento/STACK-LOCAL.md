@@ -24,7 +24,7 @@ FastAPI é a fonte oficial do estado das produções; Hermes coordena agentes e 
 
 ## 2. Auditoria e reaproveitamento
 
-Auditoria original realizada sem modificar código, instalar ferramentas ou executar integração. Referências locais: Hórus `3f6a97c`, fábrica `87102ac`, Storybook `cf3cf7b`, estudos `1cecfd4`. Na auditoria, o layout estava somente em `feat/layout-desktop-audiovisual`, commit `7ce68c4`; posteriormente foi integrado à branch principal. Consulte o documento de migração para o estado posterior à autorização de implementação.
+Auditoria original realizada sem modificar código, instalar ferramentas ou executar integração. Referências locais: Hórus `3f6a97c`, fábrica `87102ac`, Storybook `cf3cf7b`. Na auditoria, o layout estava somente em `feat/layout-desktop-audiovisual`, commit `7ce68c4`; posteriormente foi integrado à branch principal. Consulte o documento de migração para o estado posterior à autorização de implementação.
 
 | Componente | Evidência | Tratamento |
 |---|---|---|
@@ -32,7 +32,6 @@ Auditoria original realizada sem modificar código, instalar ferramentas ou exec
 | Layout audiovisual | `MainWindow`, `OverviewView`, prévias e capturas da branch de layout | Referência visual principal para a migração |
 | Storybook | `src/horus/Horus.tsx`, `tokens.css`, `horus.css`, fontes e histórias | Reutilizar componentes compatíveis; navegação atual é anterior ao layout desktop |
 | Fábrica | `scripts/fabrica/`, perfis, alinhamento e Remotion | Adaptar chamadas e observação, preservando o motor |
-| Estudos | Índices, resumos e transcrições de 13 fontes | Preservar; consulta posterior, sem regenerar arquivos |
 | FastAPI/Tauri/persistência de jobs | Não encontrados no código do projeto | Implementação nova, após aprovação |
 | Pastas locais HORUS Web | Frontend e backend vazios | Não tratar como sistema existente nem mover repositórios para iniciar |
 
@@ -44,7 +43,7 @@ O design oficial para esta migração é o desktop audiovisual, complementado pe
 
 | Elemento | Critério de preservação |
 |---|---|
-| Navegação | Visão geral, Radar, Biblioteca, Produção, Canais, Memória, Transcrição e Ajustes |
+| Navegação | Visão geral, Radar, Biblioteca, Produção, Canais, Histórico operacional, Transcrição e Ajustes |
 | Geometria | Barra lateral de 216 px; cabeçalho, conteúdo e rodapé equivalentes |
 | Referências de tamanho | 1320 × 840 e 1040 × 680, nos dois temas |
 | Cores | Tokens existentes convertidos fielmente para CSS, incluindo ordem do alfa AXAML/CSS |
@@ -83,7 +82,7 @@ horus/
   docs/
 ```
 
-Fábrica, estudos e Storybook continuam nos repositórios existentes. Não há migração de monorepo ou remoção do C# autorizada. Caminhos da fábrica e das bibliotecas serão configuráveis.
+Fábrica e Storybook continuam nos repositórios existentes. Não há migração de monorepo ou remoção do C# autorizada. Caminhos da fábrica e das bibliotecas serão configuráveis.
 
 ## 5. Dependências e fronteiras
 
@@ -128,7 +127,7 @@ Autorizar somente arquivos selecionados e escopos necessários; não expor o dis
 
 Preservar o Avalonia até validar as funções equivalentes. A migração da transcrição não integra a primeira prova e deve reproduzir depois: limite de 20 arquivos, FIFO, texto parcial em cancelamento, revisão, salvamento, bloqueio de avanço até salvar a revisão atual e download sem sobrescrever resultado em edição.
 
-Memória operacional começa em Markdown versionado e SQLite; aprendizados propostos não alteram regras críticas ou perfil editorial automaticamente. `perfil.yaml` continua oficial. Não regenerar fontes de estudo.
+Histórico operacional começa em Markdown versionado e SQLite; registros operacionais propostos não alteram regras críticas ou perfil editorial automaticamente. `perfil.yaml` continua oficial. Preservar os arquivos de mídia do operador.
 
 ## 8. Desempenho e testes
 

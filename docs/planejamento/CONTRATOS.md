@@ -9,7 +9,7 @@ Estado: rascunhos documentais. Nenhum endpoint, banco ou adaptador foi implement
 | Responsabilidades e indisponibilidade VPS–PC | [Arquitetura híbrida](ARQUITETURA-HIBRIDA.md) |
 | Ferramentas, solicitações, resultados e tentativa | [Contrato no repositório da fábrica](https://github.com/yannbastos/fabrica-canais/blob/docs/planejamento-horus-hermes-2026-11-10/docs/CONTRATO-HORUS-FABRICA.md) |
 | Exemplos de consulta, resultado e render | [Exemplos sintéticos da fábrica](https://github.com/yannbastos/fabrica-canais/tree/docs/planejamento-horus-hermes-2026-11-10/docs/exemplos) |
-| Recuperação e validação de aprendizado | [Memória ativa](MEMORIA-ATIVA.md) |
+| Recuperação e validação de resultado operacional | [Registros operacionais](MEMORIA-ATIVA.md) |
 
 Não duplicar schemas ou configuração editorial entre repositórios. Os nomes `draft-1` e operações pontuadas identificam propostas, não contratos já publicados por Hermes ou comandos atuais do CLI.
 

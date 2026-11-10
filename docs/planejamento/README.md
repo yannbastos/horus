@@ -1,39 +1,27 @@
-# Continuidade do Hórus audiovisual
+# Planejamento do Hórus audiovisual
 
-Registro em 2026-11-10. Estado: planejamento, sem implementação da integração.
+O Hórus tem foco exclusivo em inteligência e operação audiovisual. A implementação incremental da stack local foi autorizada; o estado comprovado está no [guia de migração](../migracao-local.md).
 
-**Comece pela [carta ao próximo Codex](CARTA-AO-CODEX.md).**
+## Documentos vigentes
 
-**Decisão mais recente:** [stack local e migração sem redesign](STACK-LOCAL.md). React/TypeScript, Tauri 2, Rust mínimo, FastAPI e SQLite são a direção oficial. Não utilizar VPS nesta etapa. A implementação depende de aprovação do incremento.
+- [Continuidade técnica](CARTA-AO-CODEX.md): contexto e próximos passos para agentes.
+- [Visão do produto](../vision.md): escopo audiovisual e limites.
+- [Stack local](STACK-LOCAL.md): planejamento técnico e auditoria inicial.
+- [Diagnóstico](DIAGNOSTICO.md): evidências da fábrica e questões da integração Hermes.
+- [Plano](PLANO.md): tarefas, dependências e critérios.
+- [Registros operacionais](MEMORIA-ATIVA.md): decisões, revisões e rastreabilidade da produção.
+- [Contratos](CONTRATOS.md) e [validação](VALIDACAO.md): propostas de integração externa, sujeitas à versão real das ferramentas.
+- [Decisões vigentes](CONVERSA.md): síntese das orientações do operador.
 
-## Documentos
+[Arquitetura híbrida](ARQUITETURA-HIBRIDA.md) é uma hipótese histórica substituída pela operação local. Não implementá-la com base nesse documento.
 
-- [Stack local](STACK-LOCAL.md): auditoria, arquitetura, preservação visual, dependências, prova de conceito e critérios de validação vigentes.
-
-- [Visão e decisões](VISAO.md): direção escolhida pelo usuário e limites de autorização.
-- [Diagnóstico](DIAGNOSTICO.md): evidências locais, pesquisa do Hermes e questões ainda abertas.
-- [Plano de aplicação](PLANO.md): tarefas, critérios de aceite e inspeção na máquina principal.
-- [Memória da conversa](CONVERSA.md): evolução das decisões e orientações substituídas.
-- [Arquitetura híbrida](ARQUITETURA-HIBRIDA.md): proposta histórica VPS–PC, substituída pelo escopo local; preservar como histórico.
-- [Memória ativa](MEMORIA-ATIVA.md): fontes oficiais, evidências e validação de aprendizados.
-- [Mapa de contratos](CONTRATOS.md): direções de comunicação e especificação externa da fábrica.
-- [Plano de validação](VALIDACAO.md): cenários de falha, portões de aceite e modelo do relatório local; testes ainda não executados.
-- [Fonte recebida](fontes/RESUMO-ARQUITETURA-MEMORIA-ATIVA.md): texto extraído do DOCX fornecido, com hash de origem; não confundir relatos com auditoria.
-
-## Repositórios
+## Componentes independentes
 
 | Repositório | Papel |
 |---|---|
-| [horus](https://github.com/yannbastos/horus) | Aplicativo existente e referência central deste planejamento |
-| [fabrica-canais](https://github.com/yannbastos/fabrica-canais) | Motor Python/CLI e Remotion, independente |
-| [estudos-videos-claude](https://github.com/yannbastos/estudos-videos-claude) | Fontes, transcrições e resumos existentes |
-| [horus-storybook](https://github.com/yannbastos/horus-storybook) | Laboratório visual React/Storybook |
-| [hermes-agent](https://github.com/NousResearch/hermes-agent) | Dependência externa; não criar fork nesta etapa |
+| [Hórus](https://github.com/yannbastos/horus) | Aplicativo e regras da operação |
+| [Fábrica](https://github.com/yannbastos/fabrica-canais) | Motor Python/CLI e Remotion |
+| [Storybook](https://github.com/yannbastos/horus-storybook) | Referências visuais audiovisuais |
+| [Hermes Agent](https://github.com/NousResearch/hermes-agent) | Inteligência externa futura, sem fork inicial |
 
-O pacote inicial foi incorporado às branches principais dos quatro repositórios. O layout audiovisual de `feat/layout-desktop-audiovisual` também foi integrado à principal do Hórus. Os históricos foram mantidos separados; nenhuma migração para monorepo foi aprovada.
-
-## Como interpretar a documentação existente
-
-`docs/architecture.md` descreve o aplicativo implementado. A visão e o roadmap anteriores descrevem sua origem como ferramenta de estudos. A nova direção audiovisual está em `VISAO.md`; isso não transforma funcionalidades planejadas em existentes nem autoriza reescrita do aplicativo.
-
-Este pacote é uma síntese revisada do contexto disponível, não uma exportação literal do chat. Não contém configurações privadas, credenciais, mídia ou transcrições de raciocínio interno.
+Nenhuma migração para monorepo está autorizada. Não confundir contratos propostos com endpoints implementados. Preservar dados do operador, aprovações e controles de licença/custo.

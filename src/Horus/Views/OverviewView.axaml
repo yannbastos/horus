@@ -15,12 +15,12 @@
       <Border Background="{DynamicResource HorusSunkenBrush}" BorderBrush="{DynamicResource HorusLineBrush}" BorderThickness="1" ClipToBounds="True">
         <Grid ColumnDefinitions="*,220" MinHeight="260">
           <StackPanel Margin="28" VerticalAlignment="Center" Spacing="16">
-            <TextBlock Classes="label" FontSize="10" Text="PESQUISE. CONECTE. TRANSFORME." Foreground="{DynamicResource HorusAccentInkBrush}" />
+            <TextBlock Classes="label" FontSize="10" Text="PESQUISE. PLANEJE. PRODUZA." Foreground="{DynamicResource HorusAccentInkBrush}" />
             <TextBlock Classes="display" FontSize="32" Text="Da referência&#10;à sua próxima história." TextWrapping="Wrap" />
             <TextBlock Classes="muted" FontSize="14" MaxWidth="470" HorizontalAlignment="Left" TextWrapping="Wrap"
-                       Text="Um espaço para estudar conteúdos, descobrir caminhos e dar forma às suas ideias." />
+                       Text="Pesquise oportunidades, planeje vídeos originais e acompanhe sua produção audiovisual." />
             <WrapPanel>
-              <Button x:Name="OpenTranscriptionButton" Classes="primary" Content="ABRIR TRANSCRIÇÃO" Click="RequestTranscription" Margin="0,0,10,6" />
+              <Button x:Name="OpenProductionButton" Classes="primary" Content="ABRIR PRODUÇÃO" Click="RequestProduction" Margin="0,0,10,6" />
               <Button x:Name="OpenRadarButton" Content="EXPLORAR RADAR" Click="RequestRadar" Margin="0,0,0,6" />
             </WrapPanel>
           </StackPanel>
@@ -50,10 +50,10 @@
           </Border>
           <Border Classes="workspaceCard" Margin="0,0,10,0">
             <StackPanel Spacing="12">
-              <TextBlock Classes="label" Text="02 / COMPREENDER" Foreground="{DynamicResource HorusAccentInkBrush}" />
-              <TextBlock Classes="display" FontSize="17" Text="Transforme em repertório." TextWrapping="Wrap" />
-              <TextBlock Classes="muted" FontSize="13" TextWrapping="Wrap" Text="Transcreva seus materiais e encontre novas conexões no conteúdo." />
-              <TextBlock Classes="label" FontSize="9" Text="TRANSCRIÇÃO · DISPONÍVEL" Foreground="{DynamicResource HorusGoodBrush}" />
+              <TextBlock Classes="label" Text="02 / PLANEJAR" Foreground="{DynamicResource HorusAccentInkBrush}" />
+              <TextBlock Classes="display" FontSize="17" Text="Prepare o próximo vídeo." TextWrapping="Wrap" />
+              <TextBlock Classes="muted" FontSize="13" TextWrapping="Wrap" Text="Defina abordagem, roteiro, título e direção visual antes de produzir." />
+              <TextBlock Classes="label" FontSize="9" Text="PLANEJAMENTO · EM PREPARAÇÃO" Foreground="{DynamicResource HorusGoodBrush}" />
             </StackPanel>
           </Border>
           <Border Classes="workspaceCard">
@@ -70,9 +70,9 @@
         <Border Classes="workspaceCard">
           <StackPanel Spacing="14">
             <TextBlock Classes="label" Text="SEU PRÓXIMO PASSO" />
-            <TextBlock Classes="display" FontSize="21" Text="Comece pelo conteúdo." />
-            <TextBlock Classes="muted" TextWrapping="Wrap" Text="Abra um áudio ou vídeo na transcrição. Você pode revisar, editar e salvar o texto antes de seguir para o próximo arquivo." />
-            <TextBlock Classes="label" FontSize="9" Text="ARQUIVOS LOCAIS · TEXTO SOB SEU CONTROLE" />
+            <TextBlock Classes="display" FontSize="21" Text="Acompanhe sua produção." />
+            <TextBlock Classes="muted" TextWrapping="Wrap" Text="Organize sua mídia, consulte o perfil do canal e acompanhe as etapas disponíveis da fábrica." />
+            <TextBlock Classes="label" FontSize="9" Text="MÍDIA LOCAL · CONTROLE EDITORIAL" />
           </StackPanel>
         </Border>
         <Border Grid.Column="2" Classes="workspaceCard" Background="{DynamicResource HorusSunkenBrush}">

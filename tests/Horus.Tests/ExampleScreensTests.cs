@@ -17,7 +17,7 @@ public class ExampleScreensTests
     [InlineData("NavLibrary", "LibraryView")]
     [InlineData("NavProduction", "ProductionView")]
     [InlineData("NavChannels", "ChannelsView")]
-    [InlineData("NavMemory", "MemoryView")]
+    [InlineData("NavHistory", "HistoryView")]
     [InlineData("NavSettings", "SettingsView")]
     public void Navigation_shows_only_the_selected_screen(string option, string screen)
     {
@@ -26,7 +26,7 @@ public class ExampleScreensTests
 
         window.GetControl<RadioButton>(option).IsChecked = true;
 
-        foreach (var name in new[] { "TranscriptionView", "HomeView", "RadarView", "LibraryView", "ProductionView", "ChannelsView", "MemoryView", "SettingsView" })
+        foreach (var name in new[] { "TranscriptionView", "HomeView", "RadarView", "LibraryView", "ProductionView", "ChannelsView", "HistoryView", "SettingsView" })
         {
             Assert.Equal(name == screen, window.GetControl<UserControl>(name).IsVisible);
         }
