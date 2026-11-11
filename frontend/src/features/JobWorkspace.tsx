@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, observeJob, terminalStatuses } from '../services/api';
 import type { Connection, FactoryPayload, Job, JobEvent } from '../services/api';
 import { nativeDesktop } from '../platform/desktop';
@@ -16,6 +16,10 @@ function JobDetails({ job, connection, refresh }: { job: FactoryJob; connection:
   const [events, setEvents] = useState<JobEvent[]>([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const logsRef = useRef<HTMLPreElement>(null);
+  useEffect(() => {
+    if (logsRef.current) logsRef.current.scrollTop = logsRef.current.scrollHeight;
+  }, [events]);
   useEffect(() => {
     const controller = new AbortController();
     setEvents([]);
@@ -46,7 +50,7 @@ function JobDetails({ job, connection, refresh }: { job: FactoryJob; connection:
       ? <button className="button" disabled={busy || job.status === 'cancel_requested'} onClick={() => void control('cancel')}>CANCELAR TAREFA</button>
       : job.status !== 'succeeded' && <button className="button" disabled={busy} onClick={() => void control('retry')}>TENTAR NOVAMENTE</button>}</div>
     {error && <p className="error" role="alert">{error}</p>}
-    <details open><summary>Histórico e logs</summary><pre className="logs" aria-label="Logs da tarefa">{events.map(event => `${event.kind === 'state' ? 'estado' : event.kind}: ${event.message}`).join('\n') || 'Aguardando eventos…'}</pre></details>
+    <details open><summary>Histórico e logs</summary><pre ref={logsRef} className="logs" aria-label="Logs da tarefa">{events.map(event => `${event.kind === 'state' ? 'estado' : event.kind}: ${event.message}`).join('\n') || 'Aguardando eventos…'}</pre></details>
     {job.result != null && <details><summary>Resultado</summary><pre className="logs">{JSON.stringify(job.result, null, 2)}</pre></details>}
   </article>;
 }

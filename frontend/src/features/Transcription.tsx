@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, ApiError, observeJob, terminalStatuses } from '../services/api';
 import type { Connection, Job, JobEvent } from '../services/api';
-import { nativeDesktop, onFileDrop, selectDirectory, selectMediaFiles, selectSavePath } from '../platform/desktop';
+import { nativeDesktop, onFileDrop, selectDirectory, selectMediaFiles, selectSavePath, transcriptionExtensions } from '../platform/desktop';
 import { inspectAttachment, InvalidReceiptError, ReceiptStorageError, saveAttachment } from '../services/transcriptionRecovery';
 import type { Attachment, MediaPayload } from '../services/transcriptionRecovery';
 
@@ -110,6 +110,18 @@ export default function Transcription({ connection, hidden }: { connection: Conn
     return accepted.length;
   }
 
+  function canRemoveFromQueue(index: number) {
+    if (index > 0) return true;
+    return !busy && !completed && !transcript.trim();
+  }
+
+  function dequeue(index: number) {
+    if (!canRemoveFromQueue(index)) return;
+    const next = queueRef.current.filter((_, i) => i !== index);
+    replaceQueue(next);
+    setStatus(`Item removido da fila. Fila: ${next.length}/${maxQueue}.`);
+  }
+
   async function browse() {
     if (busy || flight.current) return;
     setSaving(true);
@@ -128,7 +140,16 @@ export default function Transcription({ connection, hidden }: { connection: Conn
       const state = dropState.current;
       if (state.hidden || state.busy) { setDragging(false); return; }
       setDragging(hovering);
-      if (paths.length) state.enqueue(paths);
+      if (paths.length) {
+        const validExtensions = new Set(transcriptionExtensions.map(ext => `.${ext.toLowerCase()}`));
+        const mediaPaths = paths.filter(path => {
+          const dot = path.lastIndexOf('.');
+          return dot !== -1 && validExtensions.has(path.slice(dot).toLowerCase());
+        });
+        const ignored = paths.length - mediaPaths.length;
+        if (mediaPaths.length) state.enqueue(mediaPaths);
+        if (ignored > 0) setStatus(`${ignored} arquivo(s) ignorado(s): formato incompatível.`);
+      }
     }).then(unlisten => { if (cancelled) unlisten(); else release = unlisten; })
       .catch(reason => { if (!cancelled) setStatus(`Não foi possível ativar arrastar arquivos: ${message(reason)}`); });
     return () => { cancelled = true; release?.(); };
@@ -240,7 +261,7 @@ export default function Transcription({ connection, hidden }: { connection: Conn
           setStatus(`Vídeo salvo em ${result.path}. ${added ? 'Adicionado ao final da fila.' : 'A fila está cheia; o arquivo foi preservado no destino.'}`);
         } else setStatus(`Download ${job.status}: ${job.error ?? 'Consulte o histórico.'}`);
       } else if (job.status === 'succeeded') {
-        setTranscript(result?.text ?? partial); setCompleted(true); setProgress(100);
+        setTranscript(attachment.previous + (result?.text ?? partial)); setCompleted(true); setProgress(100);
         setStatus(attachment.id && !observed ? 'Transcrição recuperada do histórico. Salve o .txt antes de Próximo vídeo.'
           : `Concluído em ${elapsed(started)}${deviceUsed ? ` usando ${deviceUsed}` : ''}. Salve o .txt antes de Próximo vídeo.`);
       } else {
@@ -331,15 +352,16 @@ export default function Transcription({ connection, hidden }: { connection: Conn
   async function save() {
     if (busy || !(completed || transcript.trim())) return;
     const text = transcript;
+    const wasSaved = saved;
     const startRevision = revision.current;
     const suggested = `${fileName(current ?? 'transcricao').replace(/\.[^.]+$/, '')}.txt`;
-    setSaving(true); setSaved(false);
+    setSaving(true);
     try {
       let target = suggested;
       if (nativeDesktop) {
         if (!connection) throw new Error('O backend local precisa estar disponível para salvar.');
         const path = await selectSavePath(suggested);
-        if (!path) return;
+        if (!path) { setSaved(wasSaved); return; }
         target = (await api<{ path: string }>(connection, '/v1/transcriptions/save', { method: 'POST', body: JSON.stringify({ path, text }) })).path;
       } else {
         const link = document.createElement('a');
@@ -352,6 +374,7 @@ export default function Transcription({ connection, hidden }: { connection: Conn
       setSaved(unchanged);
       setStatus(unchanged ? `Salvo em ${target}` : `Salvo em ${target}, mas o texto foi editado. Salve novamente antes de avançar.`);
     } catch (reason) {
+      setSaved(wasSaved);
       setStatus(`Erro ao salvar: ${message(reason)} Escolha outro local ou verifique as permissões e tente novamente. A transcrição foi preservada.`);
     } finally { setSaving(false); }
   }
@@ -394,7 +417,27 @@ export default function Transcription({ connection, hidden }: { connection: Conn
         <label>Idioma<select value={language} onChange={e => setLanguage(e.target.value)} disabled={busy}>{languages.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label></div>
       <div className="stack"><div className="row spread"><p className="eyebrow">FILA</p><span className="tag" aria-label="Arquivos na fila">{queue.length}/{maxQueue}</span></div>
         {queue.length === 0 ? <p className="muted small-text">A fila está vazia. O primeiro arquivo da fila é sempre o atual.</p>
-          : <ol className="queue" aria-label="Fila de transcrição">{queue.map((file, index) => <li key={`${index}-${file}`} title={file}><span>{fileName(file)}</span><small>{folder(file)}</small></li>)}</ol>}</div>
+          : <ol className="queue" aria-label="Fila de transcrição">
+              {queue.map((file, index) => (
+                <li key={`${index}-${file}`} title={file}>
+                  <div className="queue-file-info">
+                    <span>{fileName(file)}</span>
+                    <small>{folder(file)}</small>
+                  </div>
+                  {canRemoveFromQueue(index) && (
+                    <button
+                      type="button"
+                      className="queue-remove"
+                      title={`Remover ${fileName(file)} da fila`}
+                      aria-label={`Remover ${fileName(file)} da fila`}
+                      onClick={(e) => { e.stopPropagation(); dequeue(index); }}
+                    >
+                      &times;
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ol>}</div>
       <section className="stack" aria-label="Histórico de transcrições e downloads">
         <p className="eyebrow">TAREFAS RECUPERÁVEIS</p>
         <button className="button" disabled={!connection || following} onClick={() => setHistoryRevision(value => value + 1)}>ATUALIZAR HISTÓRICO</button>
@@ -414,8 +457,10 @@ export default function Transcription({ connection, hidden }: { connection: Conn
         <button className="button primary" disabled={busy || completed || !current || !connection} onClick={() => void transcribe()}>TRANSCREVER</button>
         <button className="button" disabled={!active?.id || !!invalidReceipt} onClick={() => void cancel()}>CANCELAR</button>
         <button className="button" disabled={busy || !completed || !saved || queue.length < 2} onClick={() => void next()}>PRÓXIMO VÍDEO</button>
-        <div className={`progress ${active?.payload.operation === 'youtube.download' ? 'indeterminate' : ''}`} role="progressbar" aria-label="Progresso" aria-valuemin={0} aria-valuemax={100} aria-valuenow={active?.payload.operation === 'youtube.download' ? undefined : progress}><span style={{ width: `${progress}%` }} /></div>
-        <span className="eyebrow progress-value">{progress}%</span>
+        <div className="progress-container">
+          <div className={`progress ${active?.payload.operation === 'youtube.download' ? 'indeterminate' : ''}`} role="progressbar" aria-label="Progresso" aria-valuemin={0} aria-valuemax={100} aria-valuenow={active?.payload.operation === 'youtube.download' ? undefined : progress}><span style={{ width: `${progress}%` }} /></div>
+          <span className="eyebrow progress-value">{progress}%</span>
+        </div>
       </div>
       {warning && <p className="error" role="alert">{warning}</p>}
       {storageError && <p className="error" role="alert">{storageError}</p>}
@@ -427,9 +472,13 @@ export default function Transcription({ connection, hidden }: { connection: Conn
         <button className="button" disabled={!connection} onClick={() => void follow(active)}>RETOMAR ACOMPANHAMENTO</button></div>}
       <textarea className="transcript" aria-label="Transcrição" value={transcript} readOnly={busy} onChange={e => edit(e.target.value)}
         placeholder="A transcrição aparecerá aqui. Adicione um arquivo e clique em Transcrever." />
-      <div className="status-bar"><p role="status" title={status}>{status}</p>
-        <button className="button" disabled={!transcript} onClick={() => void copy()}>COPIAR</button>
-        <button className="button primary" disabled={busy || !(completed || transcript.trim())} onClick={() => void save()}>SALVAR .TXT</button></div>
+      <div className="status-bar">
+        <p role="status" title={status}>{status}</p>
+        <div className="status-actions">
+          <button className="button" disabled={!transcript} onClick={() => void copy()}>COPIAR</button>
+          <button className="button primary" disabled={busy || !(completed || transcript.trim())} onClick={() => void save()}>SALVAR .TXT</button>
+        </div>
+      </div>
     </section>
   </div>;
 }

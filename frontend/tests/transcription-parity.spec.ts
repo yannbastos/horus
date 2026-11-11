@@ -213,3 +213,78 @@ test('cancelamento preserva parcial e ignora drop durante execução', async ({ 
   await expect(page.getByRole('heading', { name: 'atual.wav', exact: true })).toBeVisible();
   expect(jobs).toHaveLength(1);
 });
+
+test('remoção individual de arquivos da fila preserva a ordem e não afeta o processamento atual', async ({ page }) => {
+  await setup(page);
+  await pick(page, ['C:/audio/primeiro.mp3', 'C:/audio/segundo.wav', 'C:/audio/terceiro.m4a']);
+  await expect(page.getByLabel('Arquivos na fila')).toHaveText('3/20');
+
+  const items = page.getByLabel('Fila de transcrição').locator('li');
+  await expect(items.nth(0)).toContainText('primeiro.mp3');
+  await expect(items.nth(1)).toContainText('segundo.wav');
+  await expect(items.nth(2)).toContainText('terceiro.m4a');
+
+  // Remover o segundo arquivo ('segundo.wav')
+  const removeBtn = items.nth(1).getByRole('button', { name: 'Remover segundo.wav da fila' });
+  await expect(removeBtn).toBeVisible();
+  await removeBtn.click();
+
+  // Fila agora tem 2 itens: primeiro.mp3 e terceiro.m4a preservando a ordem
+  await expect(page.getByLabel('Arquivos na fila')).toHaveText('2/20');
+  await expect(items.nth(0)).toContainText('primeiro.mp3');
+  await expect(items.nth(1)).toContainText('terceiro.m4a');
+  await expect(page.getByRole('heading', { name: 'primeiro.mp3', exact: true })).toBeVisible();
+});
+
+test('remoção da fila protege arquivo em processamento, texto não salvo e respeita limite de 20', async ({ page }) => {
+  const { jobs } = await setup(page, 'partial');
+  await pick(page, ['C:/audio/executando.mp3', 'C:/audio/pendente.mp3']);
+  await expect(page.getByLabel('Arquivos na fila')).toHaveText('2/20');
+
+  const items = page.getByLabel('Fila de transcrição').locator('li');
+
+  // Item 0 com texto não salvo não pode ser removido
+  await textBox(page).fill('Texto digitado manualmente');
+  await expect(items.nth(0).getByRole('button', { name: /Remover/ })).toHaveCount(0);
+  // Mas item 1 (pendente) pode ser removido
+  await expect(items.nth(1).getByRole('button', { name: /Remover/ })).toHaveCount(1);
+
+  // Limpa o texto
+  await textBox(page).fill('');
+  // Item 0 sem texto e ocioso pode ser removido
+  await expect(items.nth(0).getByRole('button', { name: /Remover/ })).toHaveCount(1);
+
+  // Inicia transcrição: modo 'partial' mantém status 'running' (busy)
+  await transcribe(page);
+  await expect(textBox(page)).toHaveValue('Parcial preservado.\n');
+  // Durante processamento, item 0 NUNCA pode ser removido
+  await expect(items.nth(0).getByRole('button', { name: /Remover/ })).toHaveCount(0);
+  // Item 1 ainda pode ser removido da fila enquanto o atual processa
+  const removePendente = items.nth(1).getByRole('button', { name: 'Remover pendente.mp3 da fila' });
+  await expect(removePendente).toBeVisible();
+  await removePendente.click();
+  await expect(page.getByLabel('Arquivos na fila')).toHaveText('1/20');
+  await expect(items.nth(0)).toContainText('executando.mp3');
+
+  // Cancela para liberar busy
+  await page.getByRole('button', { name: 'CANCELAR', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'TRANSCREVER', exact: true })).toBeEnabled();
+
+  // Preenche fila até o limite de 20
+  const novos = Array.from({ length: 19 }, (_, i) => `C:/audio/extra-${i + 1}.mp3`);
+  await pick(page, novos);
+  await expect(page.getByLabel('Arquivos na fila')).toHaveText('20/20');
+
+  // Tenta adicionar mais 1: deve rejeitar por estar no limite de 20
+  await pick(page, ['C:/audio/excedente.mp3']);
+  await expect(page.getByLabel('Arquivos na fila')).toHaveText('20/20');
+
+  // Remove um item do meio da fila
+  await items.nth(5).getByRole('button', { name: /Remover/ }).click();
+  await expect(page.getByLabel('Arquivos na fila')).toHaveText('19/20');
+
+  // Agora permite adicionar mais 1 item, retornando para 20/20
+  await pick(page, ['C:/audio/novo-aceito.mp3']);
+  await expect(page.getByLabel('Arquivos na fila')).toHaveText('20/20');
+  expect(jobs).toHaveLength(1);
+});
