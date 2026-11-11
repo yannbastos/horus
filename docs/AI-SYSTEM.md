@@ -8,7 +8,7 @@ O código de [hermes.py](../backend/src/horus_backend/hermes.py) implementa diag
 
 O [guia de integração](integracao-hermes.md) é a fonte dos comandos, configuração privada, perfil exclusivo horus, versão inspecionada e ensaios anteriores. Reconhecer uma capacidade anunciada pela API não comprova a integração de delegação, orçamento, aprovações ou cancelamento de produção.
 
-A fila sequencial e os eventos SQLite existentes são infraestrutura técnica. Não implementam planejamento automático, DAG de tarefas cognitivas, delegação multiagente, aprovação editorial persistente, controle financeiro completo ou memória ativa. Não foi localizado esse fluxo operacional no backend inspecionado.
+A fila sequencial agora atende também o [núcleo editorial simulado](workflows-editoriais.md): fluxo fixo com etapas, tentativas, artefatos versionados e aprovação persistente. O backend continua sendo a fonte oficial e o JobManager permanece o único worker. Não há planejamento automático real, DAG genérico, delegação multiagente, controle financeiro completo ou memória ativa. O simulador não usa o adaptador Hermes nem outros serviços externos.
 
 ## Maestro e agentes especializados — planejado
 
@@ -27,6 +27,8 @@ Distinguir tarefas cognitivas de operações determinísticas. Cálculos, coleta
 **Pedido do usuário → Planejamento → Pesquisa → Análise → Proposta editorial → Aprovação humana.**
 
 Esse é o primeiro workflow a validar. Deve produzir proposta original com fontes e hipóteses identificadas, permitir aprovação, reprovação ou solicitação de alterações e preservar decisões por revisão. Depois de validado, evoluir para roteiro, recursos audiovisuais, produção, revisão e preparação para publicação.
+
+A infraestrutura desse caminho já é exercitada com resultados explicitamente simulados. Sua revisão humana é local e limitada à proposta, sem efeito sobre orçamento, produção ou publicação. A qualidade factual/editorial e os contratos de executores reais permanecem pendentes.
 
 Cada workflow deverá registrar objetivo, tarefas, dependências, estados, agentes responsáveis, resultados, custos e pontos de aprovação. Permitir tarefas independentes em paralelo quando apropriado, respeitando dependências, orçamento e capacidade dos executores. O executor audiovisual atual continua sequencial; paralelismo cognitivo futuro não libera renders simultâneos.
 

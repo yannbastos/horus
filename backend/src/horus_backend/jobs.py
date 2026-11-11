@@ -13,6 +13,8 @@ from .config import Settings
 from .processes import OwnedProcess
 from .storage import Store
 from .transcriber import FILE_MARKER, LANGUAGES, MODELS, is_youtube_url
+from .worker_lock import WorkerLock
+from .workflows import WorkflowService
 
 TERMINAL = {"succeeded", "failed", "cancelled", "interrupted", "blocked"}
 
@@ -70,12 +72,22 @@ class JobManager:
         self.worker: asyncio.Task | None = None
         self.active_id: str | None = None
         self.active_process: OwnedProcess | None = None
+        self.worker_lock = WorkerLock(store.path)
+        self.workflows = WorkflowService(store, self.queue, self.notify)
 
     async def start(self):
-        self.store.recover()
-        for job_id in self.store.queued_ids():
-            self.queue.put_nowait(job_id)
-        self.worker = asyncio.create_task(self._work())
+        if self.worker is not None:
+            raise RuntimeError("Executor já iniciado.")
+        self.worker_lock.acquire()
+        try:
+            self.store.recover()
+            self.workflows.recover()
+            for job_id in self.store.queued_ids():
+                self.queue.put_nowait(job_id)
+            self.worker = asyncio.create_task(self._work())
+        except BaseException:
+            self.worker_lock.close()
+            raise
 
     async def notify(self):
         async with self.changed:
@@ -98,6 +110,9 @@ class JobManager:
             raise KeyError(job_id)
         if job["status"] in TERMINAL:
             return job
+        if job.get("workflow_id"):
+            await self.workflows.cancel(job["workflow_id"])
+            return self.store.get_job(job_id)
         if job["status"] == "queued":
             self.store.update(job_id, "cancelled")
             await self.emit(job_id, "state", "cancelled")
@@ -112,6 +127,8 @@ class JobManager:
         job = self.store.get_job(job_id)
         if not job:
             raise KeyError(job_id)
+        if job.get("workflow_id"):
+            raise ValueError("Retome o workflow pela operação editorial, não uma etapa isolada.")
         if job["status"] not in {"failed", "interrupted", "blocked", "cancelled"}:
             raise ValueError("Somente tarefas encerradas sem sucesso podem ser tentadas novamente.")
         self.store.update(job_id, "queued")
@@ -196,7 +213,14 @@ class JobManager:
             try:
                 job = self.store.get_job(job_id)
                 if job and job["status"] == "queued":
-                    await self._run(job)
+                    if job.get("workflow_id"):
+                        self.active_id = job_id
+                        try:
+                            await self.workflows.run_step(job)
+                        finally:
+                            self.active_id = None
+                    else:
+                        await self._run(job)
             finally:
                 self.queue.task_done()
 
@@ -276,7 +300,11 @@ class JobManager:
         return {"path": str(file.resolve())}
 
     async def close(self):
-        if self.worker:
-            self.worker.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self.worker
+        try:
+            if self.worker:
+                self.worker.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await self.worker
+        finally:
+            self.worker = None
+            self.worker_lock.close()

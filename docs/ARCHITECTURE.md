@@ -6,18 +6,23 @@ Fonte canônica da stack, das fronteiras e das decisões arquiteturais. A seçã
 
 Inspeção documental e de código em 2026-11-11; nenhum teste de runtime foi executado nesta reorganização.
 
+Incremento posterior autorizado: [núcleo editorial simulado](workflows-editoriais.md), validado por testes do backend em bancos temporários. Isso acrescenta workflow/revisões sem declarar integração cognitiva real ou modificar a fábrica.
+
 | Componente | Evidência no repositório | Responsabilidade e limite |
 |---|---|---|
 | React/TypeScript | [App.tsx](../frontend/src/App.tsx), [features](../frontend/src/features), [package.json](../frontend/package.json) | Navegação, temas, transcrição, mídia local e operações limitadas da fábrica; telas editoriais ainda em preparação |
 | Tauri 2 / Rust | [src-tauri](../frontend/src-tauri), [main.rs](../frontend/src-tauri/src/main.rs) | Diálogos nativos, conexão e ciclo de vida do backend; integrações nativas mínimas |
-| FastAPI | [api.py](../backend/src/horus_backend/api.py) | API local autenticada, tarefas, mídia, salvamento de transcrição e diagnóstico |
+| FastAPI | [api.py](../backend/src/horus_backend/api.py) | API local autenticada, tarefas, mídia, transcrição, diagnóstico e workflows editoriais simulados |
 | Executor sequencial | [jobs.py](../backend/src/horus_backend/jobs.py), [processes.py](../backend/src/horus_backend/processes.py) | Uma tarefa técnica por vez, subprocessos, logs, cancelamento e retentativa explícita; não é um workflow multiagente |
-| SQLite | [storage.py](../backend/src/horus_backend/storage.py) | Tabelas de tarefas, eventos e referências de mídia; não há schema completo de aprovações, custos ou memória ativa |
+| SQLite | [storage.py](../backend/src/horus_backend/storage.py), [migrações](../backend/src/horus_backend/migrations.py) | Schema v2: tarefas/mídia preservadas, workflows, tentativas editoriais, artefatos, aprovações e diário de domínio; sem controle financeiro completo ou memória ativa |
+| Workflow fixo simulado | [workflows.py](../backend/src/horus_backend/workflows.py) | Quatro etapas como jobs no worker existente; revisão humana por artefato/revisão, sem modelos ou pesquisa externa |
 | Transcrição Python | [transcriber.py](../backend/src/horus_backend/transcriber.py), [Transcription.tsx](../frontend/src/features/Transcription.tsx) | faster-whisper em subprocesso e download YouTube; equivalência completa ainda depende de validação |
 | Hermes externo | [hermes.py](../backend/src/horus_backend/hermes.py) | Diagnóstico autenticado de saúde/capacidades; sem envio de prompts ou execução de agentes pelo Hórus |
 | Desktop preservado | [src/Horus](../src/Horus), [tests/Horus.Tests](../tests/Horus.Tests) | C#/.NET 10, Avalonia, transcrição Whisper.net, conversão FFmpeg e download yt-dlp |
 
 Fluxo técnico existente: React → API FastAPI → tarefas SQLite → subprocesso. Para a fábrica, esse subprocesso invoca o CLI independente. As operações enumeradas são consulta de perfil, render de rascunho short, transcrição e download YouTube. Não há shell arbitrário nem comandos de aprovação/publicação expostos pela integração.
+
+O núcleo editorial acrescenta API → coordenação de domínio → os mesmos jobs/JobManager → função simulada local. Pedido e revisão humana não ocupam o worker. As transições editoriais e artefatos são transacionais. Uma [trava por banco](../backend/src/horus_backend/worker_lock.py) impede workers concorrentes sobre o mesmo caminho; não há segundo executor nem scheduler distribuído. A interface editorial completa ainda não foi implementada.
 
 Tarefas pendentes sobrevivem ao reinício; execuções em andamento passam a interrompidas e exigem revisão antes de nova tentativa. Chaves de idempotência impedem submissões duplicadas com a mesma entrada. Isso não garante execução exatamente uma vez em serviços externos.
 
@@ -64,7 +69,7 @@ Adotar uma plataforma unificada com **monólito modular**: responsabilidades cla
 
 Windows local é a plataforma inicial, sem VPS. Linux, inclusive Arch Linux, exige validação própria; usar caminhos e interfaces portáveis onde possível. Não afirmar portabilidade completa: a implementação atual possui integrações específicas do Windows, como Job Objects e o empacotamento NSIS.
 
-O backend deverá ser a fonte oficial dos estados, eventos, custos, aprovações e histórico operacional. Hoje essa centralização cobre tarefas técnicas e eventos; os demais controles ainda precisam de implementação e validação. Regras obrigatórias da fábrica também devem valer quando seu CLI for usado diretamente.
+O backend deverá ser a fonte oficial dos estados, eventos, custos, aprovações e histórico operacional. Hoje essa centralização cobre tarefas técnicas, eventos e revisões/aprovações do fluxo editorial simulado. Custos, execução cognitiva real e aprovações da produção audiovisual ainda precisam de implementação e validação. Regras obrigatórias da fábrica também devem valer quando seu CLI for usado diretamente.
 
 ### Armazenamento e segurança
 

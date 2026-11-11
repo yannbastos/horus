@@ -20,6 +20,7 @@ Uma capacidade pode estar implementada e parcialmente validada. Builds e testes 
 | Download e transcrição Avalonia | Implementados com ferramentas externas; fila/revisão/salvamento existentes, sem persistência da fila de interface |
 | React/TypeScript + Tauri 2 | Implementados; build Windows e geração NSIS registrados; instalação NSIS ainda pendente |
 | FastAPI/SQLite | Implementados: tarefas persistentes, eventos/logs, executor sequencial, cancelamento e recuperação de estados |
+| Núcleo editorial simulado | Implementado e validado por testes do backend: quatro etapas no JobManager existente, schema v2, tentativas, artefatos, aprovação por revisão e recuperação; sem UI editorial ou serviços externos |
 | Consulta de perfil da fábrica | Implementada; validação anterior com CLI real e persistência registrada |
 | Render de rascunho short | Implementado; parcialmente validado via API em TestClient com processos reais; não certifica execução pela tela Produção ou pelo backend empacotado |
 | Cancelamento/encerramento durante render | Parcialmente validados: árvore encerrada e estado recuperado; encerramento normal do backend não simula falha abrupta do Windows |
@@ -29,7 +30,7 @@ Uma capacidade pode estar implementada e parcialmente validada. Builds e testes 
 | Planejamento/delegação multiagente | Planejados; diagnóstico de capacidades não comprova orquestração |
 | Memória ativa e histórico editorial consolidado | Planejados; tarefas/eventos técnicos persistentes não equivalem ao módulo completo |
 | Biblioteca inteligente de técnicas | Planejada; distinta da Biblioteca de mídia atual e dos componentes Remotion existentes |
-| Radar, análise editorial, aprovações e analytics | Planejados como fluxos integrados do Hórus |
+| Radar, análise editorial real e analytics | Planejados como fluxos integrados; aprovação por revisão já existe no núcleo simulado, sem autorizar produção |
 | Fábrica e catálogo visual | Repositórios independentes; prontidão da fábrica requer inspeção própria, Storybook usa exemplos fictícios |
 | Publicação automática e múltiplos canais | Evolução futura; publicação inicial manual |
 | Linux/Arch Linux | Compatibilidade futura; não validada |
@@ -49,6 +50,8 @@ Aceite: evidências delimitadas de instalação, ciclo de vida, recuperação, e
 ## Prioridade 2 — primeiro workflow orquestrado
 
 Validar **Pedido → Planejamento → Pesquisa → Análise → Proposta editorial → Aprovação humana**, conforme [AI-SYSTEM.md](AI-SYSTEM.md#workflow-mínimo-e-evolução--planejado).
+
+Primeiro incremento backend concluído em modo simulado: [contratos, limites e resultados](workflows-editoriais.md). A suíte do backend passou em 89 testes em bancos temporários, incluindo migração, encerramento abrupto, idempotência e decisões obsoletas. Banco operacional, UI editorial e chamadas de IA/YouTube não foram exercitados neste incremento.
 
 Antes de ampliar produção automatizada, confirmar capacidades reais de delegação do Hermes instalado e contratos com o backend; definir modelo/provedor, orçamento e aprovação aplicável à análise delimitada. O diagnóstico autenticado já existente não precisa ser reimplementado.
 
@@ -70,7 +73,7 @@ Os temas abaixo preservam o planejamento existente; sua numeração antiga não 
 | Analytics e histórico operacional | Resultados próprios autorizados, custos por tentativa, experimentos, dados ausentes/revogação tratados e memória revisável |
 | Expansão gradual | Longos, cortes, mais canais e automações após validar Canal 01, qualidade, capacidade e orçamento; publicação automática exige aprovação separada |
 
-A fila persistente atual não conclui produção gerenciada: aprovações editoriais, custos e reconciliação de operações pagas ainda precisam de validação/implementação.
+A fila persistente e a revisão editorial simulada não concluem produção gerenciada: execução cognitiva real, aprovações de produção, custos e reconciliação de operações pagas ainda precisam de validação/implementação.
 
 ## Caminho para o primeiro vídeo real
 

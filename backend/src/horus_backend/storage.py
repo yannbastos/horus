@@ -7,6 +7,8 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .migrations import migrate
+
 
 def now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -16,27 +18,7 @@ class Store:
     def __init__(self, path: Path):
         path.parent.mkdir(parents=True, exist_ok=True)
         self.path = path
-        with self.connect() as db:
-            db.executescript("""
-                PRAGMA journal_mode=WAL;
-                CREATE TABLE IF NOT EXISTS jobs (
-                    id TEXT PRIMARY KEY, idempotency_key TEXT UNIQUE NOT NULL,
-                    payload TEXT NOT NULL, status TEXT NOT NULL,
-                    created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
-                    attempt INTEGER NOT NULL DEFAULT 0, result TEXT, error TEXT
-                );
-                CREATE TABLE IF NOT EXISTS events (
-                    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
-                    job_id TEXT NOT NULL REFERENCES jobs(id), kind TEXT NOT NULL,
-                    message TEXT NOT NULL, created_at TEXT NOT NULL
-                );
-                CREATE INDEX IF NOT EXISTS events_job ON events(job_id, sequence);
-                CREATE TABLE IF NOT EXISTS media (
-                    id TEXT PRIMARY KEY, path TEXT UNIQUE NOT NULL, name TEXT NOT NULL,
-                    size INTEGER NOT NULL, modified_ns INTEGER NOT NULL, created_at TEXT NOT NULL
-                );
-                PRAGMA user_version=1;
-            """)
+        migrate(path)
 
     @contextmanager
     def connect(self):
@@ -105,7 +87,7 @@ class Store:
 
     def recover(self):
         with self.connect() as db:
-            rows = db.execute("SELECT id FROM jobs WHERE status IN ('running','cancel_requested')").fetchall()
+            rows = db.execute("SELECT id FROM jobs WHERE workflow_id IS NULL AND status IN ('running','cancel_requested')").fetchall()
         for row in rows:
             self.update(row["id"], "interrupted", error="Execução interrompida. Revise antes de tentar novamente.")
             self.event(row["id"], "state", "interrupted")

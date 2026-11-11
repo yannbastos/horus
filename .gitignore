@@ -45,5 +45,6 @@ __pycache__/
 *.sqlite3
 *.sqlite3-shm
 *.sqlite3-wal
+*.sqlite3.worker.lock
 frontend/test-results/
 frontend/playwright-report/

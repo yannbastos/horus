@@ -14,7 +14,7 @@ import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
@@ -24,6 +24,7 @@ from .diagnostics import diagnose
 from .hermes import HermesConnector
 from .jobs import JobManager, JobRequest, TERMINAL
 from .storage import Store
+from .workflows import ReviewRequest, RevisionRequest, WorkflowConflict, WorkflowRequest
 
 
 class MediaRequest(BaseModel):
@@ -91,6 +92,54 @@ def create_app(settings: Settings, shutdown=None, ready=None):
     @app.get("/v1/jobs")
     async def jobs():
         return store.list_jobs()
+
+    @app.post("/v1/workflows", status_code=202)
+    async def create_workflow(request: WorkflowRequest, idempotency_key: str = Header(min_length=1, max_length=128)):
+        try:
+            return await manager.workflows.create(request, idempotency_key)
+        except WorkflowConflict as error:
+            raise HTTPException(409, str(error)) from error
+
+    @app.get("/v1/workflows")
+    async def list_workflows():
+        return manager.workflows.list()
+
+    def require_workflow(workflow_id):
+        try:
+            return manager.workflows.get(workflow_id)
+        except KeyError as error:
+            raise HTTPException(404, "Workflow não encontrado.") from error
+
+    @app.get("/v1/workflows/{workflow_id}")
+    async def inspect_workflow(workflow_id: str):
+        return require_workflow(workflow_id)
+
+    @app.get("/v1/workflows/{workflow_id}/events")
+    async def workflow_events(workflow_id: str, after: int = Query(default=0, ge=0)):
+        require_workflow(workflow_id)
+        return manager.workflows.events(workflow_id, after)
+
+    @app.post("/v1/workflows/{workflow_id}/review")
+    async def review_workflow(workflow_id: str, request: ReviewRequest,
+                              idempotency_key: str = Header(min_length=1, max_length=128)):
+        require_workflow(workflow_id)
+        try:
+            return await manager.workflows.review(workflow_id, request, idempotency_key)
+        except WorkflowConflict as error:
+            raise HTTPException(409, str(error)) from error
+
+    @app.post("/v1/workflows/{workflow_id}/cancel")
+    async def cancel_workflow(workflow_id: str):
+        require_workflow(workflow_id)
+        return await manager.workflows.cancel(workflow_id)
+
+    @app.post("/v1/workflows/{workflow_id}/retry")
+    async def retry_workflow(workflow_id: str, request: RevisionRequest):
+        require_workflow(workflow_id)
+        try:
+            return await manager.workflows.retry(workflow_id, request.expected_revision)
+        except WorkflowConflict as error:
+            raise HTTPException(409, str(error)) from error
 
     @app.get("/v1/diagnostics")
     async def diagnostics():
