@@ -1,0 +1,415 @@
+# HÓRUS — Definição da Stack Tecnológica e Arquitetura
+
+## 1. Contexto do projeto
+
+Estou desenvolvendo o **Hórus**, uma plataforma de inteligência audiovisual voltada à pesquisa, análise, planejamento, produção e gerenciamento de conteúdos digitais.
+
+O sistema deverá permitir:
+
+- Pesquisar vídeos, canais e tendências.
+- Identificar oportunidades de conteúdo.
+- Analisar referências audiovisuais.
+- Planejar vídeos e desenvolver roteiros originais.
+- Gerenciar aprovações e produções.
+- Executar transcrições e processamento audiovisual.
+- Acompanhar resultados e métricas.
+- Utilizar agentes de inteligência artificial.
+- Manter uma memória operacional ativa e persistente.
+
+O objetivo é construir uma plataforma modular, eficiente, confiável e preparada para evoluir ao longo do tempo.
+
+Inicialmente, o Hórus será executado **localmente no Windows**, com suporte futuro ao Linux.
+
+Não utilizaremos VPS nesta etapa.
+
+---
+
+## 2. Stack tecnológica definida
+
+| Tecnologia | Responsabilidade |
+|---|---|
+| **React + TypeScript** | Interface gráfica do Hórus |
+| **Tauri 2** | Aplicativo desktop para Windows e Linux |
+| **Rust** | Apenas integrações nativas necessárias ao Tauri |
+| **Python + FastAPI** | Backend, APIs e gerenciamento de tarefas |
+| **Remotion** | Composição, prévia e renderização audiovisual |
+| **Hermes Agent** | Orquestração de agentes, memória e automações |
+| **Claude + Codex + Antigravity** | Agentes especializados, integrados conforme viabilidade |
+| **SQLite** | Persistência local inicial |
+| **PostgreSQL/Supabase** | Possível evolução futura do banco de dados |
+| **Yottamaster VN400C3** | Armazenamento audiovisual e backups |
+
+Essa stack deverá ser considerada a direção tecnológica oficial do projeto, mas sua implementação precisa ser incremental.
+
+Não é necessário introduzir todas as tecnologias imediatamente.
+
+---
+
+## 3. Diretrizes arquiteturais
+
+### Frontend
+
+Utilizar React + TypeScript para construir a interface.
+
+A arquitetura da interface deverá permitir reutilização futura em uma versão acessível pelo navegador.
+
+Priorizar:
+
+- Componentização.
+- Reutilização de componentes.
+- Tipagem.
+- Interface responsiva.
+- Navegação fluida.
+- Carregamento sob demanda.
+- Baixo consumo de CPU e RAM.
+- Separação entre apresentação e lógica de negócio.
+
+### Desktop
+
+Utilizar Tauri 2 como camada desktop.
+
+O Rust deverá ser utilizado somente quando necessário para integração com recursos nativos do sistema.
+
+Não reescrever funcionalidades Python em Rust sem evidências de necessidade.
+
+O aplicativo deverá permitir:
+
+- Selecionar arquivos e diretórios.
+- Acessar arquivos locais com permissões adequadas.
+- Executar tarefas do backend.
+- Reproduzir vídeos.
+- Acompanhar operações em andamento.
+- Cancelar operações.
+- Recuperar tarefas após interrupções.
+
+### Backend
+
+Utilizar Python + FastAPI.
+
+O backend deverá centralizar:
+
+- APIs.
+- Regras de negócio.
+- Gerenciamento de tarefas.
+- Integração com a fábrica audiovisual.
+- Persistência.
+- Comunicação com agentes.
+- Estado das produções.
+
+O backend não deverá depender diretamente do Tauri para funcionar.
+
+### Motor audiovisual
+
+Preservar a fábrica Python existente, acessível pelo CLI `fabrica`.
+
+Utilizar Remotion para composição, prévias e renderização audiovisual.
+
+Não criar um segundo motor de produção.
+
+### Inteligência artificial
+
+Integrar progressivamente o Hermes Agent como motor de inteligência e orquestração.
+
+O Hermes deverá utilizar ferramentas e skills externas, sem necessidade de modificar diretamente seu código-fonte.
+
+Planejar a integração com Claude, Codex e Antigravity por meio de adaptadores e interfaces bem definidas.
+
+Não presumir que todas as ferramentas possuem o mesmo tipo de API, autenticação ou execução automatizada.
+
+### Memória ativa
+
+Implementar uma memória operacional capaz de preservar:
+
+- Decisões técnicas.
+- Aprendizados.
+- Erros recorrentes.
+- Soluções.
+- Preferências editoriais.
+- Resultados de experimentos.
+- Contexto relevante dos projetos.
+
+Priorizar Markdown versionado e SQLite inicialmente.
+
+Evitar implementar um banco vetorial sem necessidade comprovada.
+
+### Armazenamento
+
+Utilizar o Yottamaster VN400C3 para arquivos audiovisuais, datasets, projetos e backups.
+
+Manter bancos de dados ativos preferencialmente em armazenamento local confiável, como o SSD do computador.
+
+Não presumir que o Yottamaster é um servidor independente: ele é um dispositivo DAS conectado ao computador.
+
+---
+
+## 4. Requisitos de desempenho
+
+Um dos objetivos principais é evitar o consumo excessivo de recursos encontrado em alguns aplicativos desktop baseados em tecnologias web.
+
+O Hórus deverá ser desenvolvido considerando desempenho desde o início.
+
+Diretrizes:
+
+- Evitar processos desnecessários em segundo plano.
+- Carregar componentes pesados somente quando utilizados.
+- Não iniciar Whisper, FFmpeg ou Remotion sem necessidade.
+- Isolar tarefas pesadas da interface.
+- Encerrar subprocessos corretamente.
+- Limitar operações simultâneas.
+- Evitar renderizações desnecessárias no React.
+- Monitorar consumo de CPU e RAM.
+- Manter a interface responsiva durante transcrições e renders.
+
+O objetivo é que o Hórus permaneça praticamente ocioso quando não estiver executando tarefas.
+
+Metas iniciais para avaliação, não garantias:
+
+- RAM em repouso: até aproximadamente 250 MB para interface e serviços mínimos.
+- CPU em repouso: próxima de 0%.
+- Inicialização: até aproximadamente 3 segundos.
+
+Essas metas deverão ser validadas com medições reais em builds de produção.
+
+---
+
+## 5. Organização da arquitetura
+
+A separação conceitual será:
+
+**Hórus Frontend**
+- React.
+- TypeScript.
+- Componentes visuais.
+- Dashboard.
+- Player audiovisual.
+
+**Hórus Desktop**
+- Tauri 2.
+- Recursos nativos.
+- Integração com o sistema operacional.
+
+**Hórus Backend**
+- Python.
+- FastAPI.
+- APIs.
+- Tarefas.
+- Banco de dados.
+
+**Fábrica Audiovisual**
+- CLI `fabrica`.
+- Whisper.
+- FFmpeg.
+- Remotion.
+- ElevenLabs e serviços externos quando configurados.
+
+**Inteligência e Orquestração**
+- Hermes Agent.
+- Skills.
+- Ferramentas.
+- Claude.
+- Codex.
+- Antigravity.
+- Memória operacional.
+
+Os componentes deverão se comunicar por interfaces explícitas, com baixo acoplamento.
+
+---
+
+## 6. Primeira etapa de desenvolvimento
+
+Antes de implementar toda a plataforma, quero validar uma prova de conceito contendo:
+
+1. Interface React + TypeScript.
+2. Aplicativo desktop Tauri 2.
+3. Backend FastAPI.
+4. Seleção de arquivos locais.
+5. Execução de uma operação do CLI `fabrica`.
+6. Acompanhamento de progresso e logs.
+7. Cancelamento de tarefas.
+8. Recuperação do estado após reiniciar o aplicativo.
+9. Reprodução de um vídeo local.
+10. Medição inicial de consumo de CPU, RAM e tempo de inicialização.
+
+A prova de conceito deverá confirmar que a arquitetura funciona adequadamente antes de expandirmos o projeto.
+
+---
+
+## 7. Regras para o desenvolvimento
+
+- Não reescrever componentes funcionais sem justificativa técnica.
+- Não introduzir novas linguagens sem necessidade.
+- Não duplicar regras de negócio.
+- Não acoplar o motor audiovisual à interface.
+- Não depender de serviços de nuvem para executar funções locais essenciais.
+- Não modificar o código-fonte do Hermes nesta etapa.
+- Não realizar mudanças destrutivas sem autorização.
+- Manter documentação técnica atualizada.
+- Implementar testes para operações críticas.
+- Preservar compatibilidade futura com Linux.
+- Priorizar simplicidade, desempenho e manutenção.
+
+---
+
+## 8. Sua tarefa agora
+
+Antes de começar a implementar, examine a estrutura atual do repositório.
+
+Identifique quais componentes já existem, quais podem ser reutilizados e quais precisarão ser adaptados à stack escolhida.
+
+Depois, apresente:
+
+1. Diagnóstico da arquitetura atual.
+2. Arquitetura técnica recomendada.
+3. Estrutura de diretórios proposta.
+4. Dependências necessárias.
+5. Plano de migração ou integração.
+6. Planejamento da prova de conceito.
+7. Critérios objetivos de validação.
+8. Riscos técnicos e alternativas.
+
+**Não implemente nem modifique arquivos nesta primeira etapa.**
+
+Quero primeiro aprovar o planejamento.
+
+O objetivo é construir uma base tecnológica sólida para o Hórus sem adicionar complexidade desnecessária.
+
+## Preservação do design e da identidade visual
+
+**IMPORTANTE: a mudança de stack tecnológica NÃO deve alterar o design atual do Hórus.**
+
+- Preserve a identidade visual, cores, tipografia, ícones, layouts e estilo geral.
+- Utilize o aplicativo atual e o Storybook como referências visuais.
+- Reaproveite os componentes existentes sempre que possível.
+- Mantenha a organização das telas, navegação e experiência do usuário.
+- Caso algum componente precise ser reconstruído em React, reproduza fielmente sua aparência e comportamento.
+- Não faça um redesign sem minha autorização.
+- Sugestões de melhorias visuais devem ser apresentadas separadamente para aprovação.
+
+**O objetivo é modernizar a arquitetura tecnológica, não redesenhar o Hórus.**
+
+Antes de implementar, analise as telas e referências visuais existentes e documente como o design será preservado durante a migração.
+
+
+Novo módulo — Biblioteca Inteligente de Motion Design e Edição
+
+O Hórus deverá possuir uma biblioteca audiovisual organizada, capaz de armazenar técnicas de edição e motion design identificadas durante a análise de vídeos de referência.
+
+Quando o usuário solicitar que a IA "desmonte" a edição de um vídeo, o sistema deverá estudar seus elementos audiovisuais, identificar técnicas relevantes e produzir registros estruturados que possam ser consultados futuramente.
+
+Cada técnica deverá possuir nome, descrição, categoria, tags, referência de origem, intervalo temporal, parâmetros conhecidos e, quando disponível, demonstração visual e implementação reutilizável em Remotion.
+
+A biblioteca deverá distinguir técnicas apenas analisadas de modelos efetivamente implementados e validados.
+
+O usuário poderá pesquisar, filtrar, visualizar, organizar e selecionar modelos para uso em novas produções.
+
+O agente maestro poderá consultar essa biblioteca durante o planejamento e recomendar técnicas adequadas aos objetivos editoriais e à identidade visual de cada canal.
+
+O sistema deverá registrar a utilização dos modelos e o feedback do usuário, permitindo que a memória operacional contribua para melhorar futuras recomendações.
+
+Objetivo: transformar análises audiovisuais em uma biblioteca crescente de conhecimentos e componentes práticos, reduzindo retrabalho e aumentando a qualidade e a consistência das produções.
+
+### Novo módulo — Workflow Inteligente e Orquestração Multiagente
+
+O Hórus deverá possuir um sistema de **workflow inteligente e orquestração multiagente**, capaz de transformar instruções amplas do usuário em processos estruturados, coordenados e executados por agentes especializados de inteligência artificial.
+
+Quando o usuário solicitar uma tarefa, como "Pesquise oportunidades no YouTube, identifique um nicho promissor e proponha um vídeo", o sistema deverá interpretar o objetivo, elaborar um planejamento, dividir o trabalho em tarefas menores, identificar dependências e delegar cada atividade ao agente ou ferramenta mais adequado.
+
+O **Hermes Agent atuará como base do agente maestro**, responsável pelo planejamento, raciocínio, delegação, acompanhamento e consolidação dos resultados. Sua integração deverá ocorrer externamente, utilizando os mecanismos disponíveis de ferramentas, skills e subagentes, sem modificar seu código-fonte inicialmente.
+
+A orquestração deverá permitir a utilização de diferentes modelos e agentes, incluindo Claude, Codex e Antigravity, conforme suas capacidades, disponibilidade e formas de integração. Modelos mais avançados poderão ser utilizados em tarefas complexas de planejamento, análise e revisão, enquanto modelos menores e mais econômicos poderão executar tarefas delimitadas, desde que apresentem qualidade suficiente.
+
+Cada workflow deverá possuir objetivos, tarefas, dependências, estados de execução, agentes responsáveis, resultados, custos e pontos de aprovação. O backend do Hórus, desenvolvido em Python/FastAPI, será a **fonte oficial dos estados, eventos, aprovações e histórico operacional**, evitando que diferentes agentes mantenham informações conflitantes.
+
+O sistema deverá oferecer:
+
+- **Planejamento automático:** decompor objetivos em tarefas menores e organizá-las conforme suas dependências.
+- **Delegação inteligente:** selecionar agentes, modelos ou ferramentas de acordo com as necessidades de cada tarefa.
+- **Execução coordenada:** executar tarefas independentes em paralelo quando apropriado e respeitar dependências entre etapas.
+- **Comunicação estruturada:** compartilhar resultados por meio de artefatos identificados, validados e versionados.
+- **Acompanhamento em tempo real:** apresentar tarefas, progresso, responsáveis, resultados e erros na interface.
+- **Recuperação de falhas:** registrar tentativas, permitir retomadas seguras e evitar execuções duplicadas.
+- **Controle financeiro:** acompanhar consumo de modelos e serviços, aplicando limites de orçamento.
+- **Aprovação humana:** interromper o workflow nos pontos definidos para aprovação, reprovação ou solicitação de alterações.
+- **Memória ativa:** consultar conhecimentos anteriores e registrar decisões, correções e aprendizados relevantes.
+- **Rastreabilidade:** preservar o histórico das ações, agentes utilizados, versões dos artefatos e decisões tomadas.
+
+O sistema deverá distinguir **tarefas cognitivas**, realizadas por agentes de IA, de **operações determinísticas**, executadas diretamente por ferramentas e serviços. Atividades como cálculos, coleta estruturada de métricas, transcrição e renderização não deverão exigir um agente de linguagem quando puderem ser executadas de forma mais confiável por código.
+
+A interface do Hórus deverá permitir que o usuário acompanhe visualmente todo o workflow, consulte os resultados intermediários, intervenha em tarefas e aprove etapas sem precisar gerenciar manualmente cada agente.
+
+A integração com a fábrica audiovisual deverá utilizar o CLI Python existente, preservando sua independência e evitando a criação de um segundo motor de produção.
+
+O desenvolvimento deverá começar com um workflow mínimo:
+
+**Pedido do usuário → Planejamento → Pesquisa → Análise → Proposta editorial → Aprovação humana.**
+
+Após sua validação, o sistema poderá evoluir gradualmente para incluir roteiro, geração de recursos audiovisuais, produção, revisão e preparação para publicação.
+
+O Hermes não deverá ser responsável por armazenar o estado oficial das tarefas, autorizar ações críticas ou controlar diretamente as regras de produção. Essas responsabilidades permanecerão no backend do Hórus.
+
+A arquitetura deverá permitir substituir agentes, adicionar novos modelos e evoluir os workflows sem reconstruir os demais componentes da plataforma.
+
+**Objetivo:** transformar o Hórus em uma plataforma na qual o usuário define o que deseja alcançar, enquanto o sistema planeja, distribui, executa e acompanha o trabalho de maneira inteligente, utilizando diferentes agentes e ferramentas de forma coordenada, econômica, confiável e supervisionada.
+
+**Restrição:** a autonomia dos agentes não poderá substituir aprovações humanas obrigatórias, ultrapassar limites financeiros autorizados, modificar estados oficiais indevidamente ou executar operações críticas sem validação. A integração real com os mecanismos de delegação do Hermes deverá ser verificada antes da implementação.
+
+# HÓRUS — Instruções de interpretação da documentação
+
+A documentação fornecida representa a visão de produto e a direção arquitetural do Hórus.
+
+Ela não significa que todas as funcionalidades descritas já estejam implementadas, nem autoriza desenvolver automaticamente os módulos planejados.
+
+Ao trabalhar no projeto:
+
+1. Consulte a documentação relevante para a tarefa.
+2. Verifique o estado real do código e dos testes.
+3. Preserve o design, a identidade visual e os componentes funcionais.
+4. Respeite a separação entre frontend, backend, Hermes e fábrica audiovisual.
+5. Utilize o backend como fonte oficial dos estados, eventos, custos e aprovações.
+6. Não permita que agentes alterem regras críticas automaticamente.
+7. Não introduza infraestrutura complexa sem demonstrar sua necessidade.
+8. Não implemente funcionalidades fora do escopo solicitado.
+9. Preserve mudanças existentes realizadas por outros agentes ou pelo usuário.
+10. Documente decisões relevantes e registre limitações identificadas.
+
+## Prioridade atual
+
+A prioridade é validar o primeiro workflow orquestrado:
+
+**Pedido → Planejamento → Pesquisa → Análise → Proposta editorial → Aprovação humana.**
+
+Antes de ampliar a produção automatizada, investigue as capacidades reais de delegação do Hermes instalado e defina contratos claros de comunicação com o backend.
+
+A Biblioteca Inteligente de Motion Design e Edição permanece como módulo planejado e deverá ser integrada progressivamente.
+
+## Memória ativa
+
+A memória deverá recuperar contexto relevante, registrar aprendizados e preservar decisões validadas.
+
+Não deverá duplicar configurações oficiais, salvar indiscriminadamente todas as conversas ou alterar regras permanentes sem autorização.
+
+## Execução
+
+Quando receber uma tarefa específica, execute somente o escopo autorizado.
+
+Quando receber apenas documentação ou contexto, utilize-o como referência e não modifique arquivos automaticamente.
+
+Em caso de conflito entre o planejamento e a implementação existente, identifique o conflito e apresente uma recomendação antes de realizar mudanças estruturais.
+
+### Diretriz arquitetural — Plataforma Unificada com Monólito Modular
+
+O Hórus deverá ser desenvolvido como uma plataforma unificada, oferecendo uma única interface para pesquisa audiovisual, inteligência artificial, planejamento editorial, produção, biblioteca de técnicas, gerenciamento de canais, analytics e memória ativa.
+
+A aplicação deverá adotar uma arquitetura de **monólito modular**, organizada em componentes com responsabilidades claras, interfaces bem definidas e baixo acoplamento.
+
+Os módulos internos deverão compartilhar os serviços centrais do Hórus, como autenticação local quando necessária, persistência, gerenciamento de tarefas, eventos, aprovações e configurações, evitando duplicação de regras de negócio.
+
+O Hermes Agent e a fábrica audiovisual Python permanecerão componentes executáveis independentes, integrados ao Hórus por interfaces explícitas. O Hermes será responsável pela inteligência e coordenação cognitiva, enquanto a fábrica continuará responsável pela execução técnica dos processos audiovisuais.
+
+A interface deverá carregar funcionalidades pesadas sob demanda, evitando iniciar componentes de transcrição, processamento e renderização quando não forem necessários.
+
+O projeto deverá permitir que determinados componentes sejam executados em processos ou computadores separados no futuro, sem exigir sua transformação imediata em microsserviços.
+
+**Objetivo:** oferecer ao usuário a experiência de um único aplicativo completo, mantendo a independência técnica necessária para evolução, manutenção, desempenho e eventual distribuição das operações.
+
+**Restrição:** a unificação da interface não poderá resultar em um sistema monolítico fortemente acoplado, duplicação do motor de produção, múltiplas fontes oficiais de estado ou inicialização desnecessária de serviços pesados.

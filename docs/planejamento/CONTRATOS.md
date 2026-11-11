@@ -1,5 +1,7 @@
 # Mapa dos contratos de integração
 
+> **Classificação documental — 2026-11-11:** Rascunhos preservados. A direção vigente é local, definida em [ARCHITECTURE](../ARCHITECTURE.md), e as responsabilidades cognitivas em [AI-SYSTEM](../AI-SYSTEM.md). O vínculo VPS–PC é histórico; sua classificação como fonte do desenho abaixo não lhe confere vigência. Consulta de perfil pela integração Hórus já existe; nomes de operações destes rascunhos não são automaticamente o contrato da API atual.
+
 Estado: rascunhos documentais. Nenhum endpoint, banco ou adaptador foi implementado por este pacote.
 
 ## Fontes oficiais do desenho

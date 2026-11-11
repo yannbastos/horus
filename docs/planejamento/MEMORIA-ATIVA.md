@@ -1,5 +1,7 @@
 # Registros operacionais da produção audiovisual
 
+> **Classificação documental — 2026-11-11:** Rascunho histórico do registro operacional, preservado com seu exemplo. A fonte canônica de responsabilidades, fontes oficiais e controles é [AI-SYSTEM](../AI-SYSTEM.md#fontes-oficiais-e-memória-ativa). Campos e custos descritos abaixo são requisitos propostos, não um schema completo já implementado.
+
 ## Finalidade
 
 Rastrear decisões editoriais, falhas recorrentes, soluções técnicas verificadas, revisões e resultados da produção. Este documento descreve um contrato futuro; a tela consolidada ainda é uma prévia. Tarefas técnicas e eventos já persistem no SQLite do backend.

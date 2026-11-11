@@ -1,5 +1,7 @@
 # Stack oficial e planejamento da migração local
 
+> **Classificação documental — 2026-11-11:** Planejamento e auditoria inicial preservados. A fonte canônica das decisões é [ARCHITECTURE](../ARCHITECTURE.md); estado e prioridades em [ROADMAP](../ROADMAP.md). Tabelas de ausências, estruturas propostas e exclusão inicial da transcrição pertencem à etapa auditada, não descrevem automaticamente o código posterior. A autorização mencionada abaixo é histórica.
+
 Decisão fornecida pelo usuário em 2026-11-10. Posteriormente, o usuário autorizou iniciar a troca de linguagens. A implementação incremental está descrita em [migração local](../migracao-local.md); este documento preserva o planejamento e seus critérios, sem presumir que todos foram concluídos.
 
 Esta direção substitui a proposta anterior de VPS–PC e as alternativas de stack ainda abertas. A primeira etapa é local no Windows; Linux será validado depois. Não utilizar VPS, PostgreSQL/Supabase ou banco vetorial nesta etapa. O aplicativo Avalonia permanece disponível durante a transição.

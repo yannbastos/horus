@@ -1,5 +1,7 @@
 # Layout desktop audiovisual — primeira versão
 
+> **Leitura histórica — 2026-11-11:** o escopo autorizado abaixo refere-se ao incremento do layout Avalonia e não é permissão vigente. Os critérios visuais canônicos estão em [ARCHITECTURE](ARCHITECTURE.md#identidade-visual-e-equivalência).
+
 Escopo autorizado: evolução visual do aplicativo Avalonia existente. Não implementa Hermes, Radar, histórico operacional, produção ou acesso à fábrica. Não adiciona dependências nem modifica os outros repositórios.
 
 ## Organização

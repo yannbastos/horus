@@ -1,5 +1,7 @@
 # Diagnóstico preliminar — integração Hórus, Hermes e fábrica
 
+> **Classificação documental — 2026-11-11:** Auditoria histórica dos commits citados, não diagnóstico atual de todos os repositórios. Hermes e a integração da fábrica evoluíram depois; consulte [ROADMAP](../ROADMAP.md) e os relatórios vinculados. Bloqueios antigos não devem ser declarados corrigidos ou ainda presentes sem inspecionar o código correspondente.
+
 Data: 2026-11-10. Método: leitura de arquivos locais e consulta web à documentação e ao código público. Nenhuma instalação do Hermes foi inspecionada nesta etapa. Não foram executados testes de integração nem chamadas pagas.
 
 ## Referências locais auditadas

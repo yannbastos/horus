@@ -1,5 +1,7 @@
 # Arquitetura híbrida — proposta VPS e PC
 
+> **Classificação documental — 2026-11-11:** Proposta histórica superada para a etapa atual. A fonte canônica da arquitetura é [ARCHITECTURE](../ARCHITECTURE.md); não implementar infraestrutura distribuída, contratar VPS ou abrir portas com base neste documento.
+
 > **Histórico:** a proposta VPS–PC foi substituída pela decisão de execução local em [STACK-LOCAL.md](STACK-LOCAL.md). Não contratar, configurar ou exigir VPS na primeira etapa. Os cenários de integridade e recuperação abaixo podem servir de referência, mas não são o plano de implantação vigente.
 
 Estado: contrato de responsabilidades proposto, sem infraestrutura instalada. Proposta histórica de distribuição de responsabilidades. Reavaliar após diagnóstico local do Hermes. Nenhuma contratação, conexão remota ou integração está confirmada.

@@ -8,7 +8,9 @@ Pesquisar oportunidades, planejar vídeos originais e gerenciar a operação aud
 
 O projeto começa pela operação de um canal no YouTube. A expansão para outros canais e formatos virá depois da validação do fluxo, da qualidade e dos custos.
 
-[Visão do produto](docs/vision.md) · [Roadmap](docs/roadmap.md) · [Arquitetura atual](docs/architecture.md) · [Planejamento técnico](docs/planejamento/README.md)
+[Visão do produto](docs/VISION.md) · [Estado e prioridades](docs/ROADMAP.md) · [Arquitetura](docs/ARCHITECTURE.md) · [Sistema de IA](docs/AI-SYSTEM.md) · [Biblioteca de técnicas](docs/MOTION-LIBRARY.md) · [Guias e histórico](docs/planejamento/README.md)
+
+Para agentes: leia [AGENTS.md](AGENTS.md) e use seu mapa de consulta por tarefa. Documentação de visão e planos históricos não autoriza implementar funcionalidades ou repetir autorizações antigas.
 
 **Migração em andamento:** React/TypeScript + Tauri 2, Rust apenas para integrações nativas, Python/FastAPI e SQLite. A prova de conceito local já possui interface web, tarefas persistentes, logs e integração limitada com o CLI da fábrica. O build Tauri e o instalador Windows já foram gerados; abertura e conexão automática ao backend foram verificadas. A transcrição foi portada para a nova interface; o desktop C#/Avalonia continua disponível até a validação de equivalência. Consulte [como executar e os limites da migração](docs/migracao-local.md).
 
@@ -18,15 +20,7 @@ O projeto começa pela operação de um canal no YouTube. A expansão para outro
 
 A nova interface desktop usa **React/TypeScript e Tauri 2**, com backend **FastAPI/SQLite**, operações limitadas da fábrica e biblioteca local. O desktop **C#/.NET e Avalonia** permanece como ferramenta de transcrição: importar áudio e vídeo, baixar um vídeo do YouTube, transcrever localmente com Whisper, revisar e salvar o texto. Há temas claro, escuro e do sistema e testes automatizados de interface e comportamento.
 
-| Capacidade | Situação |
-|---|---|
-| Download e transcrição de áudio/vídeo | Implementados no desktop; exigem as ferramentas descritas abaixo |
-| Fila de transcrição, edição e salvamento | Implementados; a fila não persiste ao fechar o app |
-| Layout desktop audiovisual | Primeira versão integrada à branch principal; [capturas e limites](docs/layout-desktop.md) |
-| Radar, análise editorial e histórico operacional | Planejados; sem integração operacional no desktop |
-| Integração com Hermes | CLI Windows identificado, API local autenticada e painel de diagnóstico implementados; análise e orquestração ainda pendentes |
-| Nova base React/FastAPI/SQLite | Interface, player local, fila, logs, cancelamento e recuperação; consulta ao CLI real validada. Tauri compilado no Windows; render real ainda pendente de validação |
-| Publicação automática e múltiplos canais | Evolução futura; publicação inicialmente manual |
+Consulte a [tabela canônica de capacidades e limites](docs/ROADMAP.md#estado-consolidado), que distingue implementado, parcialmente validado e planejado. Render real possui ensaios delimitados registrados; isso não certifica o fluxo editorial completo ou a execução por todos os modos do aplicativo.
 
 No Avalonia, Radar, Biblioteca, Produção, Canais e Histórico operacional são prévias de layout, identificadas como em preparação, sem operações ou métricas simuladas. As telas e os dados da proposta anterior foram removidos do código. A nova base React adiciona operações limitadas da fábrica e mídia local, descritas no guia de migração.
 
@@ -38,14 +32,7 @@ Captura do aplicativo Avalonia integrado à branch principal. O layout reorganiz
 
 ## Para onde o Hórus está evoluindo
 
-- **Radar:** descobrir e organizar oportunidades a partir de dados e fontes acessíveis.
-- **Análise audiovisual:** analisar narrativa, ganchos, títulos, thumbnails e formatos, separando observação de hipótese.
-- **Planejamento editorial:** desenvolver ideias originais, briefings e roteiros sujeitos à aprovação.
-- **Produção:** acompanhar a fábrica de vídeos, revisões e arquivos finais.
-- **Canais e resultados:** reunir perfis editoriais, custos, métricas autorizadas e experimentos.
-- **Histórico operacional:** registrar execuções, falhas, revisões e decisões editoriais da produção.
-
-Esses módulos descrevem a direção do produto, não funcionalidades prontas. O sistema deve preservar aprovação humana, verificação de licenças e controle de custos.
+O [escopo funcional](docs/VISION.md#escopo-funcional) reúne os módulos e princípios do produto. Detalhes de orquestração/memória pertencem a [AI-SYSTEM](docs/AI-SYSTEM.md); a biblioteca inteligente planejada é descrita em [MOTION-LIBRARY](docs/MOTION-LIBRARY.md). Esses objetivos não são funcionalidades prontas.
 
 ## Como os projetos se conectam
 
@@ -56,13 +43,13 @@ Esses módulos descrevem a direção do produto, não funcionalidades prontas. O
 | [Fábrica de canais](https://github.com/yannbastos/fabrica-canais) | Motor independente Python/CLI e Remotion; não exige o desktop para funcionar |
 | [Laboratório visual](https://github.com/yannbastos/horus-storybook) | Componentes e referências de interface em React/Storybook |
 
-A primeira etapa é inteiramente local, sem VPS. A migração incremental foi autorizada e está em andamento; os componentes atuais serão preservados até validar a equivalência funcional. Consulte [o planejamento de integração](docs/planejamento/README.md).
+A primeira etapa é inteiramente local, sem VPS. A migração está em andamento; os componentes atuais serão preservados até validar a equivalência funcional. Autorizações anteriores foram pontuais e não concedem permissão para novas tarefas. Consulte [o planejamento de integração](docs/planejamento/README.md).
 
 A conexão local com o Hermes CLI está descrita em [integração Hermes](docs/integracao-hermes.md). A verificação usa somente a API de diagnóstico; não envia prompts ou inicia produções.
 
 ## Transcrição
 
-O processamento da transcrição é local, com [Whisper.net](https://github.com/sandrohanea/whisper.net). O primeiro download do modelo e a obtenção de vídeos do YouTube exigem internet.
+As instruções desta seção referem-se ao **desktop Avalonia**, com [Whisper.net](https://github.com/sandrohanea/whisper.net). Para o motor e o uso da transcrição React/Python, consulte a [migração](docs/migracao-local.md#transcrição). O primeiro download do modelo e a obtenção de vídeos do YouTube exigem internet.
 
 1. Arraste arquivos (mp3, wav, m4a, mp4, mkv, ...) para a tela ou use **Selecionar arquivos**.
 2. A fila é FIFO, com **até 20 arquivos incluindo o atual**. O primeiro da fila é o atual.
@@ -81,15 +68,11 @@ Dependências externas:
 
 Os modelos são baixados na primeira vez para `%LOCALAPPDATA%\Horus\models`. A execução usa CPU ou runtime CUDA conforme os recursos e a configuração do ambiente.
 
-As próximas etapas estão em [docs/roadmap.md](docs/roadmap.md).
+As próximas etapas estão em [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Tecnologias
 
-- React/TypeScript e Tauri 2 para o novo desktop, com Rust nas integrações nativas.
-- Python/FastAPI e SQLite para APIs, tarefas e persistência local.
-- CLI `fabrica` e Remotion como motor audiovisual independente.
-- C#/.NET 10 e Avalonia 12 preservados para transcrição durante a migração.
-- Playwright, pytest, xUnit v3 e Avalonia Headless para validação.
+Stack, estrutura e decisões estão em [ARCHITECTURE](docs/ARCHITECTURE.md). Os comandos de verificação por componente estão em [AGENTS.md](AGENTS.md#testes-e-verificação).
 
 As instruções abaixo executam o desktop Avalonia. Para a nova stack e seu build, siga [migração local](docs/migracao-local.md).
 
@@ -151,13 +134,15 @@ dotnet test Horus.slnx --filter "Category=Network"
 
 ## Suporte ao Linux
 
-O foco atual é o Windows, e o Linux ainda não é suportado nem testado. O suporte está previsto para o futuro, com atenção especial ao Arch Linux. Por isso, o projeto usa tecnologias multiplataforma e evita APIs exclusivas do Windows.
+**Suporte atual:** somente Windows. O Linux ainda não é suportado nem testado, em nenhuma das implementações.
+
+**Suporte futuro:** previsto, com atenção especial ao Arch Linux, e dependente de validação própria. O desktop Avalonia usa tecnologias multiplataforma; a nova stack também, mas já contém integrações específicas do Windows, como Job Objects e o instalador NSIS, que precisarão de equivalentes. Limites e critérios estão em [ARCHITECTURE](docs/ARCHITECTURE.md#direção-arquitetural-aprovada).
 
 ## Contribuições
 
 O projeto ainda está na fase de fundação e o processo de contribuição não foi formalizado. Até lá, sugestões e relatos de problemas são bem-vindos.
 
-Antes de alterar o código, leia [AGENTS.md](AGENTS.md) e [docs/architecture.md](docs/architecture.md).
+Antes de alterar o código, leia [AGENTS.md](AGENTS.md) e [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Licença
 
@@ -165,6 +150,6 @@ A licença open source ainda não foi definida.
 
 ## Catálogo visual
 
-O laboratório React/Storybook fica em um repositório separado: [horus-storybook](https://github.com/yannbastos/horus-storybook). Ele reúne componentes e telas para avaliar o design antes da adaptação ao C# e ao futuro site.
+O laboratório React/Storybook fica em um repositório separado: [horus-storybook](https://github.com/yannbastos/horus-storybook). Ele reúne componentes e telas para avaliar o design antes da adaptação ao aplicativo e ao futuro site.
 
 Na organização local, o catálogo está em `../HORUS Storybook`. Consulte o README daquele repositório para executar e verificar o catálogo. Ele é independente do aplicativo Avalonia e usa dados fictícios.

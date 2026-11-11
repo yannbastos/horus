@@ -1,5 +1,7 @@
 # Registro das decisões de produto
 
+> **Classificação documental — 2026-11-11:** Síntese histórica preservada. [VISION](../VISION.md), [ARCHITECTURE](../ARCHITECTURE.md) e [ROADMAP](../ROADMAP.md) são as fontes atuais por assunto. As autorizações abaixo, inclusive a implementação incremental do item 4, são históricas e não são permanentes; a necessidade antiga de validar render foi parcialmente atendida por ensaios posteriores, sem concluir validação editorial.
+
 Síntese das decisões vigentes do operador, não exportação de conversas.
 
 1. Hórus é exclusivamente uma plataforma de inteligência e operação audiovisual.

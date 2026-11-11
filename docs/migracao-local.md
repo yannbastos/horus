@@ -1,5 +1,7 @@
 # Migração local — primeira prova de conceito
 
+> **Leitura por incremento — 2026-11-11:** este guia preserva procedimentos e a cronologia da migração. O estado consolidado e as pendências atuais estão em [ROADMAP](ROADMAP.md); stack e critérios em [ARCHITECTURE](ARCHITECTURE.md). Tamanhos, pendências e autorizações de seções anteriores pertencem ao incremento descrito, não são permissões permanentes ou resultados de toda a plataforma. A afirmação inicial de que o build não empacota Whisper foi superada pelo empacotamento de faster-whisper documentado na seção Transcrição; a entrada atual abre Visão geral em App.tsx, não Produção. O texto do antigo botão Avalonia é histórico; seu comando nativo permanece preservado.
+
 **Validação posterior em 2026-11-10:** render real pelo backend, cancelamento da árvore Node/Chrome, preservação dos estados e seleção/reprodução de MP4 no desktop foram exercitados. Consulte [resultados, comandos e limites](validacao-local-2026-11-10.md). As pendências históricas abaixo devem ser lidas com essa atualização; instalação NSIS e equivalência completa da transcrição continuam pendentes.
 
 Implementação iniciada após autorização do usuário em 2026-11-10. O Avalonia não foi removido e continua utilizável até a equivalência ser aceita. A ferramenta de Transcrição foi portada para React + backend (ver seção própria); o atalho para abrir o Avalonia saiu da tela, mas o comando nativo `open_legacy` continua no Tauri.

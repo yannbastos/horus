@@ -1,5 +1,7 @@
 # Plano de validação e relatório de aplicação
 
+> **Classificação documental — 2026-11-11:** Catálogo histórico de cenários, não relatório de execução atual. Resultados posteriores e lacunas estão em [ROADMAP](../ROADMAP.md) e [validação local](../validacao-local-2026-11-10.md). Casos VPS–PC são futuros; a autorização de publicação documental mencionada ao final é histórica e pontual; não autoriza commit, push, execução de testes ou tarefas futuras.
+
 Estado: cenários preparados, **não executados**. A preparação nesta máquina verifica somente texto, links e sintaxe dos exemplos; não comprova funcionamento de Hermes, VPS ou executor.
 
 ## Portões de evolução

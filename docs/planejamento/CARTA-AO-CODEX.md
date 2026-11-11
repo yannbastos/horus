@@ -1,6 +1,8 @@
 # Continuidade técnica — Hórus audiovisual
 
-Leia primeiro [AGENTS.md](../../AGENTS.md), [visão do produto](../vision.md), [arquitetura atual](../architecture.md) e [migração local](../migracao-local.md).
+> **Classificação documental — 2026-11-11:** Carta histórica de continuidade. Para regras, consulte [AGENTS.md](../../AGENTS.md); para prioridades e estado, [ROADMAP](../ROADMAP.md). As autorizações pontuais de implementação, commit e push registradas abaixo, inclusive no último parágrafo, são históricas: não são permissões permanentes nem prevalecem sobre AGENTS.md ou o escopo da tarefa atual. Os próximos passos antigos devem ser confrontados com os ensaios posteriores.
+
+Leia primeiro [AGENTS.md](../../AGENTS.md), [visão do produto](../VISION.md), [arquitetura atual](../ARCHITECTURE.md) e [migração local](../migracao-local.md).
 
 ## Direção vigente
 

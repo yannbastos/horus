@@ -8,6 +8,8 @@ Validação local: Hermes Agent 0.23.1, revisão reportada `3b4215785882`, insta
 
 ## Preparar no Windows
 
+> **Aprovação:** os comandos abaixo criam perfil, chave e arquivos privados de conexão do Hermes e iniciam um processo externo. Agentes só devem executá-los com autorização específica da tarefa, conforme [AGENTS.md](../AGENTS.md#peça-aprovação-antes-de).
+
 Com o Hermes CLI já instalado, execute na raiz do Hórus, pelo PowerShell:
 
 ```powershell

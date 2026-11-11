@@ -1,5 +1,7 @@
 # Plano de aplicação na máquina principal
 
+> **Classificação documental — 2026-11-11:** Plano anterior preservado para dependências e critérios. [ROADMAP](../ROADMAP.md) define a ordem atual; [ARCHITECTURE](../ARCHITECTURE.md) já resolve stack, operação local e fronteiras. VPS–PC e consolidação de repositórios não estão autorizadas. A lista final de decisões abertas deve ser lida à luz dessas resoluções; não constitui ordem para reabri-las.
+
 > **Atualização de direção:** [STACK-LOCAL.md](STACK-LOCAL.md) define a stack e a prova de conceito atuais. A primeira etapa é local, sem VPS e sem redesign. As fases e hipóteses abaixo são planejamento anterior; aplicar somente o que for compatível com essa decisão mais recente.
 
 Estado: proposta executável, não autorização de implementação. Leia `VISAO.md` e `DIAGNOSTICO.md`.

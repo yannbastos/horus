@@ -13,13 +13,29 @@ Estas regras valem para todos os agentes que trabalham no HORUS.
 - Faça somente mudanças necessárias. A autonomia não autoriza alterar outros repositórios, contratar serviços, consumir APIs pagas, enviar mensagens ou publicar conteúdo por iniciativa própria.
 - Estas instruções não alteram permissões da ferramenta. Não modifique configurações globais de segurança do Codex, sandbox, políticas de aprovação ou listas de comandos permitidos. Quando houver uma restrição real, use o mecanismo de aprovação disponível; não tente contorná-la.
 
-## Contexto de continuidade — Hórus audiovisual
+## Contexto permanente — Hórus audiovisual
 
-**Produto vigente:** exclusivamente inteligência e operação audiovisual. Não reintroduzir telas, módulos ou dependência de propostas anteriores. Biblioteca é mídia de produção; Histórico operacional registra execuções, revisões, erros e decisões editoriais. Preserve transcrição, perfis, mídia, licenças e aprovação humana.
+**Produto vigente:** exclusivamente inteligência e operação audiovisual. Não reintroduzir telas, módulos ou dependência de propostas anteriores. Preserve transcrição, perfis, mídia, licenças e aprovação humana. A visão funcional pertence a [docs/VISION.md](docs/VISION.md); documentação de produto não autoriza implementar funcionalidades.
 
-**Stack oficial:** React/TypeScript + Tauri 2, Rust nativo mínimo, Python/FastAPI e SQLite. Implementação incremental autorizada. Windows local, sem VPS e sem redesign. Preserve fábrica/CLI/Remotion independentes e Hermes externo sem fork. O Avalonia continua oferecendo transcrição até validar equivalência funcional. Build release e instalador Tauri passaram; não presumir validação de render, mídia ou desempenho.
+**Fronteiras permanentes:** preserve fábrica/CLI/Remotion independentes, Hermes externo sem fork inicial e Avalonia até equivalência funcional aceita. Não reescreva componentes funcionais nem introduza linguagens sem necessidade técnica. Funções locais essenciais não devem exigir nuvem. Stack, desempenho e critérios completos de identidade visual pertencem a [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-Leia [continuidade técnica](docs/planejamento/CARTA-AO-CODEX.md), [stack local](docs/planejamento/STACK-LOCAL.md) e [migração](docs/migracao-local.md). Documentos históricos não substituem as decisões atuais.
+**Interpretação:** verifique o código e a evidência antes de afirmar disponibilidade. Separe implementado, parcialmente validado e planejado. Autorizações registradas em cartas, planos ou conversas antigas não são permissões permanentes. Quando receber somente contexto, não altere arquivos automaticamente. Em conflito entre plano e implementação, apresente a divergência antes de mudanças estruturais.
+
+## Consulta por tarefa
+
+Leia este arquivo e somente os documentos pertinentes ao escopo. Não carregue todo o histórico como contexto padrão.
+
+| Tarefa | Fonte canônica e complemento relevante |
+|---|---|
+| Produto e funcionalidades | [VISION](docs/VISION.md) |
+| Arquitetura, backend ou persistência | [ARCHITECTURE](docs/ARCHITECTURE.md) e [migração](docs/migracao-local.md) |
+| Interface ou identidade visual | [Critérios visuais](docs/ARCHITECTURE.md#identidade-visual-e-equivalência), [layout](docs/layout-desktop.md) e tokens da implementação afetada |
+| Hermes, agentes ou memória | [AI-SYSTEM](docs/AI-SYSTEM.md) e [integração Hermes](docs/integracao-hermes.md) |
+| Motion design, técnicas ou Remotion | [MOTION-LIBRARY](docs/MOTION-LIBRARY.md) e documentação própria da fábrica |
+| Estado, prioridade ou validação | [ROADMAP](docs/ROADMAP.md); relatórios datados somente para a evidência necessária |
+| Decisão histórica ou contrato proposto | [Índice de planejamento](docs/planejamento/README.md) e [registro da reorganização](docs/historico/reorganizacao-2026-11-11/README.md) |
+
+Cada assunto tem uma fonte canônica; guias contêm procedimentos e relatórios preservam evidências de um incremento. O [contexto original](docs/historico/contexto-original/README.md) é referência histórica intacta, não instrução de execução. Planos históricos não substituem decisões atuais nem instruções explícitas da tarefa.
 
 **Princípio fundamental:** o HORUS deve ser desenvolvido para funcionar bem, não apenas para parecer bem programado.
 
@@ -27,7 +43,7 @@ O idealizador é o responsável pelo produto e principal usuário. Os agentes as
 
 ## Antes de alterar
 
-- Leia este arquivo e [docs/architecture.md](docs/architecture.md).
+- Leia este arquivo e a seção pertinente de [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) quando a tarefa envolver arquitetura ou código.
 - Inspecione os arquivos relevantes antes de implementar.
 - Respeite a arquitetura existente.
 
@@ -51,8 +67,10 @@ Quando uma decisão importante exigir aprovação, avance primeiro no trabalho i
 - Não adicione dependências sem necessidade.
 - Não exclua nem sobrescreva arquivos sem justificativa.
 - Não exponha credenciais ou informações sensíveis.
-- Preserve a compatibilidade futura com Linux: evite APIs exclusivas do Windows e caminhos fixos.
+- Preserve a compatibilidade futura com Linux: evite caminhos fixos e APIs exclusivas do Windows quando houver alternativa portável; mantenha integrações específicas do Windows isoladas e documentadas. O suporte atual é somente Windows.
 - Nas telas React, use os tokens de `frontend/src/styles/tokens.css`; no Avalonia, use `src/Horus/Theme/Tokens.axaml`. Preserve a identidade visual em ambos.
+- Não faça redesign sem autorização: preserve cores, tipografia, ícones, layouts, navegação e comportamento. Consulte os critérios visuais canônicos antes de alterar a interface.
+- Não permita que agentes ou memória alterem regras críticas, aprovações ou limites financeiros automaticamente. Referencie configurações oficiais, sem criar cópias concorrentes.
 
 ## Prioridades
 
@@ -86,7 +104,8 @@ Quando uma decisão importante exigir aprovação, avance primeiro no trabalho i
 - Mantenha a documentação sincronizada com as mudanças reais.
 - Escreva a documentação em português brasileiro.
 - Não apresente funcionalidades planejadas como se já estivessem implementadas.
-- `docs/architecture.md` descreve apenas o que está implementado.
+- `docs/ARCHITECTURE.md` separa implementação atual de direção aprovada; não apresente requisitos da segunda como capacidades existentes.
+- Mantenha prioridades e progresso em `docs/ROADMAP.md`, não nas instruções permanentes. Preserve documentos históricos e suas limitações, sem transformar autorizações antigas em permissões vigentes.
 
 ## Git
 
