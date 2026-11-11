@@ -12,6 +12,10 @@ const models = [
 ];
 const languages = [['auto', 'Detectar automaticamente'], ['pt', 'Português'], ['en', 'Inglês'], ['es', 'Espanhol']];
 type Capabilities = { engine: boolean; downloader: boolean; ffmpeg: boolean };
+const statusLabels: Record<string, string> = {
+  queued: 'Na fila', running: 'Em execução', cancel_requested: 'Cancelando', succeeded: 'Concluído',
+  failed: 'Falhou', cancelled: 'Cancelado', interrupted: 'Interrompido', blocked: 'Bloqueado',
+};
 
 const fileName = (path: string) => path.split(/[\\/]/).pop() ?? path;
 const folder = (path: string) => path.slice(0, Math.max(0, path.length - fileName(path).length - 1));
@@ -212,12 +216,14 @@ export default function Transcription({ connection, hidden }: { connection: Conn
     const started = performance.now();
     let partial = '';
     let deviceUsed = '';
+    let observed = false;  // recebeu eventos de execução nesta sessão; senão é um resultado já encerrado
     const transcription = attachment.payload.operation === 'transcription.run';
     try {
       const job = await runJob(attachment, snapshot => {
         partial = (snapshot.result as { text?: string } | null)?.text ?? '';
         if (transcription) setTranscript(attachment.previous + partial);
       }, event => {
+        observed = true;
         if (event.kind === 'status') {
           setStatus(event.message);
           const device = event.message.match(/^Transcrevendo em (CPU|CUDA) \((int8|float16)\)/);
@@ -235,7 +241,8 @@ export default function Transcription({ connection, hidden }: { connection: Conn
         } else setStatus(`Download ${job.status}: ${job.error ?? 'Consulte o histórico.'}`);
       } else if (job.status === 'succeeded') {
         setTranscript(result?.text ?? partial); setCompleted(true); setProgress(100);
-        setStatus(`Concluído em ${elapsed(started)}${deviceUsed ? ` usando ${deviceUsed}` : ''}. Salve o .txt antes de Próximo vídeo.`);
+        setStatus(attachment.id && !observed ? 'Transcrição recuperada do histórico. Salve o .txt antes de Próximo vídeo.'
+          : `Concluído em ${elapsed(started)}${deviceUsed ? ` usando ${deviceUsed}` : ''}. Salve o .txt antes de Próximo vídeo.`);
       } else {
         setTranscript(attachment.previous + (result?.text ?? partial));
         setStatus(job.status === 'cancelled' ? 'Cancelado. Texto parcial preservado; Transcrever tenta novamente o mesmo arquivo.'
@@ -394,7 +401,7 @@ export default function Transcription({ connection, hidden }: { connection: Conn
         {historyError && <p className="error" role="alert">{historyError}</p>}
         {history.map(job => <button key={job.id} className="job-item" disabled={busy} onClick={() => void recover(job)}>
           <span>{job.payload.operation === 'transcription.run' ? fileName(job.payload.path) : 'Download YouTube'}</span>
-          <small>{job.status} · {new Date(job.created_at).toLocaleString('pt-BR')}</small>
+          <small>{statusLabels[job.status] ?? job.status} · {new Date(job.created_at).toLocaleString('pt-BR')}</small>
         </button>)}
         <div className="actions"><button className="button" disabled={offset === 0} onClick={() => setOffset(value => Math.max(0, value - 100))}>MAIS RECENTES</button>
           <button className="button" disabled={history.length < 100} onClick={() => setOffset(value => value + 100)}>MAIS ANTIGAS</button></div>
