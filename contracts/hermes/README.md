@@ -1,6 +1,6 @@
-# Contrato Hórus ↔ Hermes — proposta com testes simulados
+# Contrato Hórus ↔ Hermes — testes simulados
 
-**Estado: contrato proposto.** Nada nesta pasta foi executado contra o Hermes real, e o backend do Hórus não usa este código. Os testes comprovam somente o lado do Hórus: schemas, validação de evidências e decisões diante das respostas do servidor simulado.
+**Estado: contrato em uso pelo executor cognitivo dos workflows, validado somente contra o Hermes simulado.** Nada foi executado contra o Hermes real. O pacote oficial fica no backend (`backend/src/horus_backend/hermes_contract/`, empacotado com ele); esta pasta mantém schemas versionados, fixtures, o servidor simulado e os testes do contrato. A integração com o workflow é descrita em [workflows editoriais](../../docs/workflows-editoriais.md#executor-cognitivo-hermes--simulado).
 
 Não há gateway, inferência, rede externa, credenciais ou configuração do perfil `horus` envolvidos. Não foram adicionadas dependências: usa Python, Pydantic e pytest do `backend/.venv`.
 
@@ -17,11 +17,11 @@ Na raiz do Hórus:
 
 | Caminho | Função |
 |---|---|
-| `horus_hermes_contract/models.py` | Pedido (`RunEnvelope`, `HermesRunRequest`) e resultado (`EditorialResult`), versão `1.0` |
+| `backend/src/horus_backend/hermes_contract/models.py` | Pedido (`RunEnvelope`, `HermesRunRequest`) e resultado (`EditorialResult`), versão `1.0` |
 | `schemas/*.v1.json` | JSON Schemas gerados dos modelos; um teste impede divergência |
-| `horus_hermes_contract/validator.py` | Conversão da resposta em JSON e validação de evidências, executada pelo Hórus |
-| `horus_hermes_contract/mapping.py` | Estados do Hermes → ações e resultado da tentativa; chaves de idempotência; regras de retry |
-| `fake_server.py` | Hermes simulado, somente biblioteca padrão e `127.0.0.1` |
+| `backend/src/horus_backend/hermes_contract/validator.py` | Conversão da resposta em JSON e validação de evidências, executada pelo Hórus |
+| `backend/src/horus_backend/hermes_contract/mapping.py` | Estados do Hermes → ações e resultado da tentativa; chaves de idempotência; regras de retry |
+| `fake_server.py` | Hermes simulado, somente biblioteca padrão e `127.0.0.1`; também usado por `backend/tests/test_workflow_hermes.py` |
 | `fixtures/` | Envelope e resultados **fictícios** (URLs `example.org`) |
 | `tests/` | Schemas, validador e fluxo HTTP simulado |
 
@@ -57,9 +57,9 @@ Leitura de `gateway/platforms/api_server_runs.py`, `api_server_run_idempotency.p
 | `forbidden_metric` | Retenção, receita, RPM, CPM, CTR, monetização e tempo de exibição não podem aparecer como dado; permitidos em `unknowns` |
 | `unverified_number` | Números grandes no texto precisam corresponder ao snapshot |
 
-## Incompatibilidades com o núcleo de workflows (`067aba0`)
+## Incompatibilidades com o núcleo de workflows (`067aba0`) — tratadas
 
-Registradas para decisão; nenhuma foi alterada aqui.
+As nove divergências abaixo foram resolvidas pelo executor cognitivo (migração v3, `workflow_hermes.py`): saída e timeout por executor, `simulated` derivado do workflow, `cognitive_runs` com referência/chave/consumo, estado `unknown` com conciliação, parada remota, autorização antes de cada execução paga, dataset/perfil no pedido e uma única execução Hermes em `analysis`. Lista original preservada como registro:
 
 1. Cada etapa valida `SimulatedOutput` (`simulated: True`, `title`, `text`, até uma fonte); `EditorialResult` exige outro modelo de saída por executor.
 2. `WorkflowService.get()` sempre devolve `simulated: True`.

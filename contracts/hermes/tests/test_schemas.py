@@ -5,7 +5,7 @@ from pydantic import ValidationError
 
 from conftest import ROOT, load
 from generate_schemas import render
-from horus_hermes_contract.models import SCHEMAS, Dataset, EditorialResult, HermesRunRequest, RunEnvelope
+from horus_backend.hermes_contract.models import SCHEMAS, Dataset, EditorialResult, HermesRunRequest, RunEnvelope
 
 
 @pytest.mark.parametrize("name", sorted(SCHEMAS))

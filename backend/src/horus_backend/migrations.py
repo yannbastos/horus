@@ -6,7 +6,7 @@ import uuid
 from contextlib import closing
 from pathlib import Path
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 MIGRATIONS = {
     1: (
         """CREATE TABLE jobs (
@@ -63,6 +63,31 @@ MIGRATIONS = {
             workflow_id TEXT NOT NULL REFERENCES workflows(id), revision INTEGER NOT NULL,
             kind TEXT NOT NULL, data TEXT NOT NULL, created_at TEXT NOT NULL)""",
         "CREATE INDEX workflow_event_cursor ON workflow_events(workflow_id, sequence)",
+    ),
+    # Executor cognitivo externo: somente acréscimos, sem reconstruir tabelas existentes.
+    3: (
+        """ALTER TABLE workflows ADD COLUMN executor TEXT NOT NULL DEFAULT 'simulated'
+            CHECK(executor IN ('simulated','hermes'))""",
+        """CREATE TABLE cognitive_runs (
+            id TEXT PRIMARY KEY, job_id TEXT NOT NULL REFERENCES jobs(id),
+            attempt_id TEXT NOT NULL REFERENCES job_attempts(id),
+            provider TEXT NOT NULL CHECK(provider IN ('hermes')),
+            idempotency_key TEXT NOT NULL UNIQUE, request TEXT NOT NULL, request_hash TEXT NOT NULL,
+            external_ref TEXT,
+            status TEXT NOT NULL CHECK(status IN ('submitting','admitted','completed','failed',
+                'cancelled','interrupted','unknown','policy_violation','invalid_output')),
+            remote_status TEXT, usage TEXT, error TEXT,
+            created_at TEXT NOT NULL, updated_at TEXT NOT NULL)""",
+        "CREATE INDEX cognitive_runs_job ON cognitive_runs(job_id, created_at)",
+        """CREATE TABLE authorizations (
+            id TEXT PRIMARY KEY, workflow_id TEXT NOT NULL REFERENCES workflows(id),
+            revision INTEGER NOT NULL, job_id TEXT NOT NULL REFERENCES jobs(id),
+            input_artifact_id TEXT NOT NULL REFERENCES artifacts(id),
+            scope TEXT NOT NULL CHECK(scope IN ('cognitive_run')),
+            max_runs INTEGER NOT NULL CHECK(max_runs = 1),
+            operator_id TEXT NOT NULL, idempotency_key TEXT NOT NULL, request TEXT NOT NULL,
+            consumed_attempt_id TEXT REFERENCES job_attempts(id), created_at TEXT NOT NULL,
+            UNIQUE(workflow_id, idempotency_key))""",
     ),
 }
 

@@ -56,6 +56,10 @@ class Settings:
     worker_command: tuple[str, ...] | None = None
     hermes_executable: Path | None = field(default_factory=discover_hermes)
     hermes_config: Path = field(default_factory=hermes_connection_file)
+    # Executor dos novos workflows editoriais; definido pelo operador, nunca pelo payload da API.
+    workflow_executor: str = field(default_factory=lambda: os.environ.get("HORUS_WORKFLOW_EXECUTOR", "simulated"))
+    hermes_poll_seconds: float = 2.0
+    hermes_run_timeout: float = 900.0
     origins: tuple[str, ...] = (
         "http://localhost:1420", "http://127.0.0.1:1420",
         "http://tauri.localhost", "https://tauri.localhost", "tauri://localhost",

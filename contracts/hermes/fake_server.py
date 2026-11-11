@@ -22,6 +22,7 @@ import threading
 import time
 import uuid
 from collections import deque
+from typing import Callable
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -32,7 +33,7 @@ TERMINAL = {"completed", "failed", "cancelled", "interrupted"}
 @dataclass
 class Scenario:
     """Como a próxima execução admitida se comporta."""
-    output: str = ""
+    output: str | Callable[[dict], str] = ""   # pode derivar do corpo enviado (ex.: ecoar task_id)
     final_status: str = "completed"            # completed | failed | interrupted
     turn_exit_reason: str | None = None        # ex.: "max_iterations"
     hold: bool = False                         # fica em "running" até /stop
@@ -52,6 +53,8 @@ class Run:
     output: str | None = None
     error: str | None = None
     usage: dict | None = None
+    body: dict = field(default_factory=dict)
+    scenario: Scenario | None = None
     flags: dict = field(default_factory=dict)
     created_at: float = field(default_factory=time.time)
 
@@ -85,8 +88,8 @@ class FakeHermes:
     def _event(self, run: Run, name: str, **fields):
         run.events.append({"event": name, "run_id": run.run_id, "timestamp": time.time(), **fields})
 
-    def _admit(self, scenario: Scenario, keyed: bool) -> Run:
-        run = Run(run_id=f"run_{uuid.uuid4().hex}", keyed=keyed)
+    def _admit(self, scenario: Scenario, keyed: bool, body: dict | None = None) -> Run:
+        run = Run(run_id=f"run_{uuid.uuid4().hex}", keyed=keyed, body=body or {}, scenario=scenario)
         self._event(run, "run.queued")
         run.status = "running"
         self._event(run, "run.started")
@@ -103,11 +106,12 @@ class FakeHermes:
 
     def _finish(self, run: Run, scenario: Scenario):
         run.usage = dict(scenario.usage)
+        output = scenario.output(run.body) if callable(scenario.output) else scenario.output
         if scenario.final_status == "completed":
-            run.status, run.output = "completed", scenario.output
+            run.status, run.output = "completed", output
             run.flags.update(completed=True, partial=False, interrupted=False)
             self._event(run, "message.started")
-            self._event(run, "run.completed", output=scenario.output, usage=run.usage)
+            self._event(run, "run.completed", output=output, usage=run.usage)
         elif scenario.final_status == "interrupted":
             run.status, run.error = "interrupted", "Execução interrompida."
             run.flags.update(completed=False, partial=True, interrupted=True)
@@ -129,6 +133,12 @@ class FakeHermes:
                 body[name] = getattr(run, name)
         body.update({k: v for k, v in run.flags.items() if k != "scenario"})
         return body
+
+    def release(self, run_id: str):
+        """Conclui uma execução retida conforme seu cenário (ex.: terminou enquanto o Hórus estava fora)."""
+        with self.lock:
+            run = self.runs[run_id]
+            self._finish(run, run.scenario)
 
     def restart(self):
         """Hipótese de reinício do gateway: ver docstring do módulo."""
@@ -259,7 +269,7 @@ class FakeHermes:
                     return
                 fake.requests.append({"body": body, "idempotency_key": key or None})
                 scenario = fake.scenarios.popleft() if fake.scenarios else fake.default
-                run = fake._admit(scenario, keyed=bool(key))
+                run = fake._admit(scenario, keyed=bool(key), body=body)
                 fake.runs[run.run_id] = run
                 if key:
                     fake.idempotency[key] = (fingerprint, run.run_id)

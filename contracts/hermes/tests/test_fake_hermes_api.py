@@ -5,11 +5,11 @@ import pytest
 
 from conftest import Http
 from fake_server import Scenario
-from horus_hermes_contract.mapping import (
+from horus_backend.hermes_contract.mapping import (
     ATTEMPT_OUTCOME, Observation, decide, idempotency_key, may_repair, may_retry_after,
     may_retry_automatically)
-from horus_hermes_contract.models import HermesRunRequest
-from horus_hermes_contract.validator import OutputError, parse_output, validate_result
+from horus_backend.hermes_contract.models import HermesRunRequest
+from horus_backend.hermes_contract.validator import OutputError, parse_output, validate_result
 
 KEY = idempotency_key("b" * 31 + "1")
 

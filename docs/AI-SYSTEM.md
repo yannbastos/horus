@@ -10,6 +10,8 @@ O [guia de integração](integracao-hermes.md) é a fonte dos comandos, configur
 
 A fila sequencial agora atende também o [núcleo editorial simulado](workflows-editoriais.md): fluxo fixo com etapas, tentativas, artefatos versionados e aprovação persistente. O backend continua sendo a fonte oficial e o JobManager permanece o único worker. Não há planejamento automático real, DAG genérico, delegação multiagente, controle financeiro completo ou memória ativa. O simulador não usa o adaptador Hermes nem outros serviços externos.
 
+Há também um [executor cognitivo Hermes](workflows-editoriais.md#executor-cognitivo-hermes--simulado), desativado por padrão: uma única execução em `analysis`, autorizada por pessoa, com chave de idempotência, referência externa e consumo persistidos, validação de evidências pelo [contrato](../contracts/hermes/README.md), parada remota e conciliação sem reenvio. Foi validado apenas contra o Hermes simulado; não há execução real, modelo/provedor configurado ou controle monetário.
+
 ## Maestro e agentes especializados — planejado
 
 Hermes Agent será a base do maestro: interpretar objetivos amplos, planejar, decompor tarefas, identificar dependências, delegar, acompanhar e consolidar resultados. Integrar externamente por mecanismos públicos de ferramentas, skills e subagentes, sem modificar seu core ou criar fork inicialmente.

@@ -7,9 +7,9 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).parent
-sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT.parent.parent / 'backend' / 'src'))
 
-from horus_hermes_contract.models import SCHEMAS  # noqa: E402
+from horus_backend.hermes_contract.models import SCHEMAS  # noqa: E402
 
 
 def render(model) -> str:

@@ -27,6 +27,7 @@ Uma capacidade pode estar implementada e parcialmente validada. Builds e testes 
 | Biblioteca de mídia/player | Implementados; seleção e reprodução de MP4 no Tauri registradas; pasta, busca temporal manual e outros cenários ainda pendentes |
 | Transcrição React/Python | Implementada; testes simulados e transcrição curta tiny/CPU registrados; equivalência completa com Avalonia pendente |
 | Diagnóstico Hermes | Implementado; integração autenticada anteriormente registrada; conectividade depende da configuração da sessão |
+| Executor cognitivo Hermes no workflow | Implementado e validado só com Hermes simulado: autorização por execução, rastreio, validação de evidências, cancelamento remoto e conciliação; sem execução real |
 | Planejamento/delegação multiagente | Planejados; diagnóstico de capacidades não comprova orquestração |
 | Memória ativa e histórico editorial consolidado | Planejados; tarefas/eventos técnicos persistentes não equivalem ao módulo completo |
 | Biblioteca inteligente de técnicas | Planejada; distinta da Biblioteca de mídia atual e dos componentes Remotion existentes |
@@ -58,6 +59,8 @@ Aceite: evidências delimitadas de instalação, ciclo de vida, recuperação, e
 Validar **Pedido → Planejamento → Pesquisa → Análise → Proposta editorial → Aprovação humana**, conforme [AI-SYSTEM.md](AI-SYSTEM.md#workflow-mínimo-e-evolução--planejado).
 
 Primeiro incremento backend concluído em modo simulado: [contratos, limites e resultados](workflows-editoriais.md). A suíte do backend passou em 89 testes em bancos temporários, incluindo migração, encerramento abrupto, idempotência e decisões obsoletas. Banco operacional, UI editorial e chamadas de IA/YouTube não foram exercitados neste incremento.
+
+Segundo incremento: executor cognitivo Hermes ligado ao mesmo workflow persistente, validado com o Hermes simulado de `contracts/hermes` ([detalhes](workflows-editoriais.md#executor-cognitivo-hermes--simulado)). Próximos passos dependem de decisão: modelo/provedor e orçamento do perfil `horus`, restrição das ferramentas do perfil, primeiro ensaio real autorizado e UI editorial.
 
 Antes de ampliar produção automatizada, confirmar capacidades reais de delegação do Hermes instalado e contratos com o backend; definir modelo/provedor, orçamento e aprovação aplicável à análise delimitada. O diagnóstico autenticado já existente não precisa ser reimplementado.
 

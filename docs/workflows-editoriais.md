@@ -12,7 +12,7 @@ Ao terminar a proposta, o workflow fica em `awaiting_approval` e libera o worker
 
 ## Schema e migrações
 
-`migrations.py` aplica versões sequenciais em uma transação SQLite; a versão atual é 2. Não usa `executescript()` para migrações. Banco de versão futura ou banco sem versão com tabelas desconhecidas é recusado. Falha de DDL desfaz a migração e preserva a versão anterior.
+`migrations.py` aplica versões sequenciais em uma transação SQLite; a versão atual é 3 (acréscimos do executor cognitivo, descritos abaixo). Não usa `executescript()` para migrações. Banco de versão futura ou banco sem versão com tabelas desconhecidas é recusado. Falha de DDL desfaz a migração e preserva a versão anterior.
 
 Na migração de um banco versão 1 é gerada uma cópia consistente pela API de backup SQLite, com nome único `horus.backup-v1-<id>.sqlite3`, na pasta do banco. A reabertura de um banco já migrado não repete a cópia. A restauração dessa cópia é uma ação manual, com todos os backends encerrados; não há downgrade automático.
 
@@ -67,6 +67,39 @@ Decisões aceitas: `approve`, `reject` e `request_changes`. A última exige feed
 O operador é registrado pelo servidor como `local-operator`, no escopo `editorial_proposal`; o corpo não pode escolher essa autoria. Isso representa o operador da instância autenticada, não autenticação multiusuário ou prova de presença humana. Aprovação simulada não autoriza render, narração, orçamento ou publicação.
 
 As rotas antigas de jobs continuam disponíveis. A operação interna `editorial.simulated` não pode ser submetida diretamente por `POST /v1/jobs`. Uma etapa editorial com falha só pode ser retomada pela rota do workflow. Cancelar uma etapa editorial pendente/ativa cancela seu fluxo; cancelar um job já encerrado permanece uma operação sem efeito, como antes.
+
+## Executor cognitivo Hermes — simulado
+
+O executor dos **novos** workflows é escolhido pelo operador na inicialização do backend (`HORUS_WORKFLOW_EXECUTOR=simulated|hermes`, padrão `simulated`) e gravado em `workflows.executor`; o payload da API não escolhe executor. Workflows simulados mantêm o comportamento descrito acima.
+
+Com `hermes`, o pedido exige `dataset` e `channel_profile` no formato do [contrato 1.0](../contracts/hermes/README.md). As quatro etapas continuam como jobs do mesmo JobManager:
+
+| Etapa | Executor | Comportamento |
+|---|---|---|
+| `planning` | `local-v1` | Plano fixo; sem rede |
+| `research` | `local-v1` | Valida e congela dataset e perfil fornecidos pelo operador, com hash; sem rede |
+| `analysis` | `hermes-v1` | Única execução cognitiva: `POST /v1/runs` com envelope do contrato, acompanhamento por `GET /v1/runs/{id}` e validação de evidências no Hórus |
+| `proposal` | `local-v1` | Proposta montada somente do resultado validado; `requires_human_review: true` |
+
+**Autorização antes de custo.** Ao concluir `research`, `analysis` fica em `awaiting_authorization` e o workflow aparece com `pending_authorization`. `POST /v1/workflows/{id}/authorize` (com `Idempotency-Key`, `expected_revision` e `job_id`) registra em `authorizations` a autorização do operador local para **uma** execução sobre o snapshot da revisão (`max_runs = 1`), consumida pela tentativa. Retry de `analysis`, falha de validação e `request_changes` voltam a pedir autorização; nenhuma execução paga é repetida automaticamente.
+
+**Rastreabilidade.** `cognitive_runs` guarda, por execução: tentativa, chave de idempotência `horus-<attempt_id>`, corpo enviado e hash, referência externa (`run_id`), estado local e remoto, `usage` e erro. O registro é gravado **antes** do envio; se a resposta da admissão se perder, o pedido é repetido uma vez com a mesma chave e o mesmo corpo. A resposta da API omite o corpo enviado.
+
+**Validação.** O texto final é convertido e validado pelo `EditorialResult` e pelas regras de evidência (fontes, métricas idênticas ao snapshot, termos proibidos). Resposta fora do contrato termina a tentativa como `failed` (`invalid_output`), sem correção automática.
+
+**Cancelamento e falhas.**
+- Cancelar pelo operador envia `POST /v1/runs/{id}/stop` e só registra `cancelled` quando o Hermes confirma estado final; sem confirmação, o registro fica `unknown`.
+- Pedido de aprovação de ferramenta (`waiting_for_approval`) nunca é aprovado: o Hórus pede parada e registra `policy_violation`.
+- Recusas da API (400/401/403/409/422/429) terminam como `failed`, sem nova tentativa.
+- Tempo limite do Hórus (`hermes_run_timeout`, padrão 900 s) pede parada; sem confirmação, `unknown`.
+
+**Conciliação.** Encerrar o backend durante a execução, perder contato ou receber 404/5xx deixa a execução `unknown` e a tentativa `interrupted`. Retry é recusado enquanto houver execução `unknown`. `POST /v1/workflows/{id}/reconcile` (com `expected_revision`) reenfileira a etapa para **acompanhar a mesma execução remota**, sem novo `POST` e sem nova autorização; se ela concluiu, o resultado é validado e aproveitado. Workflow cancelado com execução `unknown` não é reaberto por conciliação.
+
+**Conexão.** Usa o arquivo privado de conexão do diagnóstico Hermes (`hermes_config`): origem HTTP em loopback com porta explícita, sem proxy de ambiente e sem redirects. Nenhuma configuração do perfil Hermes é alterada pelo Hórus.
+
+**Limites desta entrega.** Somente o Hermes simulado foi exercitado; não houve gateway real, modelo, custo real, YouTube ou UI editorial. O acompanhamento usa consulta periódica (`hermes_poll_seconds`), não SSE. Não há teto monetário: a autorização limita a quantidade de execuções e `usage` registra tokens informados. Não há correção automática de JSON inválido nem delegação a subagentes.
+
+Novas tabelas da migração v3: `cognitive_runs` e `authorizations`; nova coluna `workflows.executor` (padrão `simulated`). Nenhuma tabela existente foi reconstruída.
 
 ## Interrupção e concorrência
 

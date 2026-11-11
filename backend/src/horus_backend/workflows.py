@@ -9,9 +9,14 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from .hermes_contract.models import ChannelProfile, Dataset
 from .storage import Store, now
+from .workflow_hermes import CognitiveFailure, CognitiveUnknown, HermesStageOutput, HermesStages
 
 STAGES = ("planning", "research", "analysis", "proposal")
+EXECUTORS = {"simulated": "editorial.simulated", "hermes": "editorial.hermes"}
+# Etapas que podem gerar custo: exigem autorização humana explícita por execução.
+AUTHORIZED_STAGES = {"hermes": {"analysis"}}
 Stage = Literal["planning", "research", "analysis", "proposal"]
 
 
@@ -23,11 +28,18 @@ class WorkflowRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     objective: str = Field(min_length=1, max_length=4000)
     references: list[Annotated[str, Field(min_length=1, max_length=2000)]] = Field(default_factory=list, max_length=5)
+    # Exigidos pelo executor Hermes; o executor é escolhido pelo servidor, nunca pelo payload.
+    dataset: Dataset | None = None
+    channel_profile: ChannelProfile | None = None
 
 
 class RevisionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     expected_revision: int = Field(ge=1, strict=True)
+
+
+class AuthorizationRequest(RevisionRequest):
+    job_id: str = Field(pattern=r"^[a-f0-9]{32}$")
 
 
 class ReviewRequest(RevisionRequest):
@@ -76,12 +88,17 @@ async def simulate(context):
 
 
 class WorkflowService:
-    def __init__(self, store: Store, queue: asyncio.Queue, notify):
+    def __init__(self, store: Store, queue: asyncio.Queue, notify, settings=None):
         self.store, self.queue, self.notify = store, queue, notify
         # Substituição somente em testes; nunca aceitar um executor informado pela API.
         self.executor = simulate
+        self.executor_kind = getattr(settings, "workflow_executor", "simulated")
+        if self.executor_kind not in EXECUTORS:
+            raise ValueError("HORUS_WORKFLOW_EXECUTOR inválido. Use simulated ou hermes.")
+        self.hermes = HermesStages(store, settings) if settings is not None else None
         self.active_task: asyncio.Task | None = None
         self.active_job_id: str | None = None
+        self.stop_requested: str | None = None
 
     @staticmethod
     def _require(db, workflow_id):
@@ -106,13 +123,13 @@ class WorkflowService:
         cls._job_event(db, job_id, status)
 
     @classmethod
-    def _create_steps(cls, db, workflow_id, revision):
+    def _create_steps(cls, db, workflow_id, revision, executor="simulated"):
         previous = None
         first = None
         for index, stage in enumerate(STAGES):
             job_id = uuid.uuid4().hex
             status = "waiting" if previous else "queued"
-            payload = {"operation": "editorial.simulated", "stage": stage}
+            payload = {"operation": EXECUTORS[executor], "stage": stage}
             timestamp = now()
             db.execute("""INSERT INTO jobs(id,idempotency_key,payload,status,created_at,updated_at,
                 workflow_id,workflow_revision,step_key,step_index,depends_on) VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
@@ -129,7 +146,7 @@ class WorkflowService:
             item = dict(self._require(db, workflow_id))
             item.pop("idempotency_key")
             item["request"] = json.loads(item.pop("payload"))
-            item["simulated"] = True
+            item["simulated"] = item["executor"] == "simulated"
             item["steps"] = [self.store.job(row) for row in db.execute(
                 "SELECT * FROM jobs WHERE workflow_id=? ORDER BY workflow_revision,step_index", (workflow_id,))]
             attempts = [dict(row) for row in db.execute("""SELECT a.* FROM job_attempts a JOIN jobs j ON j.id=a.job_id
@@ -145,6 +162,16 @@ class WorkflowService:
             item["artifacts"] = artifacts
             item["approvals"] = [self._approval(row) for row in db.execute(
                 "SELECT * FROM approvals WHERE workflow_id=? ORDER BY created_at", (workflow_id,))]
+            # Corpo do pedido fica fora da resposta; chave, referência externa e consumo são rastreáveis.
+            item["cognitive_runs"] = [{**dict(row), "usage": json.loads(row["usage"]) if row["usage"] else None}
+                for row in db.execute("""SELECT r.id,r.job_id,r.attempt_id,r.provider,r.idempotency_key,r.external_ref,
+                    r.status,r.remote_status,r.usage,r.error,r.created_at,r.updated_at FROM cognitive_runs r
+                    JOIN jobs j ON j.id=r.job_id WHERE j.workflow_id=? ORDER BY r.created_at""", (workflow_id,))]
+            item["authorizations"] = [{key: value for key, value in dict(row).items() if key not in {"request", "idempotency_key"}}
+                for row in db.execute("SELECT * FROM authorizations WHERE workflow_id=? ORDER BY created_at", (workflow_id,))]
+            pending = next((step for step in item["steps"] if step["status"] == "awaiting_authorization"
+                            and step["workflow_revision"] == item["revision"]), None)
+            item["pending_authorization"] = {"job_id": pending["id"], "stage": pending["step_key"]} if pending else None
             return item
 
     def list(self):
@@ -170,7 +197,10 @@ class WorkflowService:
             return items
 
     async def create(self, request: WorkflowRequest, key: str):
-        payload = encode(request.model_dump())
+        payload = encode(request.model_dump(mode="json", exclude_none=True))
+        executor = self.executor_kind
+        if executor == "hermes" and (request.dataset is None or request.channel_profile is None):
+            raise WorkflowConflict("O executor Hermes exige dataset e channel_profile no pedido.")
         first = None
         with self.store.connect() as db:
             db.execute("BEGIN IMMEDIATE")
@@ -181,10 +211,10 @@ class WorkflowService:
                 workflow_id = existing["id"]
             else:
                 workflow_id, timestamp = uuid.uuid4().hex, now()
-                db.execute("""INSERT INTO workflows(id,idempotency_key,payload,revision,status,created_at,updated_at)
-                    VALUES(?,?,?,1,'queued',?,?)""", (workflow_id, key, payload, timestamp, timestamp))
-                first = self._create_steps(db, workflow_id, 1)
-                self._event(db, workflow_id, 1, "workflow.created", {"simulated": True})
+                db.execute("""INSERT INTO workflows(id,idempotency_key,payload,revision,status,created_at,updated_at,executor)
+                    VALUES(?,?,?,1,'queued',?,?,?)""", (workflow_id, key, payload, timestamp, timestamp, executor))
+                first = self._create_steps(db, workflow_id, 1, executor)
+                self._event(db, workflow_id, 1, "workflow.created", {"simulated": executor == "simulated", "executor": executor})
         if first:
             self.queue.put_nowait(first)
             await self.notify()
@@ -202,7 +232,8 @@ class WorkflowService:
             stage = job["step_key"]
             if stage not in STAGES or job["step_index"] != STAGES.index(stage):
                 raise WorkflowConflict("Etapa editorial inválida.")
-            if json.loads(job["payload"]) != {"operation": "editorial.simulated", "stage": stage}:
+            executor = workflow["executor"]
+            if json.loads(job["payload"]) != {"operation": EXECUTORS[executor], "stage": stage}:
                 raise WorkflowConflict("Operação editorial não autorizada.")
             sources = []
             if job["step_index"]:
@@ -218,14 +249,31 @@ class WorkflowService:
             elif job["depends_on"] is not None:
                 raise WorkflowConflict("A primeira etapa não aceita dependências.")
             request = json.loads(workflow["payload"])
-            context = {**request, "workflow_id": workflow["id"], "revision": workflow["revision"],
-                       "stage": stage, "feedback": workflow["feedback"], "sources": sources}
+            context = {**request, "workflow_id": workflow["id"], "revision": workflow["revision"], "job_id": job_id,
+                       "stage": stage, "feedback": workflow["feedback"], "sources": sources, "executor": executor}
             attempt_id, timestamp = uuid.uuid4().hex, now()
+            if stage in AUTHORIZED_STAGES.get(executor, ()):
+                unknown = db.execute("""SELECT * FROM cognitive_runs WHERE job_id=? AND status='unknown'
+                    ORDER BY created_at DESC LIMIT 1""", (job_id,)).fetchone()
+                if unknown:
+                    # Conciliação: segue a execução remota existente, sem nova autorização nem novo envio.
+                    context["resume_run"] = dict(unknown)
+                else:
+                    grant = db.execute("""SELECT id FROM authorizations WHERE job_id=? AND revision=?
+                        AND consumed_attempt_id IS NULL ORDER BY created_at LIMIT 1""", (job_id, workflow["revision"])).fetchone()
+                    if not grant:
+                        raise WorkflowConflict("Execução cognitiva sem autorização humana vigente.")
+                    context["authorization_id"] = grant["id"]
+            executor_name = "simulated-v1" if executor == "simulated" else (
+                "hermes-v1" if stage in AUTHORIZED_STAGES.get(executor, ()) else "local-v1")
             db.execute("UPDATE jobs SET status='running',attempt=attempt+1,updated_at=?,error=NULL,result=NULL WHERE id=?",
                        (timestamp, job_id))
             db.execute("""INSERT INTO job_attempts(id,job_id,number,status,executor,input_hash,input_artifacts,started_at)
-                VALUES(?,?,?,'running','simulated-v1',?,?,?)""",
-                (attempt_id, job_id, job["attempt"] + 1, digest(context), encode([s["id"] for s in sources]), timestamp))
+                VALUES(?,?,?,'running',?,?,?,?)""",
+                (attempt_id, job_id, job["attempt"] + 1, executor_name, digest(context),
+                 encode([s["id"] for s in sources]), timestamp))
+            if context.get("authorization_id"):
+                db.execute("UPDATE authorizations SET consumed_attempt_id=? WHERE id=?", (attempt_id, context["authorization_id"]))
             db.execute("UPDATE workflows SET status='running',updated_at=? WHERE id=?", (timestamp, workflow["id"]))
             self._job_event(db, job_id, "running")
             self._event(db, workflow["id"], workflow["revision"], "step.started", {"job_id": job_id, "attempt_id": attempt_id, "stage": stage})
@@ -233,7 +281,8 @@ class WorkflowService:
 
     @classmethod
     def _cancel_remaining(cls, db, workflow_id):
-        for row in db.execute("SELECT id FROM jobs WHERE workflow_id=? AND status IN ('waiting','queued')", (workflow_id,)).fetchall():
+        for row in db.execute("""SELECT id FROM jobs WHERE workflow_id=?
+                AND status IN ('waiting','queued','awaiting_authorization')""", (workflow_id,)).fetchall():
             cls._job_status(db, row["id"], "cancelled")
 
     def _finish(self, job_id, attempt_id, outcome, *, content=None, error=None):
@@ -262,8 +311,15 @@ class WorkflowService:
                     if (following["status"] != "waiting" or following["workflow_revision"] != workflow["revision"]
                             or following["workflow_id"] != workflow["id"] or following["step_index"] != job["step_index"] + 1):
                         raise WorkflowConflict("Transição inconsistente para a próxima etapa.")
-                    self._job_status(db, following["id"], "queued")
-                    next_job = following["id"]
+                    if following["step_key"] in AUTHORIZED_STAGES.get(workflow["executor"], ()):
+                        # Não enfileirar: custo potencial exige autorização humana desta revisão.
+                        self._job_status(db, following["id"], "awaiting_authorization")
+                        db.execute("UPDATE workflows SET status='queued' WHERE id=?", (workflow["id"],))
+                        self._event(db, workflow["id"], workflow["revision"], "workflow.authorization_required",
+                                    {"job_id": following["id"], "stage": following["step_key"]})
+                    else:
+                        self._job_status(db, following["id"], "queued")
+                        next_job = following["id"]
                 else:
                     if job["step_key"] != "proposal":
                         raise WorkflowConflict("O fluxo editorial não pode terminar antes da proposta.")
@@ -298,9 +354,20 @@ class WorkflowService:
         attempt_id, context = claimed
         self.active_job_id = job["id"]
         try:
-            self.active_task = asyncio.create_task(self.executor(context))
-            await self.notify()
-            output = SimulatedOutput.model_validate(await asyncio.wait_for(self.active_task, timeout=5))
+            if context["executor"] == "hermes":
+                # Etapas locais são instantâneas; a cognitiva controla o próprio prazo e o cancelamento remoto.
+                stage = context["stage"]
+                if stage == "analysis":
+                    work = self.hermes.analysis(context, attempt_id, lambda: self.stop_requested == job["id"])
+                else:
+                    work = asyncio.to_thread(getattr(self.hermes, stage), context)
+                self.active_task = asyncio.create_task(work)
+                await self.notify()
+                output = HermesStageOutput.model_validate(await self.active_task)
+            else:
+                self.active_task = asyncio.create_task(self.executor(context))
+                await self.notify()
+                output = SimulatedOutput.model_validate(await asyncio.wait_for(self.active_task, timeout=5))
             if output.stage != context["stage"] or output.source_artifact_ids != [s["id"] for s in context["sources"]]:
                 raise WorkflowConflict("Resultado não corresponde à etapa ou aos artefatos de entrada.")
             next_job = self._finish(job["id"], attempt_id, "succeeded", content=output.model_dump())
@@ -308,9 +375,14 @@ class WorkflowService:
                 self.queue.put_nowait(next_job)
         except asyncio.CancelledError:
             interrupted = asyncio.current_task().cancelling() > 0
-            self._finish(job["id"], attempt_id, "interrupted" if interrupted else "cancelled", error="Execução simulada interrompida.")
+            self._finish(job["id"], attempt_id, "interrupted" if interrupted else "cancelled", error="Execução interrompida.")
             if interrupted:
                 raise
+        except CognitiveUnknown as error:
+            # Sem nova tentativa até conciliar a mesma execução remota.
+            self._finish(job["id"], attempt_id, "interrupted", error=str(error)[:2000])
+        except CognitiveFailure as error:
+            self._finish(job["id"], attempt_id, "failed", error=str(error)[:2000])
         except Exception as error:
             self._finish(job["id"], attempt_id, "failed", error=f"{type(error).__name__}: {error}"[:2000])
         finally:
@@ -322,10 +394,16 @@ class WorkflowService:
                     pass
             self.active_task = None
             self.active_job_id = None
+            if self.stop_requested == job["id"]:
+                self.stop_requested = None
             await self.notify()
 
     def recover(self):
         with self.store.connect() as db:
+            # Execução remota pode ter continuado: desfecho desconhecido até conciliar.
+            db.execute("""UPDATE cognitive_runs SET status='unknown',updated_at=?,
+                error=COALESCE(error,'Backend encerrado durante a execução remota.')
+                WHERE status IN ('submitting','admitted')""", (now(),))
             active = db.execute("""SELECT j.id,a.id AS attempt_id FROM jobs j JOIN job_attempts a ON a.job_id=j.id
                 WHERE j.workflow_id IS NOT NULL AND a.status='running'""").fetchall()
         for row in active:
@@ -347,6 +425,7 @@ class WorkflowService:
             db.execute("UPDATE workflows SET status=?,updated_at=? WHERE id=?", (status, now(), workflow_id))
             self._event(db, workflow_id, workflow["revision"], f"workflow.{status}", {})
         if active_job == self.active_job_id and self.active_task:
+            self.stop_requested = active_job  # cancelamento do operador: pedir parada remota
             self.active_task.cancel()
         await self.notify()
         return self.get(workflow_id)
@@ -361,9 +440,65 @@ class WorkflowService:
                 AND status IN ('failed','interrupted','blocked') ORDER BY step_index LIMIT 1""", (workflow_id, revision)).fetchone()
             if not job:
                 raise WorkflowConflict("Não há etapa recuperável nesta revisão.")
+            paid = job["step_key"] in AUTHORIZED_STAGES.get(workflow["executor"], ())
+            if paid and db.execute("SELECT 1 FROM cognitive_runs WHERE job_id=? AND status='unknown'", (job["id"],)).fetchone():
+                raise WorkflowConflict("A execução cognitiva anterior tem desfecho desconhecido. Concilie antes de tentar novamente.")
+            # Nova execução paga nunca é automática: retry volta a pedir autorização humana.
+            self._job_status(db, job["id"], "awaiting_authorization" if paid else "queued")
+            db.execute("UPDATE workflows SET status='queued',updated_at=? WHERE id=?", (now(), workflow_id))
+            self._event(db, workflow_id, revision, "workflow.authorization_required" if paid else "workflow.retried",
+                        {"job_id": job["id"], "stage": job["step_key"]})
+        if not paid:
+            self.queue.put_nowait(job["id"])
+        await self.notify()
+        return self.get(workflow_id)
+
+    async def authorize(self, workflow_id, request: AuthorizationRequest, key: str):
+        """Autorização humana de UMA execução cognitiva sobre o snapshot desta revisão."""
+        encoded = encode(request.model_dump())
+        with self.store.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            workflow = self._require(db, workflow_id)
+            existing = db.execute("SELECT * FROM authorizations WHERE workflow_id=? AND idempotency_key=?", (workflow_id, key)).fetchone()
+            if existing:
+                if existing["request"] != encoded:
+                    raise WorkflowConflict("Chave de autorização já usada com outro pedido.")
+                return self.get(workflow_id)
+            job = db.execute("SELECT * FROM jobs WHERE id=? AND workflow_id=?", (request.job_id, workflow_id)).fetchone()
+            if (workflow["revision"] != request.expected_revision or not job or job["status"] != "awaiting_authorization"
+                    or job["workflow_revision"] != workflow["revision"]
+                    or job["step_key"] not in AUTHORIZED_STAGES.get(workflow["executor"], ())):
+                raise WorkflowConflict("Nenhuma etapa desta revisão aguarda autorização com esse identificador.")
+            source = db.execute("SELECT * FROM artifacts WHERE job_id=?", (job["depends_on"],)).fetchone()
+            if not source or digest(json.loads(source["content"])) != source["content_hash"]:
+                raise WorkflowConflict("Artefato de entrada ausente ou com integridade inválida.")
+            authorization_id = uuid.uuid4().hex
+            db.execute("""INSERT INTO authorizations(id,workflow_id,revision,job_id,input_artifact_id,scope,max_runs,
+                operator_id,idempotency_key,request,created_at) VALUES(?,?,?,?,?,'cognitive_run',1,'local-operator',?,?,?)""",
+                       (authorization_id, workflow_id, workflow["revision"], job["id"], source["id"], key, encoded, now()))
             self._job_status(db, job["id"], "queued")
             db.execute("UPDATE workflows SET status='queued',updated_at=? WHERE id=?", (now(), workflow_id))
-            self._event(db, workflow_id, revision, "workflow.retried", {"job_id": job["id"]})
+            self._event(db, workflow_id, workflow["revision"], "workflow.authorized",
+                        {"authorization_id": authorization_id, "job_id": job["id"], "max_runs": 1})
+        self.queue.put_nowait(job["id"])
+        await self.notify()
+        return self.get(workflow_id)
+
+    async def reconcile(self, workflow_id, revision):
+        """Retoma o acompanhamento da MESMA execução remota de desfecho desconhecido; nunca reenvia."""
+        with self.store.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            workflow = self._require(db, workflow_id)
+            if workflow["revision"] != revision or workflow["status"] not in {"failed", "interrupted"}:
+                raise WorkflowConflict("Somente a revisão atual com falha ou interrupção pode ser conciliada.")
+            job = db.execute("""SELECT j.* FROM jobs j JOIN cognitive_runs r ON r.job_id=j.id
+                WHERE j.workflow_id=? AND j.workflow_revision=? AND j.status IN ('failed','interrupted')
+                AND r.status='unknown' ORDER BY r.created_at DESC LIMIT 1""", (workflow_id, revision)).fetchone()
+            if not job:
+                raise WorkflowConflict("Não há execução cognitiva com desfecho desconhecido nesta revisão.")
+            self._job_status(db, job["id"], "queued")
+            db.execute("UPDATE workflows SET status='queued',updated_at=? WHERE id=?", (now(), workflow_id))
+            self._event(db, workflow_id, revision, "workflow.reconciling", {"job_id": job["id"]})
         self.queue.put_nowait(job["id"])
         await self.notify()
         return self.get(workflow_id)
@@ -397,7 +532,7 @@ class WorkflowService:
                     revision = workflow["revision"] + 1
                     db.execute("""UPDATE workflows SET revision=?,status='queued',current_artifact_id=NULL,feedback=?,updated_at=? WHERE id=?""",
                                (revision, request.feedback, now(), workflow_id))
-                    next_job = self._create_steps(db, workflow_id, revision)
+                    next_job = self._create_steps(db, workflow_id, revision, workflow["executor"])
                     self._event(db, workflow_id, revision, "workflow.revised", {"previous_revision": workflow["revision"]})
                 else:
                     db.execute("UPDATE workflows SET status=?,updated_at=? WHERE id=?",

@@ -23,7 +23,7 @@ from .dependencies import transcription_capabilities
 from .hermes import HermesConnector
 from .jobs import JobManager, JobRequest, TERMINAL
 from .storage import Store
-from .workflows import ReviewRequest, RevisionRequest, WorkflowConflict, WorkflowRequest
+from .workflows import AuthorizationRequest, ReviewRequest, RevisionRequest, WorkflowConflict, WorkflowRequest
 
 STREAM_KEEPALIVE_SECONDS = 10
 
@@ -143,6 +143,24 @@ def create_app(settings: Settings, shutdown=None, ready=None):
         require_workflow(workflow_id)
         try:
             return await manager.workflows.retry(workflow_id, request.expected_revision)
+        except WorkflowConflict as error:
+            raise HTTPException(409, str(error)) from error
+
+    @app.post("/v1/workflows/{workflow_id}/authorize")
+    async def authorize_workflow(workflow_id: str, request: AuthorizationRequest,
+                                 idempotency_key: str = Header(min_length=1, max_length=128)):
+        # Operador local autoriza UMA execução cognitiva; o payload não escolhe autoria, executor ou limites.
+        require_workflow(workflow_id)
+        try:
+            return await manager.workflows.authorize(workflow_id, request, idempotency_key)
+        except WorkflowConflict as error:
+            raise HTTPException(409, str(error)) from error
+
+    @app.post("/v1/workflows/{workflow_id}/reconcile")
+    async def reconcile_workflow(workflow_id: str, request: RevisionRequest):
+        require_workflow(workflow_id)
+        try:
+            return await manager.workflows.reconcile(workflow_id, request.expected_revision)
         except WorkflowConflict as error:
             raise HTTPException(409, str(error)) from error
 

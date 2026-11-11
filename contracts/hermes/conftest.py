@@ -7,10 +7,12 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).parent
-sys.path.insert(0, str(ROOT))  # pasta isolada; não depende do pacote do backend
+sys.path.insert(0, str(ROOT))  # servidor simulado
+# Contrato oficial vive no backend (empacotado com ele); os testes daqui o exercitam.
+sys.path.insert(0, str(ROOT.parent.parent / 'backend' / 'src'))
 
 from fake_server import FakeHermes  # noqa: E402
-from horus_hermes_contract.models import RunEnvelope  # noqa: E402
+from horus_backend.hermes_contract.models import RunEnvelope  # noqa: E402
 
 FIXTURES = ROOT / "fixtures"
 

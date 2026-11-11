@@ -4,7 +4,7 @@ import json
 import pytest
 
 from conftest import load
-from horus_hermes_contract.validator import OutputError, parse_output, validate_result
+from horus_backend.hermes_contract.validator import OutputError, parse_output, validate_result
 
 
 def codes(issues):
