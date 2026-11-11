@@ -1,0 +1,101 @@
+{
+  "additionalProperties": false,
+  "description": "Corpo HTTP de ``POST /v1/runs``. Campos conferidos no código do Hermes 0.23.1;\nnão há campo para toolsets, skills ou formato de resposta por execução.",
+  "properties": {
+    "input": {
+      "minLength": 1,
+      "title": "Input",
+      "type": "string"
+    },
+    "instructions": {
+      "minLength": 1,
+      "title": "Instructions",
+      "type": "string"
+    },
+    "metadata": {
+      "anyOf": [
+        {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Metadata"
+    },
+    "model": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Model"
+    },
+    "model_options": {
+      "anyOf": [
+        {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          },
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Model Options"
+    },
+    "provider": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Provider"
+    },
+    "session_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Session Id"
+    }
+  },
+  "required": [
+    "input",
+    "instructions"
+  ],
+  "title": "HermesRunRequest",
+  "type": "object"
+}

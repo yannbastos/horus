@@ -1,0 +1,21 @@
+{
+  "contract_version": "1.0",
+  "task_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+  "status": "partial",
+  "plan": [{"step": "Analisar o snapshot", "done": false}],
+  "sources": [
+    {"id": "D1", "kind": "dataset", "url": "https://example.org/ficticio/video-1", "retrieved_at": "2026-11-11T12:00:00Z"},
+    {"id": "D3", "kind": "dataset", "url": "https://example.org/ficticio/video-3", "retrieved_at": "2026-11-11T12:00:00Z"},
+    {"id": "D9", "kind": "dataset", "url": "https://example.org/ficticio/video-9", "retrieved_at": "2026-11-11T12:00:00Z"}
+  ],
+  "facts": [
+    {"id": "F1", "text": "O vídeo D1 tem 2.000.000 visualizações e retenção de 80%.", "source_ids": ["D1"],
+     "metric_refs": [{"source_id": "D1", "field": "views", "value": 2000000}]},
+    {"id": "F2", "text": "O vídeo D3 tem muitos likes.", "source_ids": ["D3"],
+     "metric_refs": [{"source_id": "D3", "field": "likes", "value": 90000}]}
+  ],
+  "hypotheses": [{"id": "H1", "text": "Tema forte.", "based_on": ["X1"], "confidence": "high", "how_to_test": "Publicar e medir."}],
+  "opportunities": [],
+  "unknowns": [],
+  "memory_proposals": []
+}

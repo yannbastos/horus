@@ -1,0 +1,258 @@
+{
+  "$defs": {
+    "ChannelProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "channel_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$",
+          "title": "Channel Id",
+          "type": "string"
+        },
+        "revision_hash": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Revision Hash",
+          "type": "string"
+        },
+        "summary": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "channel_id",
+        "revision_hash",
+        "summary"
+      ],
+      "title": "ChannelProfile",
+      "type": "object"
+    },
+    "Dataset": {
+      "additionalProperties": false,
+      "properties": {
+        "collected_at": {
+          "format": "date-time",
+          "title": "Collected At",
+          "type": "string"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/DatasetItem"
+          },
+          "maxItems": 50,
+          "minItems": 1,
+          "title": "Items",
+          "type": "array"
+        },
+        "origin": {
+          "enum": [
+            "operator_fixture",
+            "youtube_data_api"
+          ],
+          "title": "Origin",
+          "type": "string"
+        },
+        "snapshot_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,31}$",
+          "title": "Snapshot Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "snapshot_id",
+        "origin",
+        "collected_at",
+        "items"
+      ],
+      "title": "Dataset",
+      "type": "object"
+    },
+    "DatasetItem": {
+      "additionalProperties": false,
+      "properties": {
+        "channel": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Channel",
+          "type": "string"
+        },
+        "kind": {
+          "const": "youtube_video",
+          "default": "youtube_video",
+          "title": "Kind",
+          "type": "string"
+        },
+        "language": {
+          "anyOf": [
+            {
+              "maxLength": 16,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Language"
+        },
+        "metrics": {
+          "additionalProperties": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "propertyNames": {
+            "enum": [
+              "views",
+              "likes",
+              "comments",
+              "duration_seconds",
+              "channel_subscribers"
+            ]
+          },
+          "title": "Metrics",
+          "type": "object"
+        },
+        "published_at": {
+          "format": "date-time",
+          "title": "Published At",
+          "type": "string"
+        },
+        "retrieved_at": {
+          "format": "date-time",
+          "title": "Retrieved At",
+          "type": "string"
+        },
+        "source_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,31}$",
+          "title": "Source Id",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "url": {
+          "maxLength": 2048,
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_id",
+        "url",
+        "title",
+        "channel",
+        "published_at",
+        "retrieved_at",
+        "metrics"
+      ],
+      "title": "DatasetItem",
+      "type": "object"
+    },
+    "Market": {
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "const": "international",
+          "default": "international",
+          "title": "Source",
+          "type": "string"
+        },
+        "target_country": {
+          "const": "BR",
+          "default": "BR",
+          "title": "Target Country",
+          "type": "string"
+        },
+        "target_language": {
+          "const": "pt-BR",
+          "default": "pt-BR",
+          "title": "Target Language",
+          "type": "string"
+        }
+      },
+      "title": "Market",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Conteúdo serializado em ``input`` de ``POST /v1/runs``.",
+  "properties": {
+    "attempt_id": {
+      "pattern": "^[a-f0-9]{32}$",
+      "title": "Attempt Id",
+      "type": "string"
+    },
+    "channel_profile": {
+      "$ref": "#/$defs/ChannelProfile"
+    },
+    "constraints": {
+      "items": {
+        "maxLength": 4000,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 20,
+      "title": "Constraints",
+      "type": "array"
+    },
+    "contract_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Contract Version",
+      "type": "string"
+    },
+    "dataset": {
+      "$ref": "#/$defs/Dataset"
+    },
+    "feedback": {
+      "default": "",
+      "maxLength": 2000,
+      "title": "Feedback",
+      "type": "string"
+    },
+    "market": {
+      "$ref": "#/$defs/Market",
+      "default": {
+        "source": "international",
+        "target_country": "BR",
+        "target_language": "pt-BR"
+      }
+    },
+    "objective": {
+      "maxLength": 4000,
+      "minLength": 1,
+      "title": "Objective",
+      "type": "string"
+    },
+    "revision": {
+      "minimum": 1,
+      "title": "Revision",
+      "type": "integer"
+    },
+    "task_id": {
+      "pattern": "^[a-f0-9]{32}$",
+      "title": "Task Id",
+      "type": "string"
+    },
+    "workflow_id": {
+      "pattern": "^[a-f0-9]{32}$",
+      "title": "Workflow Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "task_id",
+    "attempt_id",
+    "workflow_id",
+    "revision",
+    "objective",
+    "channel_profile",
+    "dataset"
+  ],
+  "title": "RunEnvelope",
+  "type": "object"
+}

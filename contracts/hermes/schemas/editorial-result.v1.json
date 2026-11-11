@@ -1,0 +1,447 @@
+{
+  "$defs": {
+    "Fact": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,31}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "metric_refs": {
+          "items": {
+            "$ref": "#/$defs/MetricRef"
+          },
+          "maxItems": 20,
+          "title": "Metric Refs",
+          "type": "array"
+        },
+        "source_ids": {
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,31}$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Source Ids",
+          "type": "array"
+        },
+        "text": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "text",
+        "source_ids"
+      ],
+      "title": "Fact",
+      "type": "object"
+    },
+    "Hypothesis": {
+      "additionalProperties": false,
+      "properties": {
+        "based_on": {
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,31}$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Based On",
+          "type": "array"
+        },
+        "confidence": {
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "title": "Confidence",
+          "type": "string"
+        },
+        "how_to_test": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "How To Test",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,31}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "text",
+        "based_on",
+        "confidence",
+        "how_to_test"
+      ],
+      "title": "Hypothesis",
+      "type": "object"
+    },
+    "MemoryProposal": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence": {
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,31}$",
+            "type": "string"
+          },
+          "maxItems": 10,
+          "minItems": 1,
+          "title": "Evidence",
+          "type": "array"
+        },
+        "text": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "evidence"
+      ],
+      "title": "MemoryProposal",
+      "type": "object"
+    },
+    "MetricRef": {
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "enum": [
+            "views",
+            "likes",
+            "comments",
+            "duration_seconds",
+            "channel_subscribers"
+          ],
+          "title": "Field",
+          "type": "string"
+        },
+        "source_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,31}$",
+          "title": "Source Id",
+          "type": "string"
+        },
+        "value": {
+          "minimum": 0,
+          "title": "Value",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "source_id",
+        "field",
+        "value"
+      ],
+      "title": "MetricRef",
+      "type": "object"
+    },
+    "Opportunity": {
+      "additionalProperties": false,
+      "properties": {
+        "based_on": {
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,31}$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Based On",
+          "type": "array"
+        },
+        "br_fit_rationale": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Br Fit Rationale",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,31}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "summary": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "summary",
+        "based_on",
+        "br_fit_rationale"
+      ],
+      "title": "Opportunity",
+      "type": "object"
+    },
+    "PlanStep": {
+      "additionalProperties": false,
+      "properties": {
+        "done": {
+          "title": "Done",
+          "type": "boolean"
+        },
+        "step": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Step",
+          "type": "string"
+        }
+      },
+      "required": [
+        "step",
+        "done"
+      ],
+      "title": "PlanStep",
+      "type": "object"
+    },
+    "Recommendation": {
+      "additionalProperties": false,
+      "properties": {
+        "angle": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Angle",
+          "type": "string"
+        },
+        "differs_from": {
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,31}$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Differs From",
+          "type": "array"
+        },
+        "format": {
+          "enum": [
+            "short",
+            "long"
+          ],
+          "title": "Format",
+          "type": "string"
+        },
+        "licensing_notes": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Licensing Notes",
+          "type": "string"
+        },
+        "originality": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Originality",
+          "type": "string"
+        },
+        "premise": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Premise",
+          "type": "string"
+        },
+        "risks": {
+          "items": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 10,
+          "title": "Risks",
+          "type": "array"
+        },
+        "title_options": {
+          "items": {
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 5,
+          "minItems": 1,
+          "title": "Title Options",
+          "type": "array"
+        }
+      },
+      "required": [
+        "title_options",
+        "premise",
+        "angle",
+        "format",
+        "originality",
+        "differs_from",
+        "licensing_notes"
+      ],
+      "title": "Recommendation",
+      "type": "object"
+    },
+    "Source": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,31}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "dataset",
+            "web"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "retrieved_at": {
+          "format": "date-time",
+          "title": "Retrieved At",
+          "type": "string"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "maxLength": 300,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        },
+        "url": {
+          "maxLength": 2048,
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "url",
+        "retrieved_at"
+      ],
+      "title": "Source",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "contract_version": {
+      "const": "1.0",
+      "title": "Contract Version",
+      "type": "string"
+    },
+    "facts": {
+      "items": {
+        "$ref": "#/$defs/Fact"
+      },
+      "maxItems": 60,
+      "title": "Facts",
+      "type": "array"
+    },
+    "hypotheses": {
+      "items": {
+        "$ref": "#/$defs/Hypothesis"
+      },
+      "maxItems": 30,
+      "title": "Hypotheses",
+      "type": "array"
+    },
+    "memory_proposals": {
+      "items": {
+        "$ref": "#/$defs/MemoryProposal"
+      },
+      "maxItems": 10,
+      "title": "Memory Proposals",
+      "type": "array"
+    },
+    "opportunities": {
+      "items": {
+        "$ref": "#/$defs/Opportunity"
+      },
+      "maxItems": 10,
+      "title": "Opportunities",
+      "type": "array"
+    },
+    "plan": {
+      "items": {
+        "$ref": "#/$defs/PlanStep"
+      },
+      "maxItems": 20,
+      "title": "Plan",
+      "type": "array"
+    },
+    "recommendation": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Recommendation"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "sources": {
+      "items": {
+        "$ref": "#/$defs/Source"
+      },
+      "maxItems": 60,
+      "title": "Sources",
+      "type": "array"
+    },
+    "status": {
+      "enum": [
+        "complete",
+        "partial",
+        "insufficient_data"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "task_id": {
+      "pattern": "^[a-f0-9]{32}$",
+      "title": "Task Id",
+      "type": "string"
+    },
+    "unknowns": {
+      "items": {
+        "maxLength": 4000,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 30,
+      "title": "Unknowns",
+      "type": "array"
+    }
+  },
+  "required": [
+    "contract_version",
+    "task_id",
+    "status",
+    "plan",
+    "sources",
+    "facts",
+    "hypotheses",
+    "opportunities"
+  ],
+  "title": "EditorialResult",
+  "type": "object"
+}

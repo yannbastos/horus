@@ -1,0 +1,56 @@
+{
+  "contract_version": "1.0",
+  "task_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+  "attempt_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1",
+  "workflow_id": "ccccccccccccccccccccccccccccccc1",
+  "revision": 1,
+  "objective": "Pesquise oportunidades de conteúdo no YouTube internacional, analise o potencial para o público brasileiro e proponha uma ideia original de vídeo para meu canal.",
+  "channel_profile": {
+    "channel_id": "canal01",
+    "revision_hash": "0000000000000000000000000000000000000000000000000000000000000001",
+    "summary": "DADOS FICTÍCIOS. Canal de curiosidades sobre cidades e engenharia urbana, Shorts narrados em português."
+  },
+  "market": {"source": "international", "target_country": "BR", "target_language": "pt-BR"},
+  "dataset": {
+    "snapshot_id": "snap-ficticio-1",
+    "origin": "operator_fixture",
+    "collected_at": "2026-11-11T12:00:00Z",
+    "items": [
+      {
+        "source_id": "D1",
+        "url": "https://example.org/ficticio/video-1",
+        "title": "FICTÍCIO: Why this city moved an entire river",
+        "channel": "Canal Fictício A",
+        "language": "en",
+        "published_at": "2026-10-20T10:00:00Z",
+        "retrieved_at": "2026-11-11T12:00:00Z",
+        "metrics": {"views": 1840000, "likes": 61000, "comments": 2300, "duration_seconds": 58, "channel_subscribers": 420000}
+      },
+      {
+        "source_id": "D2",
+        "url": "https://example.org/ficticio/video-2",
+        "title": "FICTÍCIO: The bridge that was built backwards",
+        "channel": "Canal Fictício B",
+        "language": "en",
+        "published_at": "2026-10-28T15:30:00Z",
+        "retrieved_at": "2026-11-11T12:00:00Z",
+        "metrics": {"views": 312000, "likes": 9800, "comments": 410, "duration_seconds": 54, "channel_subscribers": 95000}
+      },
+      {
+        "source_id": "D3",
+        "url": "https://example.org/ficticio/video-3",
+        "title": "FICTÍCIO: Tokyo's underground flood cathedral",
+        "channel": "Canal Fictício C",
+        "language": "en",
+        "published_at": "2026-09-02T08:00:00Z",
+        "retrieved_at": "2026-11-11T12:00:00Z",
+        "metrics": {"views": 5200000, "comments": 7100, "duration_seconds": 61, "channel_subscribers": 2100000}
+      }
+    ]
+  },
+  "constraints": [
+    "Proposta original; não reutilizar roteiro, imagens ou áudio das referências.",
+    "Não citar métricas privadas, como retenção ou receita."
+  ],
+  "feedback": ""
+}

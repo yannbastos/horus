@@ -1,0 +1,42 @@
+{
+  "contract_version": "1.0",
+  "task_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+  "status": "complete",
+  "plan": [
+    {"step": "Comparar desempenho público dos vídeos do snapshot", "done": true},
+    {"step": "Separar fatos de hipóteses sobre o público brasileiro", "done": true},
+    {"step": "Propor uma ideia original com riscos e lacunas", "done": true}
+  ],
+  "sources": [
+    {"id": "D1", "kind": "dataset", "url": "https://example.org/ficticio/video-1", "title": "FICTÍCIO: Why this city moved an entire river", "retrieved_at": "2026-11-11T12:00:00Z"},
+    {"id": "D2", "kind": "dataset", "url": "https://example.org/ficticio/video-2", "retrieved_at": "2026-11-11T12:00:00Z"},
+    {"id": "D3", "kind": "dataset", "url": "https://example.org/ficticio/video-3", "retrieved_at": "2026-11-11T12:00:00Z"}
+  ],
+  "facts": [
+    {"id": "F1", "text": "O vídeo D1 tem 1.840.000 visualizações com 420.000 inscritos no canal.", "source_ids": ["D1"],
+     "metric_refs": [{"source_id": "D1", "field": "views", "value": 1840000}, {"source_id": "D1", "field": "channel_subscribers", "value": 420000}]},
+    {"id": "F2", "text": "O vídeo D3 tem 5200000 visualizações e duração de 61 segundos.", "source_ids": ["D3"],
+     "metric_refs": [{"source_id": "D3", "field": "views", "value": 5200000}, {"source_id": "D3", "field": "duration_seconds", "value": 61}]},
+    {"id": "F3", "text": "Os três vídeos tratam de grandes obras urbanas em formato curto, publicados em inglês.", "source_ids": ["D1", "D2", "D3"]}
+  ],
+  "hypotheses": [
+    {"id": "H1", "text": "Obras urbanas brasileiras pouco conhecidas podem despertar o mesmo interesse no público do Brasil.", "based_on": ["F1", "F3"],
+     "confidence": "medium", "how_to_test": "Publicar dois Shorts sobre obras brasileiras e comparar com a média do próprio canal."}
+  ],
+  "opportunities": [
+    {"id": "O1", "summary": "Série curta sobre obras urbanas brasileiras com soluções inesperadas.", "based_on": ["F3", "H1"],
+     "br_fit_rationale": "Tema local, com fontes públicas em português e pouca cobertura no formato observado."}
+  ],
+  "recommendation": {
+    "title_options": ["A cidade brasileira que mudou um rio de lugar", "A obra que salvou São Paulo das enchentes"],
+    "premise": "Contar, em menos de um minuto, como uma cidade brasileira resolveu um problema urbano com uma obra incomum.",
+    "angle": "Engenharia como história de suspense, com dados públicos verificáveis.",
+    "format": "short",
+    "originality": "Tema e roteiro próprios; as referências só indicam o interesse pelo formato.",
+    "differs_from": ["D1", "D3"],
+    "risks": ["Imagens de arquivo exigem licença verificada.", "Dados históricos precisam de fonte oficial."],
+    "licensing_notes": "Usar somente imagens próprias, de domínio público ou licenciadas; nenhuma mídia das referências."
+  },
+  "unknowns": ["Retenção e receita dos vídeos de referência não estão disponíveis nos dados públicos.", "Não há dados do público brasileiro destes canais."],
+  "memory_proposals": [{"text": "Obras urbanas em formato curto aparecem com bom desempenho público nas referências analisadas.", "evidence": ["F1", "F2"]}]
+}
