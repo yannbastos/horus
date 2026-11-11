@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 type NativeState = {
   files: string[]; savePath: string | null; pickerFailure: boolean; saveDialogFailure: boolean;
@@ -15,7 +16,9 @@ type MockJob = { id: string; payload: Payload; status: string; attempt: number; 
 const headers = { 'Access-Control-Allow-Origin': 'http://127.0.0.1:1420',
   'Access-Control-Allow-Headers': 'authorization,content-type,idempotency-key', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' };
 
-const artifactDir = 'C:/Users/yannn/.gemini/antigravity-cli/brain/b267bd75-5d60-4eea-a18a-f1aa8e635e9d';
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const artifactDir = path.resolve(__dirname, '../../artifacts/visual-tests');
+fs.mkdirSync(artifactDir, { recursive: true });
 
 async function setupMock(page: Page) {
   await page.addInitScript(() => {
