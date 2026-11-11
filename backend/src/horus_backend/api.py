@@ -4,11 +4,9 @@ import asyncio
 import contextlib
 import hashlib
 import hmac
-import importlib.util
 import json
 import os
 import secrets
-import shutil
 import tempfile
 import time
 from contextlib import asynccontextmanager
@@ -21,10 +19,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .config import Settings
 from .diagnostics import diagnose
+from .dependencies import transcription_capabilities
 from .hermes import HermesConnector
 from .jobs import JobManager, JobRequest, TERMINAL
 from .storage import Store
 from .workflows import ReviewRequest, RevisionRequest, WorkflowConflict, WorkflowRequest
+
+STREAM_KEEPALIVE_SECONDS = 10
 
 
 class MediaRequest(BaseModel):
@@ -78,7 +79,7 @@ def create_app(settings: Settings, shutdown=None, ready=None):
 
     @app.get("/health")
     async def health():
-        return {"status": "ready", "factory_available": settings.command() is not None,
+        return {"status": "ready", "database_id": store.database_id, "factory_available": settings.command() is not None,
                 "hermes_connected": hermes.status()["connected"], "version": "0.1.0"}
 
     @app.get("/v1/hermes")
@@ -92,6 +93,10 @@ def create_app(settings: Settings, shutdown=None, ready=None):
     @app.get("/v1/jobs")
     async def jobs():
         return store.list_jobs()
+
+    @app.get("/v1/transcription/jobs")
+    async def transcription_jobs(offset: int = Query(default=0, ge=0)):
+        return store.list_jobs(media_only=True, offset=offset)
 
     @app.post("/v1/workflows", status_code=202)
     async def create_workflow(request: WorkflowRequest, idempotency_key: str = Header(min_length=1, max_length=128)):
@@ -181,19 +186,29 @@ def create_app(settings: Settings, shutdown=None, ready=None):
 
         async def stream():
             cursor = max(0, after)
+            keepalive_at = time.monotonic() + STREAM_KEEPALIVE_SECONDS
             while not await request.is_disconnected():
+                idle = False
                 async with manager.changed:
                     entries = store.events(job_id, cursor)
                     terminal = require_job(job_id)["status"] in TERMINAL
                     if not entries and not terminal:
                         try:
-                            await asyncio.wait_for(manager.changed.wait(), timeout=15)
+                            await asyncio.wait_for(manager.changed.wait(), timeout=max(.01, keepalive_at - time.monotonic()))
                         except TimeoutError:
                             pass
-                        continue
+                        idle = True
+                if idle:
+                    if time.monotonic() >= keepalive_at:
+                        # Transporte apenas: sem sequence, gravação no banco ou mudança de estado.
+                        yield json.dumps({"kind": "keepalive"}) + "\n"
+                        keepalive_at = time.monotonic() + STREAM_KEEPALIVE_SECONDS
+                    continue
                 for entry in entries:
                     cursor = entry["sequence"]
                     yield json.dumps(entry, ensure_ascii=False) + "\n"
+                if entries:
+                    keepalive_at = time.monotonic() + STREAM_KEEPALIVE_SECONDS
                 if terminal and not store.events(job_id, cursor):
                     yield json.dumps({"kind": "complete", "job": require_job(job_id)}, ensure_ascii=False) + "\n"
                     return
@@ -258,9 +273,7 @@ def create_app(settings: Settings, shutdown=None, ready=None):
     @app.get("/v1/transcription")
     async def transcription_status():
         # Presença apenas; Whisper e yt-dlp não são importados no processo da API.
-        return {"engine": importlib.util.find_spec("faster_whisper") is not None,
-                "downloader": importlib.util.find_spec("yt_dlp") is not None or shutil.which("yt-dlp") is not None,
-                "ffmpeg": shutil.which("ffmpeg") is not None}
+        return transcription_capabilities()
 
     @app.post("/v1/transcriptions/save")
     async def save_transcript(request: TranscriptSave):

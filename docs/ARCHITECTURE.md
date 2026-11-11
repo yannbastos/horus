@@ -26,6 +26,12 @@ O núcleo editorial acrescenta API → coordenação de domínio → os mesmos j
 
 Tarefas pendentes sobrevivem ao reinício; execuções em andamento passam a interrompidas e exigem revisão antes de nova tentativa. Chaves de idempotência impedem submissões duplicadas com a mesma entrada. Isso não garante execução exatamente uma vez em serviços externos.
 
+A Fase 1 da migração de transcrição reutiliza `jobs.result` para checkpoints atômicos de texto/cursor, sem novo schema ou executor. A interface recupera transcrições/downloads pelo histórico filtrado e reanexa ao mesmo job; um recibo local preserva a chave quando a resposta do POST é desconhecida. Recibo não substitui o SQLite como fonte oficial. Conexões interrompidas não liberam novas submissões enquanto houver execução desconhecida. Procedimentos e limites estão na seção de recuperação do [guia local](migracao-local.md#recuperação-da-transcrição--fase-1).
+
+A revisão dessa fase acrescenta keepalive de transporte sem eventos persistidos, renovação de reconexões após frames válidos, identificação local da base e descarte de recibo inválido somente com confirmação. Texto anterior fica referenciado, sem cópias em cada atualização de metadados. Retry direto de transcrição é recusado para preservar o resultado; timeout mantém o checkpoint. O custo quadrático do texto acumulado está documentado e possui medição em banco temporário, sem otimização ampla.
+
+As etapas 1/2 de paridade acrescentam descoberta centralizada em `dependencies.py`, diagnóstico sem carregar motores e fallback CUDA→CPU limitado ao início da mesma tarefa, antes de qualquer trecho de texto. Falhas posteriores preservam o parcial sem reprocessamento automático. A fila React sincroniza drops consecutivos e mantém regras de salvamento/FIFO; testes de IPC Tauri simulado portam casos úteis do Avalonia. Não foi removido código C# nem homologado o instalador/GPU por esses testes.
+
 Detalhes operacionais, comandos, variáveis de ambiente, formatos e limitações pertencem ao [guia de migração](migracao-local.md). Evidências de ensaios pertencem ao [relatório local](validacao-local-2026-11-10.md), sem equivaler à validação integral do produto.
 
 ## Estrutura e repositórios

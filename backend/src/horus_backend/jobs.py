@@ -117,7 +117,7 @@ class JobManager:
             self.store.update(job_id, "cancelled")
             await self.emit(job_id, "state", "cancelled")
         else:
-            self.store.update(job_id, "cancel_requested")
+            self.store.update(job_id, "cancel_requested", result=job["result"])
             await self.emit(job_id, "state", "cancel_requested")
             if self.active_id == job_id and self.active_process:
                 await self.active_process.stop()
@@ -129,6 +129,8 @@ class JobManager:
             raise KeyError(job_id)
         if job.get("workflow_id"):
             raise ValueError("Retome o workflow pela operação editorial, não uma etapa isolada.")
+        if job["payload"].get("operation") == "transcription.run":
+            raise ValueError("Retry direto de transcrição indisponível: preserve o resultado e inicie outra transcrição explicitamente pela tela.")
         if job["status"] not in {"failed", "interrupted", "blocked", "cancelled"}:
             raise ValueError("Somente tarefas encerradas sem sucesso podem ser tentadas novamente.")
         self.store.update(job_id, "queued")
@@ -271,14 +273,18 @@ class JobManager:
         except asyncio.CancelledError:
             if self.active_process:
                 await self.active_process.stop()
-            self.store.update(job_id, "interrupted", error="Aplicativo encerrado durante a execução. Revise antes de repetir.")
+            self.store.update(job_id, "interrupted", result=self.store.get_job(job_id)["result"],
+                              error="Aplicativo encerrado durante a execução. Revise antes de repetir.")
             raise
         except ValueError as error:
-            self.store.update(job_id, "blocked" if not self.active_process else "failed", error=str(error))
+            self.store.update(job_id, "blocked" if not self.active_process else "failed",
+                              result=self.store.get_job(job_id)["result"], error=str(error))
         except TimeoutError:
-            self.store.update(job_id, "failed", error="Tempo limite da operação excedido.")
+            self.store.update(job_id, "failed", result=self.store.get_job(job_id)["result"],
+                              error="Tempo limite da operação excedido.")
         except Exception as error:
-            self.store.update(job_id, "failed", error=f"Falha na execução: {type(error).__name__}: {error}")
+            self.store.update(job_id, "failed", result=self.store.get_job(job_id)["result"],
+                              error=f"Falha na execução: {type(error).__name__}: {error}")
         finally:
             if self.active_process:
                 self.active_process.close()

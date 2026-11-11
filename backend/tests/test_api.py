@@ -73,13 +73,13 @@ def test_authentication_is_required(client):
 
 def test_diagnostics_reports_presence_without_running_tools(client, monkeypatch):
     import subprocess
-    from horus_backend import diagnostics
+    from horus_backend import dependencies
 
     def unexpected_process(*args, **kwargs):
         pytest.fail("O diagnóstico não deve executar ferramentas.")
 
     monkeypatch.setattr(subprocess, "Popen", unexpected_process)
-    monkeypatch.setattr(diagnostics.shutil, "which", lambda name: "/private/bin/node" if name == "node" else None)
+    monkeypatch.setattr(dependencies.shutil, "which", lambda name: "/private/bin/node" if name == "node" else None)
     response = client.get("/v1/diagnostics")
     assert response.status_code == 200
     report = response.json()

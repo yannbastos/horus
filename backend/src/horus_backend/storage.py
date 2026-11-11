@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import sqlite3
 import uuid
 from contextlib import contextmanager
@@ -19,6 +20,10 @@ class Store:
         path.parent.mkdir(parents=True, exist_ok=True)
         self.path = path
         migrate(path)
+        stat = path.stat()
+        # Identidade da instância física/local, sem tabela ou escrita adicional no banco.
+        identity = f"{path.resolve()}:{stat.st_dev}:{stat.st_ino}:{getattr(stat, 'st_birthtime_ns', '')}"
+        self.database_id = hashlib.sha256(identity.encode()).hexdigest()
 
     @contextmanager
     def connect(self):
@@ -59,9 +64,11 @@ class Store:
         with self.connect() as db:
             return self.job(db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone())
 
-    def list_jobs(self):
+    def list_jobs(self, *, media_only=False, offset=0):
         with self.connect() as db:
-            return [self.job(row) for row in db.execute("SELECT * FROM jobs ORDER BY created_at DESC LIMIT 100")]
+            where = "WHERE json_extract(payload,'$.operation') IN ('transcription.run','youtube.download')" if media_only else ""
+            return [self.job(row) for row in db.execute(
+                f"SELECT * FROM jobs {where} ORDER BY created_at DESC,id DESC LIMIT 100 OFFSET ?", (offset,))]
 
     def queued_ids(self):
         with self.connect() as db:
@@ -69,6 +76,11 @@ class Store:
 
     def update(self, job_id: str, status: str, *, result=None, error=None, new_attempt=False):
         with self.connect() as db:
+            if new_attempt:
+                row = db.execute("SELECT payload FROM jobs WHERE id=?", (job_id,)).fetchone()
+                if row and json.loads(row["payload"]).get("operation") == "transcription.run":
+                    sequence = db.execute("SELECT COALESCE(MAX(sequence),0) FROM events WHERE job_id=?", (job_id,)).fetchone()[0]
+                    result = {"text": "", "partial": True, "sequence": sequence}
             db.execute("UPDATE jobs SET status=?,updated_at=?,result=?,error=?,attempt=attempt+? WHERE id=?",
                        (status, now(), json.dumps(result, ensure_ascii=False) if result is not None else None,
                         error, int(new_attempt), job_id))
@@ -77,6 +89,16 @@ class Store:
         with self.connect() as db:
             db.execute("INSERT INTO events(job_id,kind,message,created_at) VALUES(?,?,?,?)",
                        (job_id, kind, message[:2000], now()))
+            sequence = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+            if kind == "segment":
+                row = db.execute("SELECT payload,result FROM jobs WHERE id=?", (job_id,)).fetchone()
+                if json.loads(row["payload"]).get("operation") == "transcription.run":
+                    result = json.loads(row["result"]) if row["result"] else {}
+                    result = {"text": result.get("text", "") + message + "\n", "partial": True,
+                              "sequence": sequence}
+                    # Checkpoint e evento são atômicos; a poda de logs não apaga o texto integral.
+                    db.execute("UPDATE jobs SET result=?,updated_at=? WHERE id=?",
+                               (json.dumps(result, ensure_ascii=False), now(), job_id))
             db.execute("DELETE FROM events WHERE job_id=? AND sequence NOT IN (SELECT sequence FROM events WHERE job_id=? ORDER BY sequence DESC LIMIT 2000)",
                        (job_id, job_id))
 
@@ -87,9 +109,10 @@ class Store:
 
     def recover(self):
         with self.connect() as db:
-            rows = db.execute("SELECT id FROM jobs WHERE workflow_id IS NULL AND status IN ('running','cancel_requested')").fetchall()
+            rows = db.execute("SELECT id,result FROM jobs WHERE workflow_id IS NULL AND status IN ('running','cancel_requested')").fetchall()
         for row in rows:
-            self.update(row["id"], "interrupted", error="Execução interrompida. Revise antes de tentar novamente.")
+            self.update(row["id"], "interrupted", result=json.loads(row["result"]) if row["result"] else None,
+                        error="Execução interrompida. Revise antes de tentar novamente.")
             self.event(row["id"], "state", "interrupted")
 
     def register_media(self, path: Path):

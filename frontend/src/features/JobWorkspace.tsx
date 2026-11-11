@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, observeJob, terminalStatuses } from '../services/api';
 import type { Connection, FactoryPayload, Job, JobEvent } from '../services/api';
+import { nativeDesktop } from '../platform/desktop';
 
 // Transcrições e downloads têm tela própria; aqui ficam somente as operações da fábrica.
 type FactoryJob = Job & { payload: FactoryPayload };
@@ -82,7 +83,7 @@ export default function JobWorkspace({ connection }: { connection: Connection | 
     <div className="card"><p className="eyebrow accent">OPERAÇÃO LOCAL</p><h2>Uma etapa por vez.</h2><p className="muted">Consulta de perfil e render de rascunho pelo CLI existente. Nenhuma geração de voz ou publicação é acionada aqui.</p>
       <div className="form-row"><label>Canal<input value={channel} onChange={e => setChannel(e.target.value)} pattern="[A-Za-z0-9][A-Za-z0-9_-]*" maxLength={64} /></label><label>Vídeo para rascunho<input value={video} onChange={e => setVideo(e.target.value)} placeholder="Identificador da pasta do vídeo" maxLength={128} /></label></div>
       <div className="actions"><button className="button primary" disabled={!connection || busy || !channel} onClick={() => void submit('factory.profile')}>CONSULTAR PERFIL</button><button className="button" disabled={!connection || busy || !channel || !video} onClick={() => void submit('factory.render.preview')}>RENDERIZAR RASCUNHO</button></div>
-      {!connection && <p className="muted" role="status">Conecte o backend local em Ajustes para executar operações.</p>}{error && <p className="error" role="alert">{error}</p>}
+      {!connection && <p className="muted" role="status">{nativeDesktop ? 'Backend local indisponível. Use RECONECTAR BACKEND em Ajustes.' : 'Conecte o backend local em Ajustes para executar operações.'}</p>}{error && <p className="error" role="alert">{error}</p>}
     </div>
     {jobs.length > 0 && <div className="job-grid"><div className="job-list" aria-label="Histórico de tarefas">{jobs.map(job => <button key={job.id} className={`job-item ${job.id === selected ? 'selected' : ''}`} onClick={() => setSelected(job.id)}><span>{job.payload.operation === 'factory.profile' ? 'Consulta de perfil' : 'Render de rascunho'}</span><small>{job.payload.channel_id} · {statusLabels[job.status]}</small></button>)}</div>{current && connection && <JobDetails job={current} connection={connection} refresh={refresh} />}</div>}
   </section>;

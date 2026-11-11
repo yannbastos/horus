@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../services/api';
 import type { Connection, HermesStatus } from '../services/api';
-import { nativeDesktop } from '../platform/desktop';
+import { connectDesktop, nativeDesktop } from '../platform/desktop';
 
 export type Theme = 'system' | 'light' | 'dark';
 type Diagnostics = { checks: { id: string; name: string; available: boolean; detail: string }[]; notice: string };
@@ -36,6 +36,16 @@ export default function Settings({ theme, setTheme, connect, connection, hermes,
   const [url, setUrl] = useState('http://127.0.0.1:8765');
   const [token, setToken] = useState('');
   const [message, setMessage] = useState('');
+  const [connecting, setConnecting] = useState(false);
+  async function reconnect() {
+    setConnecting(true);
+    try {
+      const candidate = await connectDesktop();
+      if (!candidate) throw new Error('Backend desktop indisponível.');
+      await api(candidate, '/health'); connect(candidate); setMessage('Backend local reconectado. Retome o acompanhamento na Transcrição.');
+    } catch (reason) { setMessage(reason instanceof Error ? reason.message : String(reason)); }
+    finally { setConnecting(false); }
+  }
   async function manualConnect() {
     try {
       const address = new URL(url);
@@ -47,6 +57,7 @@ export default function Settings({ theme, setTheme, connect, connection, hermes,
   return <div className="page settings"><p className="eyebrow accent">AJUSTES</p><h1>Aparência</h1><p className="muted">A mesma identidade, no tema que combina com seu espaço.</p><div className="theme-options" aria-label="Tema">{(['system', 'light', 'dark'] as Theme[]).map((value, index) => <button key={value} className={`button ${theme === value ? 'active' : ''}`} aria-pressed={theme === value} onClick={() => setTheme(value)}>{['SISTEMA', 'CLARO', 'ESCURO'][index]}</button>)}</div>
     <section className="card"><p className="eyebrow">CONEXÃO LOCAL</p><h2>{connection ? 'Backend disponível.' : 'Conecte seu espaço de trabalho.'}</h2><p className="muted">{nativeDesktop ? 'O aplicativo gerencia o backend local. Credenciais de conexão ficam somente na memória desta sessão.' : 'No navegador, você pode conectar um backend iniciado separadamente. A versão desktop faz essa conexão automaticamente.'}</p>
       {!nativeDesktop && <form onSubmit={event => { event.preventDefault(); void manualConnect(); }}><label>Endereço local<input value={url} onChange={e => setUrl(e.target.value)} autoComplete="off" /></label><label>Token da sessão<input type="password" value={token} onChange={e => setToken(e.target.value)} autoComplete="off" /></label><button className="button primary" type="submit" disabled={token.length < 24}>CONECTAR BACKEND</button></form>}
+      {nativeDesktop && <button className="button" disabled={connecting} onClick={() => void reconnect()}>RECONECTAR BACKEND</button>}
       {message && <p role="status">{message}</p>}
     </section>
     <HermesIntegration connection={connection} report={hermes} onStatus={onHermesStatus} />
