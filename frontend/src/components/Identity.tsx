@@ -9,9 +9,11 @@ export function Orbit() {
   return <svg className="orbit" viewBox="0 0 220 220" fill="none" role="img" aria-label="Olho orbital do Hórus">
     <circle className="orbit-outer" cx="110" cy="110" r="92" />
     <circle className="orbit-inner" cx="110" cy="110" r="70" />
-    <ellipse cx="110" cy="110" rx="98" ry="38" transform="rotate(35 110 110)" />
-    <ellipse cx="110" cy="110" rx="98" ry="38" transform="rotate(-35 110 110)" />
-    <circle cx="110" cy="18" r="4" fill="currentColor" stroke="none" />
+    <g className="orbit-rings">
+      <ellipse cx="110" cy="110" rx="98" ry="38" transform="rotate(35 110 110)" />
+      <ellipse cx="110" cy="110" rx="98" ry="38" transform="rotate(-35 110 110)" />
+      <circle cx="110" cy="18" r="4" fill="currentColor" stroke="none" />
+    </g>
     <path className="orbit-eye" d="M60 110 Q110 65 160 110 Q110 155 60 110 M110 94 A16 16 0 1 1 109.9 94 M110 126 L97 154 L119 143" />
   </svg>;
 }

@@ -213,3 +213,25 @@ test('cancelamento preserva parcial e ignora drop durante execução', async ({ 
   await expect(page.getByRole('heading', { name: 'atual.wav', exact: true })).toBeVisible();
   expect(jobs).toHaveLength(1);
 });
+
+test('remoção individual de arquivos da fila preserva a ordem e não afeta o processamento atual', async ({ page }) => {
+  await setup(page);
+  await pick(page, ['C:/audio/primeiro.mp3', 'C:/audio/segundo.wav', 'C:/audio/terceiro.m4a']);
+  await expect(page.getByLabel('Arquivos na fila')).toHaveText('3/20');
+
+  const items = page.getByLabel('Fila de transcrição').locator('li');
+  await expect(items.nth(0)).toContainText('primeiro.mp3');
+  await expect(items.nth(1)).toContainText('segundo.wav');
+  await expect(items.nth(2)).toContainText('terceiro.m4a');
+
+  // Remover o segundo arquivo ('segundo.wav')
+  const removeBtn = items.nth(1).getByRole('button', { name: 'Remover segundo.wav da fila' });
+  await expect(removeBtn).toBeVisible();
+  await removeBtn.click();
+
+  // Fila agora tem 2 itens: primeiro.mp3 e terceiro.m4a preservando a ordem
+  await expect(page.getByLabel('Arquivos na fila')).toHaveText('2/20');
+  await expect(items.nth(0)).toContainText('primeiro.mp3');
+  await expect(items.nth(1)).toContainText('terceiro.m4a');
+  await expect(page.getByRole('heading', { name: 'primeiro.mp3', exact: true })).toBeVisible();
+});
