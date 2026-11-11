@@ -25,13 +25,14 @@ Uma capacidade pode estar implementada e parcialmente validada. Builds e testes 
 | Render de rascunho short | Implementado; parcialmente validado via API em TestClient com processos reais; não certifica execução pela tela Produção ou pelo backend empacotado |
 | Cancelamento/encerramento durante render | Parcialmente validados: árvore encerrada e estado recuperado; encerramento normal do backend não simula falha abrupta do Windows |
 | Biblioteca de mídia/player | Implementados; seleção e reprodução de MP4 no Tauri registradas; pasta, busca temporal manual e outros cenários ainda pendentes |
-| Transcrição React/Python | Implementada; testes simulados e transcrição curta tiny/CPU registrados; equivalência completa com Avalonia pendente |
+| Transcrição React/Python | Implementada; testes simulados e transcrição curta tiny/CPU registrados; remoção individual de pendentes da fila (sem remover o item em processamento nem arquivos do disco, ordem FIFO e limite de 20 preservados) coberta por testes Playwright simulados; equivalência completa com Avalonia pendente |
 | Diagnóstico Hermes | Implementado; integração autenticada anteriormente registrada; conectividade depende da configuração da sessão |
 | Executor cognitivo Hermes no workflow | Implementado e validado só com Hermes simulado: autorização por execução, rastreio, validação de evidências, cancelamento remoto e conciliação; sem execução real |
 | Planejamento/delegação multiagente | Planejados; diagnóstico de capacidades não comprova orquestração |
 | Memória ativa e histórico editorial consolidado | Planejados; tarefas/eventos técnicos persistentes não equivalem ao módulo completo |
 | Biblioteca inteligente de técnicas | Planejada; distinta da Biblioteca de mídia atual e dos componentes Remotion existentes |
-| Radar, análise editorial real e analytics | Planejados como fluxos integrados; aprovação por revisão já existe no núcleo simulado, sem autorizar produção |
+| Núcleo isolado do Radar YouTube | Implementado e validado só offline (transportes simulados): descoberta, filtros, paginação, cotas atômicas, cache, retenção de 28 dias, revisões, coletas/refresh serializados por arquivo de estado, cancelamento cooperativo entre chamadas e limpeza explícita idempotente ([detalhes](radar-youtube.md)); sem chamadas reais, credenciais, UI, limpeza periódica no executor ou adaptador Hermes |
+| Análise editorial real e analytics | Planejados como fluxos integrados; aprovação por revisão já existe no núcleo simulado, sem autorizar produção |
 | Fábrica e catálogo visual | Repositórios independentes; prontidão da fábrica requer inspeção própria, Storybook usa exemplos fictícios |
 | Publicação automática e múltiplos canais | Evolução futura; publicação inicial manual |
 | Linux/Arch Linux | Compatibilidade futura; não validada |
@@ -73,7 +74,7 @@ Os temas abaixo preservam o planejamento existente; sua numeração antiga não 
 | Frente | Entrega e critério para avançar |
 |---|---|
 | Diagnóstico e consolidação | Confirmar ambiente, contratos e situação atual da fábrica; não transportar bloqueios de auditoria antiga como fatos atuais |
-| Radar mínimo | Descoberta/validação de candidatos com fonte/data, paginação, ausências, permissões e cotas verificadas; indicadores somente quando permitidos |
+| Radar mínimo | Descoberta/validação de candidatos com fonte/data, paginação, ausências, permissões e cotas verificadas; indicadores somente quando permitidos. Núcleo offline implementado; faltam limpeza periódica e cancelamento no executor existente, ensaio autorizado com a API real, UI e mapeamento aprovado para o contrato Hermes |
 | Integração Hermes | Ferramentas/skills externas e resultados/erros rastreáveis; sem fork e sem efeitos implícitos |
 | Análise e planejamento | Briefings e roteiros originais, observação separada de hipótese, aprovação por revisão |
 | Produção gerenciada | Custos, aprovações, retomada e integridade; uma produção recuperável sem repetir cobrança/render por perda de contato |
