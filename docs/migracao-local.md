@@ -224,4 +224,22 @@ Observações do instalador: marcar "excluir dados" na desinstalação remove `%
 
 Não validado nesta etapa: arrastar e soltar nativo (exige gesto real do usuário), instalação/atualização/desinstalação NSIS, GPU NVIDIA com e sem cuDNN, download real do YouTube, modelos maiores, áudio real longo e equivalência de qualidade com o Avalonia.
 
+### Homologação do pacote — Windows, 2026-11-11
+
+Instalador final `HORUS_0.1.0_x64-setup.exe` (80,09 MiB, SHA-256 `9ee29f5e96b9b774…`), gerado a partir de `60c1b01` com as correções de interface desta etapa. O conteúdo do instalador foi extraído com 7-Zip para uma pasta descartável, sem gravar registro ou atalhos, e executado com ambiente mínimo: PATH restrito às pastas do Windows, sem Python, .NET, venv, `HORUS_PYTHON` ou `FABRICA_HOME`. Somente `horus-desktop.exe` e `horus-backend.exe` da pasta extraída foram executados; o SDK .NET nem está disponível no PATH do sistema.
+
+| Verificação | Resultado |
+|---|---|
+| Fluxo nativo completo | Repetido no pacote final: seleção múltipla, transcrição CPU, cópia, salvar/cancelar salvamento, FIFO, cancelamento, nova tentativa e Biblioteca |
+| Formatos no backend do instalador, sem FFmpeg | MP3, M4A, FLAC, OGG, Opus, MP4, MKV, WebM e MOV transcritos (1,6–1,7 s cada com `tiny`) |
+| Falha abrupta do backend durante transcrição | Processo encerrado à força; subprocesso de transcrição encerrado pelo Job Object; interface indicou a perda; **Reconectar backend** relançou o backend; job `interrupted` com checkpoint de 85 linhas retomado, mantendo modelo e idioma |
+| Migração v1 → v2 | Banco v1 fictício com o schema de `051ef26`: migrado ao abrir, cópia `horus.backup-v1-*.sqlite3` com os 4 jobs originais, job `running` recuperado como `interrupted`, histórico, resultado antigo e mídia registrada no v1 funcionando na interface |
+| Encerramento | Sem processos remanescentes após fechamentos normais, durante transcrição e após a falha abrupta |
+
+Corrigido nesta etapa: o histórico exibia estados em inglês (`failed`, `interrupted`) e abrir um resultado já concluído mostrava "Concluído em 00:00", como se tivesse acabado de executar; agora usa rótulos em português e informa "Transcrição recuperada do histórico". Testes de regressão em `frontend/tests/transcription-receipt-settings.spec.ts`.
+
+Limitação conhecida do Whisper: silêncio puro com idioma inglês pode gerar um trecho inventado; em português não gerou texto. Não há gravação de voz humana nesta máquina; o ensaio usou fala sintética do Windows.
+
+Pendências que exigem ambiente ou participação: instalação/atualização/desinstalação pelo NSIS em conta Windows ou VM de teste (a instalação grava atalhos e chaves no perfil do usuário); arrastar e soltar real; GPU NVIDIA; download real do YouTube; comparação de qualidade com gravação real nos dois aplicativos.
+
 Pendências para aceitar a prova completa: testar a instalação NSIS e diálogos nativos; executar render real com os materiais preparados e conferir cancelamento de sua árvore de processos; reproduzir vídeo no WebView2; medir RAM/CPU/inicialização do build desktop de produção e comparar telas nos tamanhos e temas previstos. As metas de 250 MB e três segundos ainda não são resultados comprovados. A transcrição React só poderá substituir definitivamente o Avalonia após validar os itens não verificados da seção Transcrição.
