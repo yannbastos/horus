@@ -181,6 +181,18 @@ def test_downloader_prefers_python_and_uses_discovered_tool_arguments(monkeypatc
     assert args[-2:] == ['--', 'https://youtu.be/dQw4w9WgXcQ']
 
 
+def test_downloader_validates_tls_with_system_certificate_store(monkeypatch, tmp_path):
+    # Redes com inspeção TLS assinam com CA corporativa presente só no repositório do sistema;
+    # o certifi embutido recusa. A verificação continua ativa.
+    captured = []
+    monkeypatch.setattr(transcriber, 'find_tool', lambda name: None)
+    monkeypatch.setitem(sys.modules, 'yt_dlp', SimpleNamespace(main=lambda args: captured.append(args)))
+    transcriber.download('https://youtu.be/dQw4w9WgXcQ', tmp_path)
+    args = captured[0]
+    assert args[args.index('--compat-options') + 1] == 'no-certifi'
+    assert '--no-check-certificates' not in args and '--no-check-certificate' not in args
+
+
 def test_downloader_executable_fallback_does_not_use_shell(monkeypatch, tmp_path):
     import subprocess
     monkeypatch.setitem(sys.modules, 'yt_dlp', None)

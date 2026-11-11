@@ -116,7 +116,10 @@ def download(url: str, directory: Path) -> int:
     directory.mkdir(parents=True, exist_ok=True)
     ffmpeg = find_tool('ffmpeg')
     node = find_tool('node')
-    args = ["--ignore-config", "--js-runtimes", f"node:{node}" if node else "node", "--no-playlist", "--no-overwrites", "--newline",
+    # "no-certifi": valida TLS pelo repositório de certificados do sistema, que inclui CAs corporativas
+    # (inspeção TLS). A verificação continua ativa; o certifi embutido recusaria essas redes.
+    args = ["--ignore-config", "--compat-options", "no-certifi",
+            "--js-runtimes", f"node:{node}" if node else "node", "--no-playlist", "--no-overwrites", "--newline",
             "--progress", "--progress-delta", "1", "--no-colors", "--socket-timeout", "20", "--retries", "3",
             "--windows-filenames", "--trim-filenames", "150", "-P", str(directory),
             "-o", "%(title).150B [%(id)s].%(ext)s",
