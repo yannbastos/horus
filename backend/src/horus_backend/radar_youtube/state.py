@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
 import sqlite3
+import time
 
 from .models import Dataset
 
@@ -12,6 +13,15 @@ def utcnow():
 
 class BudgetExceeded(RuntimeError):
     pass
+
+class CollectionCancelled(RuntimeError):
+    """Cancelamento cooperativo; nenhuma revisão parcial é salva."""
+
+
+def check_cancelled(cancel):
+    if cancel is not None and cancel():
+        raise CollectionCancelled('Coleta cancelada pelo chamador.')
+
 
 class RadarState:
     def __init__(self, path: Path, *, clock=utcnow):
@@ -40,9 +50,36 @@ class RadarState:
         finally:
             db.close()
 
+    @contextmanager
+    def collection_lock(self, cancel=None):
+        """Trava global por arquivo, inclusive entre processos; liberada em crash.
+
+        Banco auxiliar sem tabelas evita manter a transação do estado aberta
+        durante rede e permite que as reservas usem suas transações existentes.
+        """
+        path = self.path.with_suffix('.refresh-lock.sqlite3')
+        if path.is_symlink():
+            raise ValueError('Trava não pode ser symlink.')
+        db = sqlite3.connect(path, timeout=0)
+        try:
+            while True:
+                check_cancelled(cancel)
+                try:
+                    db.execute('BEGIN EXCLUSIVE')
+                    break
+                except sqlite3.OperationalError as error:
+                    if error.sqlite_errorcode != sqlite3.SQLITE_BUSY:
+                        raise
+                    time.sleep(0.05)
+            check_cancelled(cancel)
+            yield
+        finally:
+            db.close()
+
     def purge(self):
         now = self.clock().timestamp()
         with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
             db.execute('DELETE FROM radar_cache WHERE expires<=?', (now,))
             db.execute('DELETE FROM radar_datasets WHERE expires<=?', (now,))
             db.execute('DELETE FROM radar_usage WHERE at<=?', (now - 26 * 3600,))

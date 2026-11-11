@@ -381,3 +381,210 @@ def test_explicit_handle_lookup_without_search(state):
     result = YouTubeCollector(fake, state).collect(CollectionRequest(channels=['@example']))
     assert result.records[0].youtube_id == CHANNEL
     assert fake.calls[0][1]['forHandle'] == '@example' and len(fake.calls) == 1
+
+# Ciclo de vida: todos os transportes abaixo continuam estritamente offline.
+@pytest.mark.parametrize('search', [False, True])
+def test_concurrent_collectors_share_uncached_query(state, search):
+    from threading import Event
+    entered, release, second_started = Event(), Event(), Event()
+
+    def handler(resource, params):
+        entered.set()
+        assert release.wait(5)
+        return {'items': [{'id': {'videoId': VIDEO}}] if resource == 'search' else [video()]}
+
+    fake = Fake(handler)
+    request = (CollectionRequest(search=SearchRequest(query='teste'), enrich_channels=False) if search
+               else CollectionRequest(videos=[VIDEO], enrich_channels=False))
+    other = RadarState(state.path, clock=state.clock)
+
+    def second():
+        second_started.set()
+        return YouTubeCollector(fake, other).collect(request)
+
+    with ThreadPoolExecutor(2) as pool:
+        first = pool.submit(YouTubeCollector(fake, state).collect, request)
+        assert entered.wait(5)
+        next_result = pool.submit(second)
+        assert second_started.wait(5)
+        release.set()
+        results = [first.result(5), next_result.result(5)]
+    assert len(fake.calls) == (2 if search else 1)
+    assert sorted(result.quota_spent['details'] for result in results) == [0, 1]
+    assert all(result.status == 'complete' for result in results)
+
+
+def test_concurrent_refresh_returns_one_successor(state):
+    from threading import Event
+    engine, fake = collector(state, [video()])
+    original = engine.collect(CollectionRequest(videos=[VIDEO], enrich_channels=False))
+    entered, release, second_started = Event(), Event(), Event()
+
+    def handler(resource, params):
+        entered.set()
+        assert release.wait(5)
+        return {'items': [video(views='20')]}
+
+    fake.handler = handler
+    other = RadarState(state.path, clock=state.clock)
+
+    def second():
+        second_started.set()
+        return YouTubeCollector(fake, other).refresh(original.snapshot_id, 1)
+
+    with ThreadPoolExecutor(2) as pool:
+        first = pool.submit(engine.refresh, original.snapshot_id, 1)
+        assert entered.wait(5)
+        following = pool.submit(second)
+        assert second_started.wait(5)
+        release.set()
+        results = [first.result(5), following.result(5)]
+    assert results[0] == results[1]
+    assert results[0].revision == 2
+    assert len(fake.calls) == 2  # coleta original e somente um refresh
+    assert state.load(original.snapshot_id, 1) == original
+
+
+@pytest.mark.parametrize('where', ['before', 'page', 'endpoint', 'retry', 'last'])
+def test_cooperative_cancellation_keeps_reservations_without_dataset(state, where):
+    from threading import Event
+    from horus_backend.radar_youtube import CollectionCancelled
+    cancelled = Event()
+    request = CollectionRequest(videos=[VIDEO])
+    if where == 'before':
+        cancelled.set()
+    if where == 'page':
+        request = CollectionRequest(search=SearchRequest(query='teste', pages=2))
+
+    def handler(resource, params):
+        cancelled.set()
+        if where == 'retry':
+            raise CollectionError('transport', 'simulado', retryable=True)
+        if resource == 'search':
+            return {'items': [{'id': {'videoId': VIDEO}}], 'nextPageToken': 'next'}
+        return {'items': [video()]}
+
+    fake = Fake(handler)
+    if where == 'last':
+        request = CollectionRequest(videos=[VIDEO], enrich_channels=False)
+    engine = YouTubeCollector(fake, state, sleep=lambda _: None)
+    with pytest.raises(CollectionCancelled):
+        engine.collect(request, cancel=cancelled.is_set)
+    expected = 0 if where == 'before' else 1
+    assert len(fake.calls) == expected
+    with state.connect() as db:
+        assert db.execute('SELECT COUNT(*) FROM radar_usage').fetchone()[0] == expected
+        assert db.execute('SELECT COUNT(*) FROM radar_datasets').fetchone()[0] == 0
+    # Trava foi liberada e a coleta seguinte pode usar respostas já cacheadas.
+    cancelled.clear()
+    fake.handler = lambda resource, params: {'items': [video()] if resource == 'videos' else [channel()]}
+    assert engine.collect(CollectionRequest(videos=[VIDEO])).status == 'complete'
+
+
+def test_cancelled_refresh_preserves_previous_revision(state):
+    from threading import Event
+    from horus_backend.radar_youtube import CollectionCancelled
+    engine, fake = collector(state, [video()])
+    original = engine.collect(CollectionRequest(videos=[VIDEO], enrich_channels=False))
+    cancelled = Event()
+
+    def handler(resource, params):
+        cancelled.set()
+        return {'items': [video(views='20')]}
+
+    fake.handler = handler
+    with pytest.raises(CollectionCancelled):
+        engine.refresh(original.snapshot_id, 1, cancel=cancelled.is_set)
+    assert state.load(original.snapshot_id, 1) == original
+    with pytest.raises(KeyError):
+        state.load(original.snapshot_id, 2)
+    with state.connect() as db:
+        assert db.execute('SELECT COUNT(*) FROM radar_usage').fetchone()[0] == 2
+
+
+def test_cancel_while_waiting_for_collection_lock(state):
+    from threading import Event
+    from horus_backend.radar_youtube import CollectionCancelled
+    cancelled, waiting = Event(), Event()
+    engine, fake = collector(state, [video()])
+
+    def cancel():
+        waiting.set()
+        return cancelled.is_set()
+
+    with state.collection_lock():
+        with ThreadPoolExecutor(1) as pool:
+            future = pool.submit(engine.collect, CollectionRequest(videos=[VIDEO]), cancel=cancel)
+            assert waiting.wait(5)
+            cancelled.set()
+            with pytest.raises(CollectionCancelled):
+                future.result(5)
+    assert not fake.calls
+
+
+def test_cleanup_exact_expiry_preserves_live_revisions_and_quota_window(state):
+    engine, _ = collector(state, [video()])
+    original = engine.collect(CollectionRequest(videos=[VIDEO], enrich_channels=False))
+    state.advance(days=1)
+    successor = engine.refresh(original.snapshot_id, 1)
+    state.advance(days=27)
+    state.cache('live', {'items': []}, state.clock(), 1)
+    state.reserve('search', 10)
+    state.block('search')
+    state.purge()
+    state.purge()  # idempotência, inclusive no limite expires_at
+    with pytest.raises(KeyError):
+        state.load(original.snapshot_id, 1)
+    assert state.load(successor.snapshot_id, 2) == successor
+    assert state.cached('live') is not None
+    with state.connect() as db:
+        assert db.execute('SELECT COUNT(*) FROM radar_datasets').fetchone()[0] == 1
+        assert db.execute('SELECT COUNT(*) FROM radar_cache').fetchone()[0] == 1
+        assert db.execute('SELECT COUNT(*) FROM radar_usage').fetchone()[0] == 1
+        assert db.execute('SELECT COUNT(*) FROM radar_blocks').fetchone()[0] == 1
+    state.advance(days=1, hours=2)
+    state.purge()
+    with state.connect() as db:
+        for table in ['radar_datasets', 'radar_cache', 'radar_usage', 'radar_blocks']:
+            assert db.execute('SELECT COUNT(*) FROM ' + table).fetchone()[0] == 0
+
+
+def test_collection_lock_excludes_other_process_and_releases(state):
+    import os
+    import subprocess
+    import sys
+    code = '''
+import sys
+from pathlib import Path
+from horus_backend.radar_youtube.state import RadarState, CollectionCancelled
+state = RadarState(Path(sys.argv[1]))
+checks = 0
+def cancel():
+    global checks
+    checks += 1
+    return checks > 2
+try:
+    with state.collection_lock(cancel):
+        print('acquired')
+except CollectionCancelled:
+    print('blocked')
+'''
+    env = {**os.environ, 'PYTHONPATH': str(__import__('pathlib').Path(__file__).resolve().parents[2] / 'src')}
+
+    def run():
+        return subprocess.run([sys.executable, '-c', code, str(state.path)],
+                              env=env, capture_output=True, text=True, timeout=10, check=True).stdout.strip()
+
+    with state.collection_lock():
+        assert run() == 'blocked'
+    assert run() == 'acquired'
+
+
+def test_refresh_of_invalidated_origin_returns_existing_successor(state):
+    engine, fake = collector(state, [video()])
+    original = engine.collect(CollectionRequest(videos=[VIDEO], enrich_channels=False))
+    fake.handler = lambda resource, params: {'items': []}
+    successor = engine.refresh(original.snapshot_id, 1)
+    assert successor.status == 'failed'
+    assert engine.refresh(original.snapshot_id, 1) == successor
+    assert len(fake.calls) == 2

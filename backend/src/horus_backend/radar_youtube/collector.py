@@ -9,7 +9,7 @@ import uuid
 
 from .models import CollectionIssue, CollectionRequest, Dataset, PublicRecord
 from .references import CHANNEL, VIDEO, channel_reference, video_id
-from .state import BudgetExceeded, RadarState
+from .state import BudgetExceeded, RadarState, check_cancelled
 from .transport import CollectionError
 
 PARTS = {'videos': 'snippet,statistics,contentDetails', 'channels': 'snippet,statistics,contentDetails',
@@ -122,6 +122,7 @@ class YouTubeCollector:
         self.max_calls, self.cache_hours = max_calls, cache_hours
 
     def _get(self, resource, params):
+        check_cancelled(self.cancel)
         params = {**params, 'part': PARTS[resource], 'fields': FIELDS[resource]}
         key = hashlib.sha256(json.dumps([resource, params], sort_keys=True).encode()).hexdigest()
         cached = None if self.force_refresh else self.state.cached(key)
@@ -129,6 +130,7 @@ class YouTubeCollector:
             return cached
         bucket = 'search' if resource == 'search' else 'details'
         for attempt in range(2):
+            check_cancelled(self.cancel)
             if self.calls >= self.max_calls:
                 raise BudgetExceeded('Limite de chamadas desta coleta atingido.')
             self.state.reserve(bucket, self.limits[bucket])
@@ -203,7 +205,25 @@ class YouTubeCollector:
             if index == pages - 1:
                 self.issues.append(CollectionIssue(code='pagination_limited', resource=resource, message='Há mais páginas; limite local respeitado.'))
 
-    def collect(self, request: CollectionRequest, *, force_refresh=False, previous: Dataset | None = None):
+    def collect(self, request: CollectionRequest, *, force_refresh=False, previous: Dataset | None = None,
+                cancel=None):
+        with self.state.collection_lock(cancel):
+            return self._collect_locked(request, force_refresh=force_refresh, previous=previous, cancel=cancel)
+
+    def _collect_locked(self, request, *, force_refresh=False, previous=None, cancel=None):
+        self.cancel = cancel
+        check_cancelled(cancel)
+        if previous:
+            # Uma revisão de origem identifica uma única atualização. Repetições
+            # retornam o sucessor persistido, sem nova consulta ou sobrescrita.
+            try:
+                successor = self.state.load(previous.snapshot_id, previous.revision + 1)
+            except KeyError:
+                pass
+            else:
+                if successor.request != request:
+                    raise ValueError('Revisão existente pertence a outro pedido.')
+                return successor
         # Validar todas as referências antes de consumir cota ou abrir transporte.
         video_ids = [video_id(value) for value in request.videos]
         channel_refs = [channel_reference(value) for value in request.channels]
@@ -252,15 +272,22 @@ class YouTubeCollector:
                                          if isinstance(row['contentDetails'].get('videoId'), str) and VIDEO.fullmatch(row['contentDetails']['videoId']))
             known = {item.youtube_id for item in records.values() if item.kind == 'youtube_video'}
             self._resources('videos', [value for value in extra_ids if value not in known], records)
+        check_cancelled(cancel)
         collected = self.state.clock()
         dataset = Dataset(snapshot_id=previous.snapshot_id if previous else 'rad_' + uuid.uuid4().hex[:24],
                           revision=previous.revision + 1 if previous else 1, collected_at=collected,
                           expires_at=min([collected + timedelta(days=28), *[item.expires_at for item in records.values()]]),
                           request=request, status='partial' if self.issues and records else 'failed' if self.issues else 'complete',
                           records=list(records.values()), issues=self.issues, quota_spent=self.spent)
+        check_cancelled(cancel)
         self.state.save(dataset)
         return dataset
 
-    def refresh(self, snapshot_id, revision):
-        previous = self.state.load(snapshot_id, revision)
-        return self.collect(previous.request, force_refresh=True, previous=previous)
+    def refresh(self, snapshot_id, revision, *, cancel=None):
+        with self.state.collection_lock(cancel):
+            # O sucessor pode sobreviver à invalidação da origem por recurso ausente.
+            try:
+                return self.state.load(snapshot_id, revision + 1)
+            except KeyError:
+                previous = self.state.load(snapshot_id, revision)
+            return self._collect_locked(previous.request, force_refresh=True, previous=previous, cancel=cancel)
