@@ -1,307 +1,179 @@
 # Segurança da integração Hermes
 
-## Estado e auditoria em 12/11/2026
+## Estado em 12/11/2026
 
-Esta implementação audita arquivos locais, bloqueia execução real insegura e disponibiliza `GET /v1/security/status`, autenticado pelo token local existente. Não inicia Hermes, não configura provedor, não abre rede durante a auditoria e não altera o perfil operacional. O Hermes continua externo, sem fork.
+O backend audita configuração local, oferece `GET /v1/security/status` autenticado e recusa autorização/envio real enquanto houver blockers. Não inicia Hermes, escolhe provedor, configura credenciais ou aplica isolamento de SO. Hermes continua externo, sem fork. O incremento integrado em `d050658` já possui limpeza automática do Radar; retenção local não protege o processo Hermes.
 
-A inspeção do código instalado do Hermes 0.23.1 confirmou a resolução em `hermes_cli/tools_config.py::_get_platform_tools`, `toolsets.py`, os defaults em `hermes_cli/config_defaults.py` e a API em `gateway/platforms/api_server.py`. O perfil `%LOCALAPPDATA%/hermes/profiles/horus` contém `gateway.standalone: true`, `multiplex_profiles: false` e bind explícito `127.0.0.1:8643`, mas não contém `platform_toolsets.api_server` nem supressão global de ferramentas. Os únicos nomes de variáveis encontrados no `.env` foram `API_SERVER_ENABLED`, `API_SERVER_HOST`, `API_SERVER_KEY` e `API_SERVER_PORT`; valores não são interpretados, impressos ou registrados pela auditoria.
+O perfil `%LOCALAPPDATA%/hermes/profiles/horus` **não foi alterado** nesta revisão. O diagnóstico integrado informa 24 ferramentas herdadas de `hermes-api-server`, memória/perfil de usuário ativos pelos defaults, ausência de aprovação de escrita e de tetos de tokens. Há `skills: 2 itens; cron: 6 itens`. O inventário abaixo é somente leitura; não foram abertos `.env`, `auth*`, sessões, prompts ou saídas. A conexão privada Hórus–Hermes também não foi modificada.
 
-A seleção estática herdada contém: `browser_cdp`, `browser_dialog`, `browser_exec`, `browser_vault`, `cronjob_manage`, `delegate_task`, `execute_code`, `image_generate`, `manage_connections`, `memory`, `patch`, `process_manage`, `read_file`, `search_files`, `session_search`, `skill_manage`, `skill_view`, `skills_list`, `terminal`, `todo_list`, `vision_analyze`, `web_extract`, `web_search`, `write_file`. Isso descreve a configuração, não comprova disponibilidade de cada ferramenta em runtime: credenciais e checks internos podem restringi-las, nunca são usados como garantia de isolamento pelo Hórus.
+A seleção estática herdada contém `browser_cdp`, `browser_dialog`, `browser_exec`, `browser_vault`, `cronjob_manage`, `delegate_task`, `execute_code`, `image_generate`, `manage_connections`, `memory`, `patch`, `process_manage`, `read_file`, `search_files`, `session_search`, `skill_manage`, `skill_view`, `skills_list`, `terminal`, `todo_list`, `vision_analyze`, `web_extract`, `web_search`, `write_file`. Disponibilidade em runtime depende de credenciais/checks; ausência de credenciais não garante isolamento.
 
-Memória e perfil de usuário não foram desativados no YAML: os defaults do Hermes são `true`; `write_approval` é `false` e `memory.provider` é vazio por padrão. O YAML não configura modelo/provedor e os nomes presentes no `.env` não indicam credencial de inferência. A ausência de provedor não comprova impossibilidade de inferência, pois autenticação externa ao arquivo inspecionado pode existir.
+## Inventário das extensões reais
 
-Foram encontrados diretórios não vazios `skills` e `cron`. Seu conteúdo não foi executado nem interpretado. O status do perfil real, por isso, continua informando ferramentas e memória a partir do `config.yaml` e acrescenta o blocker `profile_extensions_present` (somente nomes e contagens, ex.: `skills: 2 itens; cron: 6 itens`), bloqueando execução. A leitura do YAML acima é evidência parcial, não atestado de segurança do processo em execução. Telemetria compartilhada é desligada por padrão no Hermes; verificações de atualização de plugins usam 24 horas por padrão; o catálogo `models.dev` pode abrir conexão própria.
+As duas entradas imediatas de `skills/` **não são duas skills**: há uma categoria contendo uma skill e um manifesto. A classificação usa arquivos documentais da skill e código instalado do Hermes; os exemplos não foram executados nem adotados como instruções desta tarefa.
 
-## Ferramentas editoriais necessárias: nenhuma
+| Item relativo ao perfil | O que é / quem cria | Código/rede e necessidade ao Hórus | Recomendação após autorização |
+|---|---|---|---|
+| `skills/autonomous-ai-agents/` | Categoria com `DESCRIPTION.md`, skill `hermes-agent` v3.3.0, `SKILL.md`, referências e templates `clock.mjs`, `plugin.js`, `skin.yaml`. Criada/sincronizada por `tools/skills_sync.py`. | Markdown é contexto; templates contêm código e o guia descreve CLI, instalação, rede e delegação. Presença não comprova execução automática; um agente com ferramentas poderia executá-los. Desnecessário ao fluxo editorial. | Quarentena de `skills/` completo com backup; não executar templates. Se recriado, bloquear e revisar. |
+| `skills/.bundled_manifest` | Rastreamento de origem/hash das skills; escrito pelo sincronizador. | Não executa por si; orienta sincronização local. Desnecessário ao workflow. | Preservar na mesma quarentena/backup para reversão exata. |
+| `cron/.jobs.lock` | Arquivo vazio de exclusão mútua; `cron/jobs.py::_jobs_lock`. | Não executa; sincroniza operações de jobs. Não é um job nem necessário ao Hórus. | Quarentena conjunta, somente após parar gateway/agendador. |
+| `cron/.tick.lock` | Arquivo vazio de exclusão mútua do tick; `cron/scheduler.py`. | Não executa; sincroniza processos. Não é um job nem necessário ao Hórus. | Mesma quarentena com gateway parado. |
+| `cron/executions.db` | SQLite de execuções criado por `cron/executions.py`; 24.576 bytes. | Banco não executa código por si; scheduler pode iniciar agentes/subprocessos/rede. Desnecessário ao fluxo fixo. | Backup de bytes e quarentena; não abrir para escrita ou apagar. |
+| `cron/output/` | Saídas do scheduler; definido em `cron/jobs.py`. Vazio: zero entradas. | Arquivos não executam por si; saídas futuras podem ser sensíveis. Nenhum conteúdo lido. Desnecessário. | Preservar inclusive o diretório vazio. |
+| `cron/ticker_heartbeat` | Marcador de tempo/PID, 24 bytes; `record_ticker_heartbeat`. | Não executa; escrito periodicamente pelo scheduler. Conteúdo não lido. Desnecessário. | Quarentena conjunta; pode reaparecer ao iniciar gateway. |
+| `cron/ticker_last_success` | Marcador do último tick sem erro, 18 bytes; mesma função. | Não executa; metadado operacional. Conteúdo não lido. Desnecessário. | Mesma recomendação. |
 
-O Hórus congela o snapshot na etapa local `research` e envia objetivo, perfil e dataset como dados no envelope. A análise devolve JSON, validado localmente antes de produzir artefato/proposta. Terminal, arquivos, navegador, pesquisa web, delegação, conexões e memória não são necessários. Nesta etapa todas as ferramentas efetivas são classificadas como perigosas/desnecessárias; o conjunto permitido é vazio. Texto de dataset, objetivo e feedback não pode alterar ferramentas, limites ou instruções do adaptador. A validação rejeita fonte fora do snapshot e métrica divergente; isso não comprova qualidade editorial nem elimina toda alucinação textual.
+Não foi encontrado `cron/jobs.json`; seis itens **não comprovam seis tarefas agendadas**. Ausência desse arquivo/linhas não atesta ausência de trabalho em memória no processo ativo.
 
-## Auditoria conservadora sem dependência nova
+O SQLite foi aberto com `sqlite3.connect(path.as_uri() + '?mode=ro', uri=True)` e `PRAGMA query_only=ON`. Consultas apenas a nomes de tabelas, `PRAGMA table_info` e `COUNT(*)`: uma tabela `executions`, **0 linhas**. Colunas: `id TEXT`, `job_id TEXT`, `source TEXT`, `process_id TEXT`, `pid INTEGER`, `process_started_at INTEGER`, `status TEXT`, `handoff_pending INTEGER`, `handoff_started_at REAL`, `claimed_at TEXT`, `started_at TEXT`, `finished_at TEXT`, `error TEXT`, `delivery_outcome TEXT`, `scheduled_instant TEXT`, `progress_at TEXT`. Nenhum valor de linha/prompt/saída foi consultado.
 
-`backend/src/horus_backend/security.py` implementa um subconjunto estrito de YAML: mapas com chaves simples e indentação por espaços, escalares simples (`string`, inteiro decimal, `true`, `false`, `null`), listas de escalares em bloco e inline, comentários. Arquivos têm limite de 256 KiB e profundidade limitada. Não há avaliação de código nem importação do Hermes.
+## Zero ferramentas: configuração e evidência
 
-Âncoras/aliases, tags, blocos multilinha, tabs, chaves duplicadas, múltiplos documentos, flow maps e estruturas fora do subconjunto tornam o perfil não verificável. Configurações válidas para o Hermes podem ser recusadas deliberadamente. Esses casos geram `profile_unverifiable` (junto de perfil ausente, `config.yaml` ausente/excessivo e `.env` não verificável), com `tools` e `memory` nulos.
+O Hórus realiza `research` localmente e envia objetivo, perfil e snapshot no envelope. A análise devolve JSON validado antes de produzir proposta/aprovação humana. Nenhuma ferramenta Hermes é necessária: arquivos, URL, navegador, terminal, memória e delegação estão fora do conjunto permitido.
 
-Extensões (`mcp_servers`, `custom_toolsets`, `hooks`, plugins ativos, motor contextual customizado, diretórios `plugins/`, `skills/`, `cron/` não vazios e overrides de ambiente) não ocultam o relatório: com `config.yaml` parseável, `hermes.tools` e `hermes.memory` são sempre preenchidos, e o blocker crítico `profile_extensions_present` lista apenas nomes e contagens, nunca conteúdo. Com extensões, `tools.restricted` nunca é `true` e `real_execution_allowed` permanece `false`; o gate recusa. `gateway_bind_unverified` só aparece quando o bind está fora de loopback ou não pode ser verificado (config parseável com host loopback não o emite). O bind explícito do YAML tem precedência sobre o nome `API_SERVER_HOST`, conforme `listen_address` do Hermes; sem bind explícito, a presença desse nome torna o bind desconhecido porque seu valor não é lido pela auditoria.
+`minimal_profile()` configura API em `127.0.0.1:8643`, standalone sem multiplexação, `platform_toolsets.api_server: []`, todas as categorias estáticas em `agent.disabled_toolsets`, memória/perfil desligados, `memory.provider: ""`, `write_approval: true`, plugins opt-in vazios, atualização automática/telemetria desligadas e `context.engine: compressor`. O script cria `.no-bundled-skills`.
 
-A resolução reproduz o comportamento relevante de 0.23.1: ausência/lista inválida herda `hermes-api-server`; lista explícita vazia é autoritativa; listas literais salvas como string são reconhecidas; compostos são expandidos para categorias configuráveis, respeitando categorias desligadas por padrão; `agent.disabled_toolsets` é subtraído por ferramenta no final. Categorias/extensões não catalogadas falham fechado. Credencial xAI em seleção composta também impede atestar o conjunto sem executar código do Hermes. A versão instalada foi inspecionada, mas o backend não comprova a versão nem o perfil do gateway remoto por meio da API.
+Revisão somente leitura do Hermes instalado 0.23.1; `install-stamp.json` confirma `baseVersion: 0.23.1` e commit `3b421578588243f920886e6fe79a6faa87ea026e`:
 
-Proposta pendente para o idealizador: substituir o parser restrito por `PyYAML.safe_load`, com revisão do lock, testes e empacotamento. O Maestro determinou não adicionar dependências nesta tarefa.
+| Caminho/função instalada | Comportamento e tratamento |
+|---|---|
+| `gateway/platforms/api_server.py:2215` | Passa `sorted(_get_platform_tools(user_config, "api_server"))` para `AIAgent`. Hórus não envia políticas de salas que substituem essa seleção. |
+| `hermes_cli/tools_config.py::_get_platform_tools:572` | `[]` explícito não herda composto padrão/alias legado `hermes`. Gate exige seleção explicitamente vazia; lista não vazia bloqueia **mesmo com supressão atual completa**. Categoria desconhecida falha fechado. |
+| `_enabled_plugin_toolsets:521` | Plugins descobertos podem acrescentar categorias mesmo com `[]`. Config ativa, overrides e diretórios não vazios bloqueiam. `plugins.enabled: []` impede opt-in comum; backends empacotados ainda podem ser importados para registrar provedores. Não constitui isolamento do processo. |
+| `_merge_mcp_servers:734` | MCP global habilitado é mesclado mesmo com `[]`; supressão estática não enumera MCP futuro. Qualquer configuração MCP, MCP de plugin ou extensão bloqueia sem iniciá-lo. |
+| `_composite_toolsets:508` | Credenciais xAI podem acrescentar `x_search`, inclusive com `[]`; supressão global da categoria o retira. Auditoria mantém recusa quando não consegue resolver o ambiente com segurança. |
+| `model_tools.py::_select_tool_names:333` | Seleção vazia produz conjunto vazio, com supressão final. Worker Kanban pode acrescentar ferramentas: nomes de ambiente `HERMES_KANBAN*` bloqueiam. |
+| `agent/agent_init.py::_inject_context_engine_tools:1965` | `[]` não injeta schemas contextuais, mas **ainda chama `on_session_start`**. Motor customizado bloqueia mesmo sem ferramentas. |
+| `agent/memory_manager_tools.py::memory_provider_tools_enabled:27` | Memória suprimida e seleção vazia não expõem ferramentas do provedor; flags/provedor também são auditados. |
+| `tools/skills_sync.py::sync_skills:396` | **Correção do guia anterior:** `.no-bundled-skills` permite sincronizar essenciais; pode recriar `hermes-agent`, categoria e manifesto. Skills em disco/preload bloqueiam; marcador não garante diretório vazio. |
 
-## Gerar configuração mínima em diretório temporário
-
-Com o ambiente local já preparado, na raiz do repositório:
+Sob ausência das extensões/overrides recusados: **zero ferramentas selecionadas para `api_server`**. Há revisão estática e ensaio offline de funções extraídas do código instalado. Não houve importação do runtime Hermes, gateway ou inferência. O ensaio substitui explicitamente fronteiras de descoberta, catálogo/supressão e contexto por dados fictícios: não valida descoberta real, todos os backends ou processo ativo.
 
 ```powershell
-$perfilTemporario = Join-Path ([IO.Path]::GetTempPath()) ('horus-hermes-' + [guid]::NewGuid().ToString('N'))
-& backend/.venv/Scripts/python.exe scripts/harden_hermes_profile.py --profile $perfilTemporario
+& backend/.venv/Scripts/python.exe scripts/verify_hermes_tool_selection.py --source "$env:LOCALAPPDATA/hermes/hermes-agent"
+if ($LASTEXITCODE -ne 0) { throw 'Código Hermes divergente: reavaliar antes de aplicar.' }
 ```
 
-O script usa a função versionada `harden_profile`: cria `config.yaml` e o marcador `.no-bundled-skills`, sem `.env`, credenciais ou processo. Ele configura `platform_toolsets.api_server: []`, `agent.disabled_toolsets` com todas as categorias catalogadas, memória/perfil de usuário desligados, `memory.provider: ""`, `plugins.enabled: []`, `plugins.auto_update_check_hours: 0`, `auto_apply: false`, `updates.check: false` e telemetria compartilhada desligada. Não adiciona plugins, cron ou skills. O marcador impede instalação automática de skills empacotadas.
+Retorno verificado: `minimal_tools: []`, `plugin_can_reactivate: true`, `mcp_can_reactivate: true`, `context_empty_list_injects: false`, `context_hook_runs_even_without_tools: true`, `memory_provider_tools: false`, `xai_suppressed: true`. SHA-256 dos módulos:
 
-O caminho é obrigatório; o padrão recusa qualquer diretório chamado `horus` e o caminho operacional conhecido. `--allow-real` só pode ser usado depois de autorização explícita do idealizador. A função recusa configuração por symlink e diretórios de extensões não vazios. Antes de sobrescrever `config.yaml`, faz cópia com timestamp no mesmo diretório. Não exclui nem migra dados existentes. A configuração mínima foi gerada/auditada em diretórios temporários de testes; nenhum gateway Hermes foi iniciado nesta tarefa.
+| Arquivo | SHA-256 |
+|---|---|
+| `hermes_cli/tools_config.py` | `0155400154f6048239839f8703a4727bd2de3d7ed2a84a00c212883daa7efab8` |
+| `model_tools.py` | `d1da6f6d7346ca7c9a4eb67337056492bdc219dc55fb1df7cb1f49cd189a94aa` |
+| `agent/agent_init.py` | `bd7adefd16bc728934e54b89d1d72ae04063b3e23650c39651ff664e9b56794f` |
+| `agent/memory_manager_tools.py` | `dbd96b5e8aeae41afa6bbec48ad1a837315a268be2eedcf43c7cc609540c480d` |
 
-## Gate e teto de tokens
+## Auditoria e gate
 
-A rota de autorização consulta o gate para workflows cujo executor exposto é `hermes` (persistidos com `executor=hermes`, `cognitive_client=live`). A recusa retorna HTTP 409 com `detail.code: security_gate` e mensagem fixa em português, antes de criar autorização. O executor repete a inspeção antes do envio, cobrindo mudança de perfil entre autorização e consumo. `hermes_simulated` não passa pelo gate nem lê a conexão privada.
+`security.py` usa YAML estrito sem dependência nova: mapas/chaves simples, escalares simples, listas de escalares, máximo 256 KiB e profundidade limitada. Tags, âncoras, aliases, tabs, duplicatas, documentos múltiplos, blocos multilinha e flow maps falham fechado. Um YAML aceito pelo Hermes pode ser recusado. Não foi adicionado PyYAML.
 
-Bloqueiam: ferramenta efetiva, memória/perfil de usuário ativos, provedor externo de memória, bind público/desconhecido, conexão inválida/ausente, perfil não verificável e tetos ausentes/inválidos. `Settings.max_tokens_per_run` e `max_tokens_per_day` vêm do operador, não da API ou de dados do agente; padrões são `None`. Variáveis: `HORUS_MAX_TOKENS_PER_RUN` e `HORUS_MAX_TOKENS_PER_DAY`, inteiros positivos, com teto por execução menor ou igual ao diário. `HORUS_HERMES_PROFILE` seleciona o diretório a auditar; isso não inicia nem muda o perfil do gateway.
+Status retorna categorias/contagens, sem nomes de arquivos/skills, conteúdos, valores de ambiente ou credenciais. A auditoria normal consulta nomes de chaves do `.env`, sem interpretar/divulgar valores; o inventário manual desta revisão não abriu esse arquivo. Config parseável mantém ferramentas/memória informadas mesmo com extensões e `tools.restricted: false`; config não verificável retorna desconhecido e bloqueia.
 
-Antes de admitir uma nova chamada, o adaptador rejeita entrada cujo tamanho UTF-8 já exceda o teto por execução, reserva o teto integral diário em `request.metadata.horus_token_reservation` e persiste a intenção na mesma transação SQLite `BEGIN IMMEDIATE`. O consumo conhecido usa `usage.total_tokens`; consumo desconhecido mantém a reserva. Reservas não verificáveis bloqueiam novas chamadas. O dia é UTC. Execuções pendentes de dias anteriores continuam reservadas; simulações são excluídas pela junção com `workflows.cognitive_client`.
+Bloqueiam extensões configuradas (`mcp_servers`, `custom_toolsets`, `hooks`, `context_engine`, skills/preload, ferramentas/toolsets extras, plugins ativos), motor diferente de `compressor`, diretórios não vazios `plugins`, `skills`, `cron`, `hooks`, `tools`, `context_engine`, `mcp` e overrides de ferramentas/memória/plugins/contexto/MCP/skills/Kanban/configuração no ambiente. O relatório expõe apenas categorias e números. Memória ativa/externa, bind público/desconhecido, conexão inválida/ausente e limites ausentes/inválidos também bloqueiam.
 
-O polling pede parada ao observar consumo acima do teto, e resultados acima dele são recusados. Isso é um controle técnico de admissão e contabilização, **não um limite financeiro rígido no provedor**: a API de runs não oferece teto de tokens totais comprovado por execução, o prompt interno do Hermes não está no envelope e `usage` pode chegar somente ao final. Bytes de entrada são uma estimativa conservadora do texto enviado, não do contexto inteiro do modelo. Não se envia parâmetro de orçamento sem suporte comprovado. Configurar números no Hórus não garante ausência de cobrança excedente; antes de liberar inferência real é necessário configurar e validar teto do provedor/modelo, e aprovar seus custos. Não houve inferência nem consumo pago nesta tarefa.
+A API recusa autorização real com HTTP 409 `detail.code: security_gate`, antes de criá-la; adaptador repete a inspeção antes do envio. Simulação independe de perfil, conexão e tetos. Bind YAML explícito prevalece sobre `API_SERVER_HOST`; sem host explícito e com esse nome de ambiente, o valor não é presumido seguro.
 
-A coluna `cognitive_runs.provider` permanece `hermes`, pois o CHECK da migração v3 impede outros valores. Por decisão do Maestro, não houve migração. O artefato de análise simulado expõe `provider: hermes_simulated`; a fonte persistente oficial é `workflows.cognitive_client`. Auditorias de consumo devem juntar `cognitive_runs` → `jobs` → `workflows`, como faz o contador diário.
+Cliente HTTP aceita apenas IP literal `127.0.0.1`/`::1`, HTTP, porta explícita, sem caminho base, usuário/senha, query ou fragmento. Ignora proxies/redirects e não reflete erros remotos/eco de chave. Restringe o cliente Hórus, não as conexões do processo Hermes.
 
-## Rede e subprocessos: controle efetivo e limites
+## Backup, quarentena e restauração
 
-O cliente real valida origem no construtor e em cada chamada: somente HTTP com IP literal `127.0.0.1` ou `::1`, porta explícita, sem usuário/senha, query, fragmento ou caminho base. URLs públicas/hostname `localhost` são recusados antes de abrir socket. Proxies de ambiente são ignorados e redirects não são seguidos. IDs de execução só formam caminhos locais válidos. Corpos/códigos de erro remotos não são refletidos em eventos; eco do token de conexão em resposta JSON é descartado, incluindo escapes JSON. Consumo persistido inclui somente campos numéricos conhecidos. Status não expõe valores do `.env`, credenciais nem caminhos absolutos de usuário.
+`scripts/harden_hermes_profile.py` exige `--profile`. Caminho real conhecido ou diretório chamado `horus` exige `--allow-real`, inclusive dry-run/restore. A flag não concede autorização: alterações reais continuam dependentes do idealizador.
 
-Na máquina inspecionada estão disponíveis `CreateJobObjectW` (kernel32), `CreateAppContainerProfile` (userenv) e o cmdlet `New-NetFirewallRule`. Apenas a existência das APIs/comando foi verificada, sem criar sandbox, regra ou processo. Job Objects podem agrupar/limitar processos filhos e encerrá-los com o job sem exigir administrador para processos próprios; **não bloqueiam acesso a arquivos/rede** e não isolam retroativamente um gateway externo já iniciado. AppContainer/restricted token exigem lançar processo com identidade/capacidades e ACLs adequadas, com validação de compatibilidade do Python/Hermes; não foi implementado um launcher nesta etapa. Windows Firewall por programa exige elevação para aplicar regras locais e afeta todos os perfis que compartilham o mesmo executável Python.
+`--dry-run` mostra diff YAML, marcador e raízes que seriam movidas, sem criar diretório/arquivo. YAML deve ser verificável; credenciais reconhecíveis preenchidas fazem diff/backup abortar. Aplicação guarda tudo **dentro do perfil**, em `.horus-hardening/<id>/`: `backup/payload/` contém somente config, marcador anterior e raízes de extensões presentes; `backup/manifest.json` registra presença, diretórios vazios, tamanho/SHA-256 dos arquivos. Origem/backup são verificados antes da mudança. `quarantine/` recebe por movimento as extensões completas e manifesto próprio.
 
-O Hermes possui backends de terminal `local`, Docker e opções remotas como SSH/Modal/Daytona/Vercel; backends de contêiner não isolam automaticamente o processo principal do agente. Configurá-los não garante bloqueio de rede de navegador, provedor ou catálogo. Não foram instalados Docker, helpers ou serviços, nem configurados backends remotos.
+Nada é copiado para fora do perfil. `.env`, `auth*`, credenciais reconhecíveis e bancos de sessão da raiz ficam intocados. Arquivos reservados dentro das extensões fazem abortar antes da cópia. Bancos só são aceitos em `cron/executions.db` e seus sidecars. Links, junctions, hardlinks e arquivos especiais são recusados. Config e extensões não abrangem sessões, memória, autenticação ou backup completo do Hermes.
 
-**Risco residual:** o processo Hermes executa com as permissões do usuário e ainda pode abrir conexões próprias (provedor, catálogo `models.dev`, componentes internos). A configuração mínima retira ferramentas do modelo; não constitui sandbox de SO. O status informa `network_isolation.enforced: false` mesmo quando o perfil mínimo passa no gate. Não existe prova técnica de que o gateway ativo usa o arquivo auditado nem proteção contra alterações locais após a inspeção. Para isolamento mais forte recomenda-se usuário Windows dedicado/VM e política de saída restrita por administrador, ou launcher AppContainer após ensaio específico e aprovação. A ausência de isolamento de SO não é escondida como segurança comprovada.
+`--restore <backup>` verifica pertencimento ao perfil, hashes e ausência de alterações posteriores nas raízes ativas. Move o estado mínimo para `replaced-by-restore/`, copia o anterior e verifica hashes/presença, inclusive diretórios vazios, CRLF/binários/marcador. Credenciais/sessões permanecem no lugar. Erros recuperáveis preservam backup e tentam repor o estado anterior; não há exclusão recursiva. Corte abrupto de energia/processo não é transação de filesystem: estado `prepared`/divergência exige recuperação manual supervisionada. Não apagar arquivos para forçar nova tentativa.
 
-## Aplicar ao perfil operacional: somente após autorização do idealizador
+Hashes não autenticam manifesto/payload contra adulteração conjunta. `copy2` não promete restaurar ACL/ADS Windows integralmente. Extensões podem conter dados privados/segredos embutidos não reconhecíveis por nome/chave: backup precisa permanecer privado no perfil e sob revisão humana; nunca publicar, enviar ou colocar no Git.
 
-1. Revisar este relatório e autorizar explicitamente parada/reinício do gateway `horus`, cópia de segurança do perfil, mudanças pontuais de configuração e tratamento das extensões existentes. O diagnóstico/status não concede essa autorização.
-2. Parar o gateway exclusivo pelo procedimento suportado pelo Hermes. Não encerrar o gateway principal nem processos genéricos Python. Confirmar que não há execução ou subprocesso pendente; se houver, conciliar antes.
-3. Fazer backup completo do perfil para um diretório privado fora dele, preservando permissões e dados. Não imprimir `.env`, chaves ou bancos, nem colocá-los no Git. A cópia feita pelo script cobre somente `config.yaml`, não substitui esse backup completo.
-4. Revisar e retirar do perfil ativo, com autorização e sem exclusão irreversível, plugins/skills/cron/hooks/MCP e configurações extras. Diretórios de extensão não vazios são recusados pelo script e gate; não renomeá-los automaticamente por agente. Manter dados antigos no backup privado para decisão humana.
-5. Gerar primeiro um perfil temporário com o comando acima e comparar seu YAML com a configuração operacional. Depois, executar explicitamente `scripts/harden_hermes_profile.py --profile "$env:LOCALAPPDATA/hermes/profiles/horus" --allow-real`. O script faz backup do YAML existente e não modifica `.env`, chave de conexão ou bancos.
-6. Revisar a chave e bind de API pelos procedimentos existentes, sem exibir credenciais; bind deve ser IP de loopback explícito no YAML. Verificar que não há override desconhecido de ambiente. Não configurar modelo/provedor até aprovação de custo e destino dos dados.
-7. Configurar tetos de tokens do operador e validar limites reais do provedor antes de qualquer inferência. Se houver exigência de confinamento de SO, preparar e validar o mecanismo aprovado antes de iniciar o gateway.
-8. Reiniciar somente o perfil exclusivo, sob autorização aplicável. Consultar `GET /v1/security/status` com o token local e conferir blockers, ferramentas vazias, memória desligada e riscos residuais. Diretórios recriados pelo Hermes podem tornar o perfil não verificável e exigem revisão, não bypass do gate.
-9. Aprovar separadamente uma análise delimitada, com dados fictícios e consumo observado; nenhuma chamada real foi aprovada ou executada nesta tarefa. Para voltar, parar o gateway e restaurar o backup autorizado; não realizar downgrade ou perda de dados por iniciativa do agente.
+## Aplicação operacional — exige autorização, não executada
 
-## Validação e exemplos do endpoint
+1. Idealizador aprova parada/reinício **somente do gateway `horus`**, substituição YAML e quarentena inventariada. Isso não aprova inferência, credenciais, provedor ou firewall. Confirmar revisão do Hermes e perfil realmente usado pelo gateway. Abortar por versão divergente, multiplexação/perfil incerto, trabalho/subprocesso pendente.
+2. Parar pelo mecanismo suportado: `hermes -p horus gateway stop`. Não usar `--force`, `--replace`, `--interrupt`, `-z` ou encerramento genérico de Python. Se houver recusa por trabalho ativo, conciliar antes. Confirmar no supervisor do operador que gateway exclusivo/scheduler encerraram; arquivo `.lock` vazio não comprova processo ativo/inativo. Não iniciar gateway para inventariar.
+3. Na raiz do repo, revisar plano sem escrita (flag real continua sujeita à autorização):
 
-Os testes negativos usam perfis fictícios/`tmp_path` e servidores HTTP exclusivamente em loopback. Cobrem categorias de ferramenta, memória, provedor externo, bind público, perfil ausente/corrompido, limites, reserva diária, rechecagem antes do envio, autenticação do status, injeção de dados, evidência inventada, origem pública, redirects, proxies e erros que refletem segredos fictícios. Não comprovam confinamento do processo Hermes nem comportamento de um modelo real.
+   ```powershell
+   $perfilHorus = Join-Path $env:LOCALAPPDATA 'hermes/profiles/horus'
+   & backend/.venv/Scripts/python.exe scripts/harden_hermes_profile.py --profile $perfilHorus --allow-real --dry-run
+   if ($LASTEXITCODE -ne 0) { throw 'Plano recusado; não prosseguir.' }
+   ```
 
-Os exemplos abaixo são respostas efetivamente coletadas por `TestClient` contra `GET /v1/security/status`, sem iniciar o lifespan/worker ou abrir rede. O SQLite do Hórus usado nos exemplos ficou em diretório temporário; a conexão real foi somente lida. O exemplo fictício demonstra aprovação do gate; não demonstra isolamento de SO ou inferência. Os horários e valores representam a coleta, não cache permanente.
+   Conferir extensões, bind/porta, memórias desligadas, plugins vazios e motor `compressor`. Abortar por item inesperado, credencial reconhecida, link, banco desconhecido ou diff fora do previsto. Não copiar perfil inteiro para outra pasta: retiraria credenciais/sessões do escopo permitido.
+4. Aplicar e anotar exatamente o caminho `backup` impresso, sem publicar seus arquivos:
 
-### Perfil fictício mínimo
+   ```powershell
+   & backend/.venv/Scripts/python.exe scripts/harden_hermes_profile.py --profile $perfilHorus --allow-real
+   if ($LASTEXITCODE -ne 0) { throw 'Falha: preservar backup e inspecionar antes de reiniciar.' }
+   ```
 
-```json
-{
-  "schema_version": "security.status.v1",
-  "checked_at": "2026-11-12T11:59:39.496202+00:00",
-  "real_execution_allowed": true,
-  "blockers": [],
-  "processing": {
-    "local_only": true,
-    "workflow_executor_default": "simulated",
-    "radar_executor": "hermes_simulated",
-    "external_connections": [
-      {
-        "id": "hermes_gateway",
-        "kind": "loopback",
-        "target": "127.0.0.1:8643",
-        "enabled": true,
-        "purpose": "Agente local Hermes"
-      },
-      {
-        "id": "youtube_data_api",
-        "kind": "external",
-        "target": "googleapis.com",
-        "enabled": false,
-        "purpose": "Coleta não conectada à API do aplicativo"
-      }
-    ]
-  },
-  "hermes": {
-    "profile_found": true,
-    "tools": {
-      "source": "platform_toolsets.api_server",
-      "restricted": true,
-      "effective": [],
-      "dangerous": [],
-      "required_for_editorial": []
-    },
-    "memory": {
-      "local_enabled": false,
-      "user_profile_enabled": false,
-      "write_approval": true,
-      "external_provider": null
-    },
-    "provider_configured": false,
-    "connection": "loopback",
-    "profile_label": "perfil selecionado pelo operador",
-    "network_isolation": {
-      "enforced": false,
-      "mechanism": null,
-      "reason": "Sem bloqueio de rede no nível do SO; gateway externo não é iniciado pelo Hórus."
-    },
-    "cost_limits": {
-      "configured": true,
-      "max_tokens_per_run": 100000,
-      "max_tokens_per_day": 300000
-    }
-  },
-  "radar": {
-    "retention_days": 28,
-    "network_enabled": false,
-    "automatic_cleanup": {
-      "available": true,
-      "interval_hours": 6,
-      "last_run_at": "2026-11-12T12:00:00Z",
-      "last_status": "ok",
-      "redacted_workflows": 0
-    }
-  },
-  "credentials": {
-    "items": [
-      {
-        "id": "backend_session_token",
-        "storage": "memory",
-        "description": "Token de sessão mantido em memória."
-      },
-      {
-        "id": "hermes_connection_key",
-        "storage": "local_file",
-        "protection": "arquivo local; ACLs não auditadas; sem cifragem dedicada",
-        "location_label": "%LOCALAPPDATA%/Horus/workspace/integrations/hermes.json"
-      }
-    ]
-  },
-  "private_mode": {
-    "available": false,
-    "enabled": false,
-    "reason": "Ainda não implementado no backend."
-  },
-  "audit": {
-    "available": false,
-    "reason": "Registro de transmissões externas ainda não implementado."
-  }
-}
+   Conferir `backup/manifest.json` em `state: applied` e manifesto da quarentena. Não editar manifesto/payload.
+5. Validar status do backend **antes de reiniciar Hermes**. Usar sessão Hórus autenticada; porta/token vêm do launcher backend, nunca da chave Hermes. Exemplo para backend do operador na porta padrão, com `HORUS_API_TOKEN` já fornecido:
+
+   ```powershell
+   $statusHorus = Invoke-RestMethod -Uri 'http://127.0.0.1:8765/v1/security/status' -Headers @{ Authorization = ('Bearer ' + $env:HORUS_API_TOKEN) }
+   $statusHorus | ConvertTo-Json -Depth 12
+   ```
+
+   Desktop com porta dinâmica usa origem da sessão atual. Esperado: ferramentas/perigosas `[]`, `restricted: true`, ambas as memórias `false`, provedor de memória nulo. Tetos ausentes devem manter blockers; não forjar aprovação. Endpoint consulta arquivos locais, não prova perfil/estado do gateway.
+6. Após aprovar valores, definir os três tetos no ambiente **do backend** e reiniciá-lo pelo launcher para recarregar `Settings`. Não alterar `.env`/conexão Hermes neste procedimento. Validar teto remoto no provedor separadamente antes de inferência. Com conexão/limites válidos e perfil mínimo, esperar `blockers: []` e `real_execution_allowed: true`: admissão local, não autorização de chamada.
+
+   Exemplo com a proposta deste guia, somente depois de aprovada, na sessão que iniciará o backend:
+
+   ```powershell
+   $env:HORUS_MAX_TOKENS_PER_RUN = '16384'
+   $env:HORUS_MAX_TOKENS_PER_DAY = '32768'
+   $env:HORUS_MAX_RUNS_PER_DAY = '2'
+   ```
+
+   Processos já abertos não herdam essas mudanças; não basta definir variáveis numa janela diferente do launcher.
+
+7. Se autorizado, reiniciar pelo launcher existente `./scripts/Prepare-Hermes.ps1 -StartGateway` (seleciona `-p horus`) e repetir status **antes de qualquer análise**. **Se skills essenciais ou cron reaparecerem, abortar liberação e manter gate fechado.** Não esvaziar diretórios de processo ativo, retirar blockers ou aceitar esses itens automaticamente. A instalação inspecionada pode recriá-los; não foi validado caminho operacional sem essa recriação. Resolver exige ensaio autorizado/decisão adicional, sem fork/bypass nesta tarefa.
+8. Somente após verificações aprovadas e autorização separada de destino/custo/dados, considerar análise delimitada fictícia. Nenhuma inferência é autorizada por este guia.
+
+Para reverter: gateway exclusivo parado, raízes gerenciadas sem alterações posteriores; substituir `<id>` pelo backup impresso:
+
+```powershell
+$backupHorus = Join-Path $perfilHorus '.horus-hardening/<id>/backup'
+& backend/.venv/Scripts/python.exe scripts/harden_hermes_profile.py --profile $perfilHorus --allow-real --restore $backupHorus --dry-run
+if ($LASTEXITCODE -ne 0) { throw 'Backup/estado divergente; não restaurar.' }
+& backend/.venv/Scripts/python.exe scripts/harden_hermes_profile.py --profile $perfilHorus --allow-real --restore $backupHorus
+if ($LASTEXITCODE -ne 0) { throw 'Restauração falhou/recusou; preservar arquivos para conciliação.' }
 ```
 
-### Perfil real (somente leitura)
+Só declara sucesso após verificar hashes. Conferir `state: restored` e status: perfil anterior inseguro deve **voltar a bloquear**, com extensões preservadas. Reinício permanece sujeito à autorização. Se gateway recriou extensões/terceiro editou YAML, restore recusa sobrescrever: preservar e decidir recuperação supervisionada; não remover arquivos para contornar recusa.
 
-```json
-{
-  "schema_version": "security.status.v1",
-  "checked_at": "2026-11-12T11:59:39.532897+00:00",
-  "real_execution_allowed": false,
-  "blockers": [
-    {
-      "code": "dangerous_tools_enabled",
-      "severity": "critical",
-      "message": "O perfil Hermes permite ferramentas desnecessárias ao workflow editorial."
-    },
-    {
-      "code": "profile_extensions_present",
-      "severity": "critical",
-      "message": "Extensões não auditáveis no perfil Hermes (skills: 2 itens; cron: 6 itens); revise-as manualmente."
-    },
-    {
-      "code": "memory_enabled",
-      "severity": "critical",
-      "message": "Desative memória e perfil de usuário do Hermes."
-    },
-    {
-      "code": "cost_limits_missing",
-      "severity": "critical",
-      "message": "Configure tetos positivos de tokens por execução e por dia no operador."
-    }
-  ],
-  "processing": {
-    "local_only": true,
-    "workflow_executor_default": "simulated",
-    "radar_executor": "hermes_simulated",
-    "external_connections": [
-      {
-        "id": "hermes_gateway",
-        "kind": "loopback",
-        "target": "127.0.0.1:8643",
-        "enabled": true,
-        "purpose": "Agente local Hermes"
-      },
-      {
-        "id": "youtube_data_api",
-        "kind": "external",
-        "target": "googleapis.com",
-        "enabled": false,
-        "purpose": "Coleta não conectada à API do aplicativo"
-      }
-    ]
-  },
-  "hermes": {
-    "profile_found": true,
-    "tools": {
-      "source": "default:hermes-api-server",
-      "restricted": false,
-      "effective": ["browser_cdp", "…", "write_file"],
-      "dangerous": ["browser_cdp", "…", "write_file"],
-      "required_for_editorial": []
-    },
-    "memory": {
-      "local_enabled": true,
-      "user_profile_enabled": true,
-      "write_approval": false,
-      "external_provider": null
-    },
-    "provider_configured": false,
-    "connection": "loopback",
-    "profile_label": "%LOCALAPPDATA%/hermes/profiles/horus",
-    "network_isolation": {
-      "enforced": false,
-      "mechanism": null,
-      "reason": "Sem bloqueio de rede no nível do SO; gateway externo não é iniciado pelo Hórus."
-    },
-    "cost_limits": {
-      "configured": false,
-      "max_tokens_per_run": null,
-      "max_tokens_per_day": null
-    }
-  },
-  "radar": {
-    "retention_days": 28,
-    "network_enabled": false,
-    "automatic_cleanup": {
-      "available": true,
-      "interval_hours": 6,
-      "last_run_at": "2026-11-12T12:00:00Z",
-      "last_status": "ok",
-      "redacted_workflows": 0
-    }
-  },
-  "credentials": {
-    "items": [
-      {
-        "id": "backend_session_token",
-        "storage": "memory",
-        "description": "Token de sessão mantido em memória."
-      },
-      {
-        "id": "hermes_connection_key",
-        "storage": "local_file",
-        "protection": "arquivo local; ACLs não auditadas; sem cifragem dedicada",
-        "location_label": "%LOCALAPPDATA%/Horus/workspace/integrations/hermes.json"
-      }
-    ]
-  },
-  "private_mode": {
-    "available": false,
-    "enabled": false,
-    "reason": "Ainda não implementado no backend."
-  },
-  "audit": {
-    "available": false,
-    "reason": "Registro de transmissões externas ainda não implementado."
-  }
-}
+## Limites implementados e proposta pendente
+
+`HORUS_MAX_TOKENS_PER_RUN`, `HORUS_MAX_TOKENS_PER_DAY` e **`HORUS_MAX_RUNS_PER_DAY`** são inteiros positivos do operador; ausência/invalidez bloqueia real. Teto por execução não pode superar o diário. Payload/agente/memória não os modificam. `HORUS_HERMES_PROFILE` seleciona diretório auditado, sem trocar gateway externo.
+
+Proposta para primeiro ensaio, **não aplicada ao ambiente real**:
+
+| Variável | Valor | Justificativa |
+|---|---:|---|
+| `HORUS_MAX_TOKENS_PER_RUN` | `16384` | Piloto de 3–5 itens, uma análise JSON, saída alvo de 2–4 mil tokens. Fixture com 3 itens: envelope 2.131 bytes UTF-8 e instruções do adaptador 756 bytes (serialização medida). Margem para contexto interno ainda não medido; se insuficiente, parar e medir antes de aumentar. |
+| `HORUS_MAX_TOKENS_PER_DAY` | `32768` | Duas reservas integrais; impede acúmulo inicial de tentativas. |
+| `HORUS_MAX_RUNS_PER_DAY` | `2` | Uma análise e eventual nova análise explicitamente autorizada/revisada; também limita chamadas baratas, falhas e consumo zero. |
+
+Contrato permite até 50 itens; não se promete admitir snapshots máximos com essa proposta. Antes do envio, bytes UTF-8 de envelope+instruções precisam ser menores que teto por execução. Bytes são heurística para entrada; excluem prompt interno, reasoning e saída. Valores de saída/contexto são estimativas, não medição de modelo.
+
+Antes de enviar, o adaptador verifica quantidade diária/saldo sob o mesmo `BEGIN IMMEDIATE` que insere intenção em `cognitive_runs` e reserva teto integral em `request.metadata.horus_token_reservation`. Cada intenção real criada no dia UTC conta uma vez: concluída, falha, cancelada, desconhecida ou consumo zero. Replay/conciliação não cria linha/vaga nova; nova intenção/retentativa conta. Autorizações ainda não enviadas não reservam vaga e são rechecadas na admissão. Junção com `workflows.cognitive_client='live'` exclui simulações apesar do legado `provider='hermes'`.
+
+Consumo conhecido usa `usage.total_tokens`; desconhecido conserva reserva integral, inclusive pendências antigas. Quantidade diária usa dia UTC da criação; pendência antiga mantém reserva de tokens sem contar como nova chamada. Polling pede parada ao observar excesso e recusa resultado acima do teto. API de runs não oferece parâmetro comprovado para teto remoto total; `usage` pode chegar só no final. **Hórus não garante corte financeiro rígido.**
+
+Proposta financeira: credencial/projeto exclusivo, sem recarga automática, saldo inicial máximo equivalente a **US$ 5**, corte diário de **US$ 1** se existir bloqueio efetivo no provedor, e alerta abaixo disso. Valores propostos, sem afirmar preços/recursos de provedor selecionado. Idealizador aprova moeda/teto/provedor e verifica no próprio provedor interrupção de cobrança, incluindo reasoning/caches/auxiliares/tentativas. Alerta sem interrupção não é hard cap. Sem mecanismo confiável, manter real bloqueado operacionalmente até decidir exposição aceitável; Hórus não verifica painel nem controla cobrança remota.
+
+## Validação e riscos residuais
+
+Testes usam `tmp_path`, segredos/dados fictícios, simulador em processo e HTTP exclusivamente em loopback. Cobrem reativações por plugins/MCP/skills/código/contexto, seleção não vazia/alias/desconhecidos/ambiente; status sem ler conteúdo; dry-run sem escrita; backup seletivo; restauração de bytes/diretórios vazios; corrupção/drift/falha de aplicação; limites/rechecagem transacional; injeção de dataset sem efeito e resposta com URL externa reprovada pelo validador. Não equivalem a jailbreak de modelo real.
+
+```powershell
+& backend/.venv/Scripts/python.exe -m pytest backend/tests -q
+& backend/.venv/Scripts/python.exe -m pytest contracts/hermes/tests -q -p no:cacheprovider
 ```
 
-### Checks executados
+Resultado final desta revisão: **386 aprovados, 1 ignorado** no backend; **54 aprovados** no contrato. O teste de criação real de symlink foi ignorado por falta de permissão no Windows; não foi contornado por elevação. A recusa de hardlink, restauração de bytes e rollback de falhas de movimento/cópia passaram. Há aviso de depreciação preexistente de Starlette/httpx; nenhuma dependência foi instalada/atualizada. Também passaram ensaio do CLI em perfil temporário (dry-run, aplicação e restore), ensaio offline das funções instaladas e `git diff --check`. Uma falha intermitente Winsock no teste de reflexão foi corrigida consumindo o corpo POST e delimitando a resposta HTTP do servidor fictício; a suíte completa passou após a correção.
 
-- `backend/.venv/Scripts/python.exe -m pytest backend/tests -q`: **310 aprovados**, com um aviso de depreciação do adaptador Starlette/httpx já existente no ambiente.
-- `backend/.venv/Scripts/python.exe -m pytest contracts/hermes/tests -q -p no:cacheprovider`: **54 aprovados**.
-- Suíte específica `backend/tests/test_security.py`: **81 aprovados**.
-- `git diff --check` e referências locais dos três documentos: aprovados.
-- Sem inferência real, rede externa, instalação, alteração de firewall, mudança do perfil operacional ou testes de sandbox de SO.
+O processo Hermes continua com permissões do usuário e pode acessar rede por componentes internos/provedor/catálogos. `network_isolation.enforced` permanece `false`. Job Objects não bloqueiam arquivos/rede; AppContainer, usuário dedicado/VM e política de saída exigem desenho, compatibilidade e autorização próprios. Nada disso foi instalado/configurado aqui.
 
-## Limpeza automática do Radar no status
-
-`radar.automatic_cleanup` reflete o ciclo real de retenção executado pelo `JobManager` (na inicialização e a cada 6 horas): `available` é `true` porque a rotina existe no backend; `last_run_at`, `last_status` (`ok`, `partial` quando algum workflow falhou e foi preservado, `failed`) e `redacted_workflows` vêm do último ciclo desta execução do backend, mantidos em memória e sem conteúdo do YouTube. Antes do primeiro ciclo, esses três campos são `null`. Coberto por `test_status_reports_real_radar_cleanup_cycle`.
+Gate não autentica versão, ambiente completo, plugins já carregados ou perfil realmente usado pelo gateway; mudanças locais após inspeção são risco residual. A seleção mínima vazia sob as condições inspecionadas não comprova operação contínua do perfil real após reinício. Alteração do perfil, limites reais, ensaio de reinício/inferência, credenciais/provedor e confinamento dependem do idealizador.
