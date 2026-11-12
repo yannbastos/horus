@@ -25,6 +25,7 @@ from .hermes import HermesConnector
 from .jobs import JobManager, JobRequest, TERMINAL
 from .radar_youtube.state import RadarState
 from .radar_workflow import RadarWorkflowRequest, adapt, demo, eligibility, summary
+from .security import SecurityGate, require_secure, security_status
 from .storage import Store
 from .workflows import AuthorizationRequest, ReviewRequest, RevisionRequest, WorkflowConflict, WorkflowRequest
 
@@ -88,6 +89,10 @@ def create_app(settings: Settings, shutdown=None, ready=None):
     async def health():
         return {"status": "ready", "database_id": store.database_id, "factory_available": settings.command() is not None,
                 "hermes_connected": hermes.status()["connected"], "version": "0.1.0"}
+
+    @app.get("/v1/security/status")
+    async def inspect_security():
+        return security_status(settings, store)
 
     @app.get("/v1/hermes")
     async def hermes_status():
@@ -197,7 +202,12 @@ def create_app(settings: Settings, shutdown=None, ready=None):
     async def authorize_workflow(workflow_id: str, request: AuthorizationRequest,
                                  idempotency_key: str = Header(min_length=1, max_length=128)):
         # Operador local autoriza UMA execução cognitiva; o payload não escolhe autoria, executor ou limites.
-        require_workflow(workflow_id)
+        workflow = require_workflow(workflow_id)
+        if workflow["executor"] == "hermes":
+            try:
+                require_secure(settings, store)
+            except SecurityGate as error:
+                raise HTTPException(409, {"code": "security_gate", "message": str(error)}) from None
         try:
             return await manager.workflows.authorize(workflow_id, request, idempotency_key)
         except WorkflowConflict as error:

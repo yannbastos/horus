@@ -41,7 +41,10 @@ def hermes():
 def settings(tmp_path, hermes):
     connection = tmp_path / "hermes.json"
     connection.write_text(json.dumps({"base_url": hermes.base_url, "token": hermes.token}), encoding="utf-8")
-    return Settings(token=TOKEN, data_dir=tmp_path / "data", factory_root=None, hermes_executable=None,
+    from horus_backend.security import harden_profile
+    profile = tmp_path / "profile"
+    harden_profile(profile)
+    return Settings(hermes_profile=profile, max_tokens_per_run=100000, max_tokens_per_day=10000000, token=TOKEN, data_dir=tmp_path / "data", factory_root=None, hermes_executable=None,
                     hermes_config=connection, workflow_executor="hermes", hermes_poll_seconds=.05, hermes_run_timeout=5)
 
 
@@ -91,6 +94,7 @@ def test_cognitive_workflow_requires_authorization_and_ends_in_human_review(sett
         workflow = wait(client, workflow["id"], lambda w: w["status"] == "awaiting_approval")
         assert [a["executor"] for a in workflow["attempts"]] == ["local-v1", "local-v1", "hermes-v1", "local-v1"]
         [run] = workflow["cognitive_runs"]
+        assert next(a for a in workflow["artifacts"] if a["stage"] == "analysis")["content"]["provider"] == "hermes"
         analysis_attempt = workflow["attempts"][2]["id"]
         assert run["status"] == "completed" and run["external_ref"].startswith("run_")
         assert run["idempotency_key"] == f"horus-{analysis_attempt}"
@@ -242,3 +246,58 @@ def test_hermes_refusal_is_recorded_without_retry(settings, hermes):
         [run] = workflow["cognitive_runs"]
         assert run["status"] == "failed" and run["error"].startswith("429")
         assert run["external_ref"] is None
+
+
+def test_api_authorization_blocks_before_any_submission(settings, hermes):
+    """O fake_server é local; comprova que o gate não admite sequer uma execução."""
+    (settings.hermes_profile / 'config.yaml').write_text('memory:\n  memory_enabled: true\n', encoding='utf-8')
+    with client_for(settings) as client:
+        workflow = pending(client, create(client)['id'])
+        response = client.post(f"/v1/workflows/{workflow['id']}/authorize", headers={'Idempotency-Key': 'denied'},
+                               json={'expected_revision': workflow['revision'], 'job_id': workflow['pending_authorization']['job_id']})
+        assert response.status_code == 409
+        assert response.json()['detail']['code'] == 'security_gate'
+        assert hermes.requests == []
+        assert client.get(f"/v1/workflows/{workflow['id']}").json()['authorizations'] == []
+
+
+def test_gate_rechecks_profile_after_authorization(settings, hermes):
+    from horus_backend.workflow_hermes import CognitiveFailure
+    import asyncio
+    stages = create_app(settings).state.manager.workflows.hermes
+    (settings.hermes_profile / 'config.yaml').write_text('memory:\n  memory_enabled: true\n', encoding='utf-8')
+    with pytest.raises(CognitiveFailure, match='security_gate'):
+        asyncio.run(stages.analysis({'cognitive_client': 'live'}, 'attempt-denied', lambda: False))
+    assert hermes.requests == []
+
+
+def test_daily_budget_is_reserved_and_blocks_next_authorization(settings, hermes):
+    from dataclasses import replace
+    settings = replace(settings, max_tokens_per_day=settings.max_tokens_per_run)
+    hermes.scenarios.append(Scenario(hold=True, output=echo()))
+    with client_for(settings) as client:
+        workflow = authorize(client, pending(client, create(client)['id']))
+        wait(client, workflow['id'], lambda w: bool(w['cognitive_runs']))
+        status = client.get('/v1/security/status').json()
+        assert any(b['code'] == 'daily_token_limit' for b in status['blockers'])
+        assert status['real_execution_allowed'] is False
+
+
+def test_remote_error_body_never_reaches_events(settings, hermes, caplog):
+    # O cliente não usa corpo remoto, mesmo que o servidor reflita token e API_SERVER_KEY.
+    from urllib.error import HTTPError
+    from io import BytesIO
+    from horus_backend.workflow_hermes import HermesHTTPError, HermesRunClient
+    secret = 'ficticio-API_SERVER_KEY-nao-registrar'
+    connection = json.loads(settings.hermes_config.read_text())
+    client = HermesRunClient(connection['base_url'], connection['token'])
+    class Denied:
+        def open(self, *a, **kw):
+            raise HTTPError(connection['base_url'], 403, 'Forbidden', {}, BytesIO(json.dumps({'error': {
+                'code': secret, 'message': connection['token'] + secret}}).encode()))
+    client.opener = Denied()
+    with pytest.raises(HermesHTTPError) as caught:
+        client.submit({}, 'key')
+    assert secret not in str(caught.value) + caplog.text
+    assert connection['token'] not in str(caught.value) + caplog.text
+    assert caught.value.code == 'remote_error'

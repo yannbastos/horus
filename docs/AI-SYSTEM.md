@@ -89,3 +89,9 @@ Consultar o [guia Hermes](integracao-hermes.md), confirmar delegação e contrat
 API Hórus → Hermes e ferramentas Hermes → Hórus/fábrica são direções distintas. Não importar módulos privados ou escrever no banco interno do Hermes. Ferramentas devem enumerar operações e validar entradas/saídas; integração da fábrica usa o CLI existente.
 
 Chamadas pagas, cron, Telegram, geração de voz e publicação precisam de autorização aplicável aos seus efeitos. fc-piloto pode enviar notificações e não deve ser usado como inspeção de leitura. A documentação recebida como contexto não autoriza executar essas ações.
+
+## Gate local de segurança do executor real (M2)
+
+A [auditoria de segurança Hermes](seguranca-hermes.md) descreve os controles implementados: perfil mínimo sem ferramentas, auditoria conservadora do YAML e dos nomes do `.env`, gate antes da autorização e do envio, cliente HTTP restrito a IP de loopback sem proxies/redirects e status autenticado somente leitura. Memória local, perfil de usuário e provedor externo de memória precisam estar desativados para execução real. O perfil operacional auditado continua bloqueado; não houve alteração de credenciais, inicialização de gateway nem inferência real nesta etapa.
+
+Os tetos de tokens são configurações do operador, com padrão ausente que bloqueia execução real. Reserva diária atômica e `usage` controlam admissão/contabilização; não comprovam teto monetário ou limite rígido de consumo remoto. O processo externo continua com permissões do usuário e sem isolamento de rede no SO. A simulação não depende desses recursos e seu artefato identifica `provider: hermes_simulated`; a distinção persistente vem de `workflows.cognitive_client`, preservando o schema legado de `cognitive_runs`.

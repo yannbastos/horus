@@ -31,16 +31,25 @@ def read_connection(settings: Settings):
     url, token = config.get("base_url"), config.get("token")
     if not isinstance(url, str) or not isinstance(token, str) or not 16 <= len(token) <= 4096:
         raise ValueError("Configuração incompleta")
+    if any(ord(char) < 33 or ord(char) > 126 for char in token):
+        raise ValueError("Credencial inválida")
+    validate_origin(url)
+    return url.rstrip("/"), token
+
+
+def validate_origin(url: str):
+    if not isinstance(url, str) or any(ord(char) <= 32 or ord(char) > 126 for char in url):
+        raise ValueError("Origem local inválida")
     parsed = urlsplit(url)
     if (parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "::1"}
             or parsed.username or parsed.password or parsed.query or parsed.fragment
             or parsed.path not in {"", "/"} or not parsed.port
-            or any(ord(char) < 33 or ord(char) > 126 for char in token)):
+            ):
         raise ValueError("Use uma API local com porta explícita")
-    return url.rstrip("/"), token
 
 
 def get_json(base_url: str, token: str, path: str):
+    validate_origin(base_url)
     # Ignorar proxies de ambiente e recusar redirects: a credencial fica na origem local.
     opener = build_opener(ProxyHandler({}), NoRedirect())
     request = Request(base_url + path, headers={"Authorization": f"Bearer {token}", "Accept": "application/json"})

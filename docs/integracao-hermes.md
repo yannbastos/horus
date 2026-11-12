@@ -17,7 +17,7 @@ Com o Hermes CLI já instalado, execute na raiz do Hórus, pelo PowerShell:
 ./scripts/Prepare-Hermes.ps1 -StartGateway
 ```
 
-O primeiro comando cria um perfil `horus`, sem clonar configurações, credenciais de provedor, canais, tarefas ou skills do perfil principal. A preparação usa o modo `gateway.standalone: true` e desativa multiplexação para esse perfil. Nenhum job de cron ou canal de mensagens é adicionado.
+O primeiro comando cria um perfil `horus`, sem clonar configurações, credenciais de provedor, canais, tarefas ou skills do perfil principal. A preparação da conexão não aplica o endurecimento mínimo: antes de inferência, seguir o [guia de segurança](seguranca-hermes.md); o gate bloqueia perfis inseguros. A preparação usa o modo `gateway.standalone: true` e desativa multiplexação para esse perfil. Nenhum job de cron ou canal de mensagens é adicionado.
 
 O segundo comando inicia a API do perfil em `127.0.0.1:8643`. Não instala um serviço do Windows. O processo é externo ao Hórus, permanece ativo ao fechar a janela do aplicativo e precisa ser iniciado novamente após reinicialização. Para gerenciamento, use o CLI com escopo `-p horus`; não reinicie ou encerre o gateway principal para resolver esta integração.
 
@@ -53,6 +53,14 @@ O adaptador foi testado contra a API autenticada real do perfil `horus`, sem inf
 
 Após recompilar o Tauri release e o backend empacotado, a ação Verificar conexão Hermes foi executada pela interface desktop e confirmou autenticação com o serviço real. A validação deste incremento passou em 45 testes do backend, três testes de interface e no build desktop/NSIS. O instalador público anterior não é substituído automaticamente pelo novo build local.
 
-Modelo/provedor ainda precisam ser configurados no perfil exclusivo antes de uma análise real. O reconhecimento de capacidades não autoriza chamadas ou indica que orçamento, aprovações e cancelamento de produção já estejam integrados. O Hórus ainda não oferece endpoint para enviar prompts, iniciar execuções Hermes ou publicar conteúdo.
+Modelo/provedor ainda precisam ser configurados no perfil exclusivo antes de uma análise real. O reconhecimento de capacidades não autoriza chamadas ou indica que orçamento, aprovações e cancelamento de produção já estejam integrados. O executor cognitivo editorial já possui envio autenticado de runs, condicionado à autorização humana e ao gate de segurança; publicação não está integrada.
 
 Próximo incremento: definir modelo/provedor e orçamento, validar uma análise audiovisual delimitada e só depois conectar ferramentas da fábrica com aprovações persistentes. Não usar `hermes -z` como atalho: a ajuda da versão instalada informa que esse modo ignora aprovações automaticamente.
+
+## Isolamento e gate de segurança (M2)
+
+O [guia de segurança Hermes](seguranca-hermes.md) registra a auditoria de leitura do perfil real, a configuração mínima sem ferramentas e o procedimento de aplicação dependente de autorização do idealizador. O perfil operacional não foi endurecido automaticamente. `GET /v1/security/status` é somente leitura, exige a autenticação local e não inicia processos nem abre rede. Configuração não verificável, ferramentas efetivas, memória ativa/externa, bind público e ausência de tetos bloqueiam autorização real com HTTP 409 `security_gate`; o adaptador repete o gate antes do envio. A simulação permanece independente do perfil.
+
+O operador seleciona o perfil auditado por `HORUS_HERMES_PROFILE` e os tetos por `HORUS_MAX_TOKENS_PER_RUN`/`HORUS_MAX_TOKENS_PER_DAY`. Eles não são modificáveis pelo payload do agente. Há admissão conservadora, reserva diária atômica e persistência de `usage`, mas não há limite financeiro rígido comprovado no provedor nem isolamento de SO do gateway externo. A ausência desses controles permanece explícita no guia e no status.
+
+Por compatibilidade com o CHECK da migração v3, `cognitive_runs.provider` continua `hermes`. Para distinguir simulação, juntar com `workflows.cognitive_client` através de `jobs`; o artefato de análise simulado contém `provider: hermes_simulated`. Não foi criada migração.
