@@ -11,6 +11,8 @@ const Library = lazy(() => import('./features/Library'));
 const JobWorkspace = lazy(() => import('./features/JobWorkspace'));
 const Settings = lazy(() => import('./features/Settings'));
 const Transcription = lazy(() => import('./features/Transcription'));
+const Radar = lazy(() => import('./features/Radar'));
+const EditorialWorkflows = lazy(() => import('./features/EditorialWorkflows'));
 
 export default function App() {
   const [page, setPage] = useState<Page>('overview');
@@ -61,7 +63,8 @@ export default function App() {
           : page === 'settings' ? <Settings theme={theme} setTheme={setTheme} connection={connection} connect={candidate => { setConnection(candidate); setBackendError(''); }} hermes={hermes} onHermesStatus={setHermes} />
           : page === 'library' ? <Library connection={connection} />
           : page === 'transcription' ? null
-          : <div className="page"><SectionHeader section={sections[page]} />{(page === 'production' || page === 'channels') && <JobWorkspace connection={connection} />}<Preview section={sections[page]} /></div>}
+          : page === 'radar' ? <div className="page"><SectionHeader section={sections.radar} /><Radar connection={connection} /></div>
+          : <div className="page"><SectionHeader section={sections[page]} />{page === 'production' && <EditorialWorkflows connection={connection} />}{(page === 'production' || page === 'channels') && <JobWorkspace connection={connection} />}<Preview section={sections[page]} /></div>}
         {(transcriptionOpened || page === 'transcription') && <Transcription connection={connection} hidden={page !== 'transcription'} />}
       </Suspense></main>
       <footer><span>{backendError ? `Backend indisponível: ${backendError}` : connection ? 'Backend local conectado' : nativeDesktop ? 'Preparando backend local…' : 'Prévia no navegador'}</span><span>Transcrição local com Whisper · Orquestração e módulos editoriais em preparação.</span></footer>
