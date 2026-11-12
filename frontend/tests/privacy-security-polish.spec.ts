@@ -1,3 +1,4 @@
+import config from '../playwright.config';
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import fs from 'node:fs';
@@ -9,7 +10,7 @@ const artifactDir = path.resolve(__dirname, '../../artifacts/sec-privacy');
 fs.mkdirSync(artifactDir, { recursive: true });
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': 'http://127.0.0.1:1420',
+  'Access-Control-Allow-Origin': new URL(config.use!.baseURL!).origin,
   'Access-Control-Allow-Headers': 'authorization,content-type,idempotency-key',
   'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
 };

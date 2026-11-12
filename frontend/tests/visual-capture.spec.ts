@@ -1,3 +1,4 @@
+import config from '../playwright.config';
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import fs from 'node:fs';
@@ -13,7 +14,7 @@ type NativeWindow = Window & { parity: NativeState };
 type Payload = { operation: string; path?: string; url?: string; directory?: string; model?: string; language?: string };
 type MockJob = { id: string; payload: Payload; status: string; attempt: number; created_at: string; updated_at: string;
   result: { text?: string; partial?: boolean; sequence?: number; path?: string } | null; error: string | null };
-const headers = { 'Access-Control-Allow-Origin': 'http://127.0.0.1:1420',
+const headers = { 'Access-Control-Allow-Origin': new URL(config.use!.baseURL!).origin,
   'Access-Control-Allow-Headers': 'authorization,content-type,idempotency-key', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' };
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

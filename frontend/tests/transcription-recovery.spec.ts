@@ -1,8 +1,9 @@
+import config from '../playwright.config';
 import { expect, test } from '@playwright/test';
 import type { Page, Route } from '@playwright/test';
 
 const payload = { operation: 'transcription.run', path: 'C:/midia/recuperar.wav', model: 'tiny', language: 'pt' };
-const headers = { 'Access-Control-Allow-Origin': 'http://127.0.0.1:1420',
+const headers = { 'Access-Control-Allow-Origin': new URL(config.use!.baseURL!).origin,
   'Access-Control-Allow-Headers': 'authorization,content-type,idempotency-key',
   'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' };
 const job = (status = 'running', text = 'Primeira frase.\n') => ({ id: 'original-job', payload, status, attempt: 1,

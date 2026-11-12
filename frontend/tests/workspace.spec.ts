@@ -1,3 +1,4 @@
+import config from '../playwright.config';
 import { expect, test } from '@playwright/test';
 
 test('mostra recusa do render e só repete após uma ação explícita', async ({ page }) => {
@@ -12,7 +13,7 @@ test('mostra recusa do render e só repete após uma ação explícita', async (
   await page.route('http://127.0.0.1:8765/**', async route => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
-    const headers = { 'Access-Control-Allow-Origin': 'http://127.0.0.1:1420',
+    const headers = { 'Access-Control-Allow-Origin': new URL(config.use!.baseURL!).origin,
       'Access-Control-Allow-Headers': 'authorization,content-type,idempotency-key', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' };
     if (request.method() === 'OPTIONS') { await route.fulfill({ status: 204, headers }); return; }
     if (path === '/v1/jobs' && request.method() === 'POST') {
@@ -113,7 +114,7 @@ test('verifica Hermes por ação explícita e atualiza o estado sem enviar promp
   await page.route('http://127.0.0.1:8765/**', async route => {
     const path = new URL(route.request().url()).pathname;
     const method = route.request().method();
-    const headers = { 'Access-Control-Allow-Origin': 'http://127.0.0.1:1420',
+    const headers = { 'Access-Control-Allow-Origin': new URL(config.use!.baseURL!).origin,
       'Access-Control-Allow-Headers': 'authorization,content-type', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' };
     if (method === 'OPTIONS') { await route.fulfill({ status: 204, headers }); return; }
     requests.push(`${method} ${path}`);
@@ -148,7 +149,7 @@ test('transcreve a fila, exige salvar antes de avançar e preserva o estado entr
   await page.route('http://127.0.0.1:8765/**', async route => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
-    const headers = { 'Access-Control-Allow-Origin': 'http://127.0.0.1:1420',
+    const headers = { 'Access-Control-Allow-Origin': new URL(config.use!.baseURL!).origin,
       'Access-Control-Allow-Headers': 'authorization,content-type,idempotency-key', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' };
     if (request.method() === 'OPTIONS') { await route.fulfill({ status: 204, headers }); return; }
     if (path === '/v1/jobs' && request.method() === 'POST') {

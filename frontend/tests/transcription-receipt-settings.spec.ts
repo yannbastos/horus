@@ -1,3 +1,4 @@
+import config from '../playwright.config';
 import { expect, test } from '@playwright/test';
 
 // Regressão encontrada no Tauri real: ao reabrir com recibo pendente, a tela voltava para Small/Automático.
@@ -20,7 +21,7 @@ test('recibo pendente restaura modelo e idioma da tarefa original', async ({ pag
 // Regressão encontrada no Tauri real com banco migrado: abrir um resultado antigo dizia "Concluído em 00:00"
 // e o histórico mostrava estados em inglês.
 test('histórico mostra estados em português e resultado antigo não parece recém-executado', async ({ page }) => {
-  const headers = { 'Access-Control-Allow-Origin': 'http://127.0.0.1:1420',
+  const headers = { 'Access-Control-Allow-Origin': new URL(config.use!.baseURL!).origin,
     'Access-Control-Allow-Headers': 'authorization,content-type,idempotency-key', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' };
   const done = { id: 'old-job', status: 'succeeded', attempt: 1, created_at: '2026-11-02T10:00:00Z', updated_at: '2026-11-02T10:00:00Z',
     error: null, payload: { operation: 'transcription.run', path: 'C:/midia/antigo.mp3', model: 'tiny', language: 'en' },
