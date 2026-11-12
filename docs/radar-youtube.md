@@ -1,6 +1,6 @@
 # Núcleo isolado do Radar YouTube
 
-Estado em 11/11/2026: coletor implementado e validado com respostas simuladas. Nenhuma chamada real à API, chave real, migração operacional ou integração com Hermes/WorkflowService foi realizada. Não há endpoint FastAPI, agendamento nem tela novos. A mineração da fábrica consultada é um stub; não foi substituída nem alterada.
+Estado em 12/11/2026: coletor validado com respostas simuladas e integração local com WorkflowService implementada no backend. A API oferece listagem, detalhe, demonstração fictícia e criação de workflow; veja [workflows editoriais](workflows-editoriais.md#radar-e-hermes-em-processo-m1). Nenhuma chamada real ao YouTube/Hermes, chave real ou migração operacional foi executada. A mineração da fábrica permanece independente.
 
 ## Interfaces e responsabilidades
 
@@ -13,7 +13,7 @@ Código: `backend/src/horus_backend/radar_youtube/`. Usa somente biblioteca padr
 - `RadarState`: cache, contabilidade local e versões de datasets em arquivo **exclusivo** `radar-youtube.sqlite3`. Recusa outro nome, symlink de arquivo e bancos com tabelas desconhecidas. Não importa Store, JobManager, migrações ou configuração operacional.
 - `opportunity_indicators(dataset, permission)`: relatório separado, sem alterar os dados da API.
 
-Não existe segundo executor. O armazenamento isolado é de dados coletados/cache, não de jobs, aprovações ou workflow. Uma futura operação do JobManager poderá chamar o coletor; essa ligação não faz parte desta entrega.
+Não existe segundo executor. O armazenamento isolado é de dados coletados/cache, não de jobs, aprovações ou workflow. O adapter `radar_workflow.py` consome revisões já persistidas; as novas rotas não acionam o coletor nem fazem pesquisa de rede.
 
 IDs de vídeo, URLs HTTPS `watch`, `youtu.be`, `shorts`, `live`, `embed`, IDs de canal, `@handle` e URLs `channel`, `@handle`, `user` são aceitos. `/c/` não é resolvido por scraping. URLs externas, com credenciais, portas ou identificadores ambíguos são rejeitadas antes do transporte.
 
@@ -88,3 +88,11 @@ Antes de automação ainda faltam: integrar cancelamento e chamadas periódicas 
 ```
 
 A suíte bloqueia criação de conexões reais e usa transportes simulados, diretórios temporários e relógio controlado. Cobre descoberta, filtros, IDs/URLs, paginação, dados ausentes/ocultos, falhas HTTP, cotas persistentes/concorrentes, cache, expiração, versões, serialização entre threads/processos, cancelamento antes/durante coleta e espera pela trava, limpeza idempotente e bloqueio de indicadores. Não comprova credenciais, aceitação dos parâmetros pelo projeto real ou conformidade operacional de uma futura instalação. Resultados específicos desta entrega são apresentados na consolidação; não valida alterações simultâneas do Claude.
+
+## Integração local M1 e demonstração
+
+`GET /v1/radar/datasets` lista somente a última revisão ainda válida de cada snapshot (até 100, mais recentes primeiro); `GET /v1/radar/datasets/{snapshot_id}/{revision}` retorna o dataset completo e a elegibilidade por vídeo. As rotas são autenticadas pelo token local existente. O arquivo dedicado fica em `<data_dir>/radar/radar-youtube.sqlite3`.
+
+`POST /v1/radar/datasets/demo`, com `Idempotency-Key`, cria cinco vídeos e um canal fictícios: títulos `[DEMONSTRAÇÃO]`, URLs `example.org/horus-demo`, origem `operator_fixture`, TTL de 28 dias e um vídeo sem publicação para demonstrar exclusão. Mesma chave recupera o dataset enquanto ele estiver retido; após expurgo, a demonstração pode ser recriada com novo horário. O coletor continua produzindo exclusivamente `youtube_data_api`; `operator_fixture` é uma origem aditiva para dados fornecidos pelo operador.
+
+`POST /v1/workflows/radar` adapta somente vídeos elegíveis, sem inventar métricas, e utiliza por padrão Hermes em processo. Não há aprovação automática: autorizar a análise e aprovar/rejeitar a proposta são ações separadas. Dados expirados retornam 404 na consulta/criação; autorização após expiração retorna 409. A cópia congelada no banco operacional ainda não tem expurgo de retenção: isso bloqueia dados reais em M2 até implementação e validação da limpeza, inclusive de cópias/backups.

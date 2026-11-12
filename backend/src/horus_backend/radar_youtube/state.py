@@ -141,3 +141,11 @@ class RadarState:
         if not row:
             raise KeyError('Dataset ausente ou expirado.')
         return Dataset.model_validate_json(row[0])
+
+    def list_datasets(self):
+        self.purge()
+        with self.connect() as db:
+            rows = db.execute("""SELECT d.payload FROM radar_datasets d
+                WHERE d.revision=(SELECT MAX(r.revision) FROM radar_datasets r WHERE r.id=d.id)
+                ORDER BY julianday(json_extract(d.payload,'$.collected_at')) DESC,d.id DESC LIMIT 100""").fetchall()
+        return [Dataset.model_validate_json(row[0]) for row in rows]

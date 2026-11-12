@@ -7,6 +7,7 @@ import hmac
 import json
 import os
 import secrets
+import sqlite3
 import tempfile
 import time
 from contextlib import asynccontextmanager
@@ -22,6 +23,8 @@ from .diagnostics import diagnose
 from .dependencies import transcription_capabilities
 from .hermes import HermesConnector
 from .jobs import JobManager, JobRequest, TERMINAL
+from .radar_youtube.state import RadarState
+from .radar_workflow import RadarWorkflowRequest, adapt, demo, eligibility, summary
 from .storage import Store
 from .workflows import AuthorizationRequest, ReviewRequest, RevisionRequest, WorkflowConflict, WorkflowRequest
 
@@ -43,6 +46,9 @@ def create_app(settings: Settings, shutdown=None, ready=None):
     if len(settings.token) < 24:
         raise ValueError("A API exige um token local aleatório de pelo menos 24 caracteres.")
     store = Store(settings.data_dir / "horus.sqlite3")
+    if settings.radar_executor not in {"hermes_simulated", "hermes"}:
+        raise ValueError("HORUS_RADAR_EXECUTOR inválido. Use hermes_simulated ou hermes.")
+    radar_state = RadarState(settings.data_dir / "radar" / "radar-youtube.sqlite3")
     manager = JobManager(store, settings)
     hermes = HermesConnector(settings)
 
@@ -57,6 +63,7 @@ def create_app(settings: Settings, shutdown=None, ready=None):
             await manager.close()
 
     app = FastAPI(title="Hórus local", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
+    app.state.radar = radar_state
     app.state.store, app.state.manager = store, manager
     app.add_middleware(CORSMiddleware, allow_origins=list(settings.origins), allow_methods=["GET", "POST"],
                        allow_headers=["Authorization", "Content-Type", "Idempotency-Key"])
@@ -114,6 +121,46 @@ def create_app(settings: Settings, shutdown=None, ready=None):
             return manager.workflows.get(workflow_id)
         except KeyError as error:
             raise HTTPException(404, "Workflow não encontrado.") from error
+
+    @app.get("/v1/radar/datasets")
+    async def radar_datasets():
+        return [summary(dataset) for dataset in radar_state.list_datasets()]
+
+    def require_dataset(snapshot_id, revision):
+        try:
+            return radar_state.load(snapshot_id, revision)
+        except KeyError as error:
+            raise HTTPException(404, "Dataset ausente ou expirado.") from error
+
+    @app.get("/v1/radar/datasets/{snapshot_id}/{revision}")
+    async def radar_dataset(snapshot_id: str, revision: int):
+        dataset = require_dataset(snapshot_id, revision)
+        return {"dataset": dataset.model_dump(mode="json"), "eligibility": eligibility(dataset)}
+
+    @app.post("/v1/radar/datasets/demo", status_code=201)
+    async def radar_demo(idempotency_key: str = Header(min_length=1, max_length=128)):
+        # Identidade estável da operação; usa a PK existente, sem outra tabela de idempotência.
+        identifier = "rad_" + hashlib.sha256(idempotency_key.encode()).hexdigest()[:24]
+        try:
+            dataset = radar_state.load(identifier, 1)
+        except KeyError:
+            dataset = demo(identifier, radar_state.clock())
+            try:
+                radar_state.save(dataset)
+            except sqlite3.IntegrityError:
+                dataset = radar_state.load(identifier, 1)
+        return summary(dataset)
+
+    @app.post("/v1/workflows/radar", status_code=202)
+    async def radar_workflow(request: RadarWorkflowRequest, idempotency_key: str = Header(min_length=1, max_length=128)):
+        dataset = require_dataset(request.snapshot_id, request.revision)
+        try:
+            mapped, profile, radar = adapt(dataset, request)
+            # O corpo original participa da idempotência, inclusive a escolha explícita de fontes.
+            return await manager.workflows.create(WorkflowRequest(objective=request.objective, dataset=mapped, channel_profile=profile),
+                "radar:" + idempotency_key, executor=settings.radar_executor, radar=radar, radar_request=request.model_dump(mode="json"))
+        except (ValueError, WorkflowConflict) as error:
+            raise HTTPException(409, str(error)) from error
 
     @app.get("/v1/workflows/{workflow_id}")
     async def inspect_workflow(workflow_id: str):

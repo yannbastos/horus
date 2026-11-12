@@ -58,6 +58,7 @@ class Settings:
     hermes_config: Path = field(default_factory=hermes_connection_file)
     # Executor dos novos workflows editoriais; definido pelo operador, nunca pelo payload da API.
     workflow_executor: str = field(default_factory=lambda: os.environ.get("HORUS_WORKFLOW_EXECUTOR", "simulated"))
+    radar_executor: str = field(default_factory=lambda: os.environ.get("HORUS_RADAR_EXECUTOR", "hermes_simulated"))
     hermes_poll_seconds: float = 2.0
     hermes_run_timeout: float = 900.0
     origins: tuple[str, ...] = (

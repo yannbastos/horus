@@ -5,6 +5,7 @@ import asyncio
 import hashlib
 import json
 import uuid
+from datetime import datetime, timezone
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -95,6 +96,9 @@ class WorkflowService:
         self.executor_kind = getattr(settings, "workflow_executor", "simulated")
         if self.executor_kind not in EXECUTORS:
             raise ValueError("HORUS_WORKFLOW_EXECUTOR inválido. Use simulated ou hermes.")
+        from .hermes_simulator import HermesSimulator
+        simulator = HermesSimulator()
+        self.hermes_simulated = HermesStages(store, settings, client_factory=lambda: simulator)
         self.hermes = HermesStages(store, settings) if settings is not None else None
         self.active_task: asyncio.Task | None = None
         self.active_job_id: str | None = None
@@ -146,7 +150,12 @@ class WorkflowService:
             item = dict(self._require(db, workflow_id))
             item.pop("idempotency_key")
             item["request"] = json.loads(item.pop("payload"))
-            item["simulated"] = item["executor"] == "simulated"
+            if item.pop("cognitive_client") == "simulated":
+                item["executor"] = "hermes_simulated"
+            item["request"].pop("_radar_request", None)
+            item["simulated"] = item["executor"] in {"simulated", "hermes_simulated"}
+            if "radar" in item["request"]:
+                item["radar"] = item["request"]["radar"]
             item["steps"] = [self.store.job(row) for row in db.execute(
                 "SELECT * FROM jobs WHERE workflow_id=? ORDER BY workflow_revision,step_index", (workflow_id,))]
             attempts = [dict(row) for row in db.execute("""SELECT a.* FROM job_attempts a JOIN jobs j ON j.id=a.job_id
@@ -196,10 +205,16 @@ class WorkflowService:
                 item["data"] = json.loads(item["data"])
             return items
 
-    async def create(self, request: WorkflowRequest, key: str):
-        payload = encode(request.model_dump(mode="json", exclude_none=True))
-        executor = self.executor_kind
-        if executor == "hermes" and (request.dataset is None or request.channel_profile is None):
+    async def create(self, request: WorkflowRequest, key: str, *, executor=None, radar=None, radar_request=None):
+        data = request.model_dump(mode="json", exclude_none=True)
+        if radar is not None:
+            data["radar"] = radar
+            data["_radar_request"] = radar_request
+        payload = encode(data)
+        executor = executor or self.executor_kind
+        cognitive_client = "simulated" if executor == "hermes_simulated" else "live"
+        executor = "hermes" if executor == "hermes_simulated" else executor
+        if executor in AUTHORIZED_STAGES and (request.dataset is None or request.channel_profile is None):
             raise WorkflowConflict("O executor Hermes exige dataset e channel_profile no pedido.")
         first = None
         with self.store.connect() as db:
@@ -211,10 +226,11 @@ class WorkflowService:
                 workflow_id = existing["id"]
             else:
                 workflow_id, timestamp = uuid.uuid4().hex, now()
-                db.execute("""INSERT INTO workflows(id,idempotency_key,payload,revision,status,created_at,updated_at,executor)
-                    VALUES(?,?,?,1,'queued',?,?,?)""", (workflow_id, key, payload, timestamp, timestamp, executor))
+                db.execute("""INSERT INTO workflows(id,idempotency_key,payload,revision,status,created_at,updated_at,executor,cognitive_client)
+                    VALUES(?,?,?,1,'queued',?,?,?,?)""", (workflow_id, key, payload, timestamp, timestamp, executor, cognitive_client))
                 first = self._create_steps(db, workflow_id, 1, executor)
-                self._event(db, workflow_id, 1, "workflow.created", {"simulated": executor == "simulated", "executor": executor})
+                self._event(db, workflow_id, 1, "workflow.created", {"simulated": executor == "simulated" or cognitive_client == "simulated",
+                    "executor": "hermes_simulated" if cognitive_client == "simulated" else executor})
         if first:
             self.queue.put_nowait(first)
             await self.notify()
@@ -250,7 +266,7 @@ class WorkflowService:
                 raise WorkflowConflict("A primeira etapa não aceita dependências.")
             request = json.loads(workflow["payload"])
             context = {**request, "workflow_id": workflow["id"], "revision": workflow["revision"], "job_id": job_id,
-                       "stage": stage, "feedback": workflow["feedback"], "sources": sources, "executor": executor}
+                       "stage": stage, "feedback": workflow["feedback"], "sources": sources, "executor": executor, "cognitive_client": workflow["cognitive_client"]}
             attempt_id, timestamp = uuid.uuid4().hex, now()
             if stage in AUTHORIZED_STAGES.get(executor, ()):
                 unknown = db.execute("""SELECT * FROM cognitive_runs WHERE job_id=? AND status='unknown'
@@ -354,16 +370,19 @@ class WorkflowService:
         attempt_id, context = claimed
         self.active_job_id = job["id"]
         try:
-            if context["executor"] == "hermes":
+            if context["executor"] in AUTHORIZED_STAGES:
+                stages = self.hermes_simulated if context["cognitive_client"] == "simulated" else self.hermes
                 # Etapas locais são instantâneas; a cognitiva controla o próprio prazo e o cancelamento remoto.
                 stage = context["stage"]
                 if stage == "analysis":
-                    work = self.hermes.analysis(context, attempt_id, lambda: self.stop_requested == job["id"])
+                    work = stages.analysis(context, attempt_id, lambda: self.stop_requested == job["id"])
                 else:
-                    work = asyncio.to_thread(getattr(self.hermes, stage), context)
+                    work = asyncio.to_thread(getattr(stages, stage), context)
                 self.active_task = asyncio.create_task(work)
                 await self.notify()
-                output = HermesStageOutput.model_validate(await self.active_task)
+                content = await self.active_task
+                content["simulated"] = context["cognitive_client"] == "simulated"
+                output = HermesStageOutput.model_validate(content)
             else:
                 self.active_task = asyncio.create_task(self.executor(context))
                 await self.notify()
@@ -459,6 +478,9 @@ class WorkflowService:
         with self.store.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             workflow = self._require(db, workflow_id)
+            radar = json.loads(workflow["payload"]).get("radar")
+            if radar and datetime.fromisoformat(radar["expires_at"].replace("Z", "+00:00")) <= datetime.now(timezone.utc):
+                raise WorkflowConflict("Dataset Radar expirado; colete uma nova revisão antes de autorizar.")
             existing = db.execute("SELECT * FROM authorizations WHERE workflow_id=? AND idempotency_key=?", (workflow_id, key)).fetchone()
             if existing:
                 if existing["request"] != encoded:
