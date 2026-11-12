@@ -423,18 +423,24 @@ test.describe('HOR-126 · Regressão de null/incompleto em Privacidade e Seguran
     await expect(alert).toContainText('Não foi possível alcançar o backend local.');
   });
 
-  test('integração real contra API local (porta 8771) sem perfil Hermes configurado + captura visual', async ({
+  test('integração real contra API local (porta dinâmica 127.0.0.1:0) sem perfil Hermes configurado + captura visual', async ({
     page,
     baseURL,
   }) => {
+    const pythonRel = process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python';
+    const pythonExe = path.resolve(repoRoot, 'backend/.venv', pythonRel);
+    if (!fs.existsSync(pythonExe)) {
+      throw new Error(
+        `Interpretador Python do backend ausente em ${pythonExe}. Execute "uv sync --directory backend --frozen" antes de rodar os testes.`
+      );
+    }
+
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'horus-hor126-'));
     const ephemeralToken = crypto.randomUUID() + crypto.randomUUID();
-    const pythonExe = path.resolve(repoRoot, 'backend/.venv/Scripts/python.exe');
-    const backendPort = 8771;
     const configuredOrigin = baseURL ? new URL(baseURL).origin : 'http://127.0.0.1:1431';
 
     const pyScript = [
-      'import os, pathlib, socket, uvicorn',
+      'import json, os, pathlib, socket, uvicorn',
       'from horus_backend.api import create_app',
       'from horus_backend.config import Settings',
       'tmp = pathlib.Path(os.environ["HORUS_TEST_TMP"])',
@@ -451,10 +457,11 @@ test.describe('HOR-126 · Regressão de null/incompleto em Privacidade e Seguran
       '    origins=(origin,),',
       ')',
       'sock = socket.socket()',
-      `sock.bind(("127.0.0.1", ${backendPort}))`,
+      'sock.bind(("127.0.0.1", 0))',
       'sock.listen(64)',
-      'app = create_app(settings, ready=lambda: print("READY", flush=True))',
-      `server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=${backendPort}, log_level="error", access_log=False))`,
+      'port = sock.getsockname()[1]',
+      'app = create_app(settings, ready=lambda: print(json.dumps({"event": "ready", "port": port}), flush=True))',
+      'server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="error", access_log=False))',
       'server.run(sockets=[sock])',
     ].join('\n');
 
@@ -470,16 +477,32 @@ test.describe('HOR-126 · Regressão de null/incompleto em Privacidade e Seguran
     });
 
     try {
-      await new Promise<void>((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error('Timeout iniciando backend na porta 8771')), 10000);
+      const backendPort = await new Promise<number>((resolve, reject) => {
+        const timer = setTimeout(
+          () => reject(new Error('Timeout aguardando prontidão do backend em 127.0.0.1:0')),
+          10000
+        );
+        let stdoutBuf = '';
         let stderr = '';
         child.stderr.on('data', chunk => {
           stderr += String(chunk);
         });
         child.stdout.on('data', chunk => {
-          if (String(chunk).includes('READY')) {
-            clearTimeout(timer);
-            resolve();
+          stdoutBuf += String(chunk);
+          const lines = stdoutBuf.split(/\r?\n/);
+          stdoutBuf = lines.pop() ?? '';
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const msg = JSON.parse(line) as { event?: string; port?: number };
+              if (msg.event === 'ready' && typeof msg.port === 'number' && msg.port > 0) {
+                clearTimeout(timer);
+                resolve(msg.port);
+                return;
+              }
+            } catch {
+              // Ignora linhas que não sejam o JSON de prontidão
+            }
           }
         });
         child.once('exit', code => {
