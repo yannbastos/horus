@@ -164,6 +164,8 @@ export const TOOL_CATEGORIES = [
   'Delegação e agendamento',
   'Skills e conectores',
   'Memória',
+  'Mídia',
+  'Outras',
 ] as const;
 
 export type ToolCategory = (typeof TOOL_CATEGORIES)[number];
@@ -171,35 +173,50 @@ export type ToolCategory = (typeof TOOL_CATEGORIES)[number];
 export function categorizeTool(toolName: string): ToolCategory {
   const name = toolName.toLowerCase();
 
-  // Comandos e processos
+  // 1. Memória (inclui busca e listagem em sessões, histórico e contexto)
   if (
-    ['terminal', 'bash', 'shell', 'exec', 'process', 'run_command', 'cmd', 'command', 'cli', 'system'].some(k =>
+    ['memory', 'todo', 'session', 'profile', 'remember', 'recall'].some(k => name.includes(k))
+  ) {
+    return 'Memória';
+  }
+
+  // 2. Web e navegador (inclui browser_exec e pesquisas web)
+  if (
+    ['browser', 'web', 'curl', 'http', 'url', 'download', 'fetch', 'scrape', 'navigate', 'search'].some(k =>
       name.includes(k)
     )
   ) {
-    return 'Comandos e processos';
-  }
-
-  // Arquivos
-  if (
-    ['file', 'read_file', 'write_file', 'edit_file', 'list_dir', 'filesystem', 'directory', 'fs'].some(k =>
-      name.includes(k)
-    )
-  ) {
-    return 'Arquivos';
-  }
-
-  // Execução de código
-  if (['python', 'code', 'eval', 'jupyter', 'sandbox', 'interpreter', 'script'].some(k => name.includes(k))) {
-    return 'Execução de código';
-  }
-
-  // Web e navegador
-  if (['web', 'browser', 'search', 'fetch', 'http', 'curl', 'url', 'download'].some(k => name.includes(k))) {
     return 'Web e navegador';
   }
 
-  // Delegação e agendamento
+  // 3. Execução de código (execute_code, python, repl, script, sandbox, etc.)
+  if (
+    ['code', 'python', 'eval', 'jupyter', 'sandbox', 'interpreter', 'script', 'repl'].some(k =>
+      name.includes(k)
+    )
+  ) {
+    return 'Execução de código';
+  }
+
+  // 4. Mídia (image_generate, vision_analyze, áudio, vídeo, etc.)
+  if (
+    ['image', 'vision', 'audio', 'video', 'media', 'speech', 'transcribe', 'tts', 'stt'].some(k =>
+      name.includes(k)
+    )
+  ) {
+    return 'Mídia';
+  }
+
+  // 5. Skills e conectores (gerenciamento de conexões, skills, MCP)
+  if (
+    ['skill', 'mcp', 'plugin', 'connector', 'connection'].some(k =>
+      name.includes(k)
+    )
+  ) {
+    return 'Skills e conectores';
+  }
+
+  // 6. Delegação e agendamento (subagentes, tarefas, workers, cron)
   if (
     ['agent', 'subagent', 'delegate', 'schedule', 'cron', 'task', 'dispatch', 'worker', 'swarm'].some(k =>
       name.includes(k)
@@ -208,11 +225,24 @@ export function categorizeTool(toolName: string): ToolCategory {
     return 'Delegação e agendamento';
   }
 
-  // Memória
-  if (['memory', 'user_profile', 'profile', 'remember', 'recall', 'store_memory'].some(k => name.includes(k))) {
-    return 'Memória';
+  // 7. Arquivos (leitura, escrita, listagem no sistema de arquivos)
+  if (
+    ['file', 'read_file', 'write_file', 'edit_file', 'list_dir', 'filesystem', 'directory', 'fs'].some(k =>
+      name.includes(k)
+    )
+  ) {
+    return 'Arquivos';
   }
 
-  // Skills e conectores (fallback)
-  return 'Skills e conectores';
+  // 8. Comandos e processos (terminal, shell, bash, CLI)
+  if (
+    ['terminal', 'bash', 'shell', 'exec', 'process', 'run_command', 'cmd', 'command', 'cli', 'system'].some(k =>
+      name.includes(k)
+    )
+  ) {
+    return 'Comandos e processos';
+  }
+
+  // 9. Outras (ferramentas desconhecidas nunca são omitidas)
+  return 'Outras';
 }

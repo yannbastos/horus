@@ -386,6 +386,89 @@ test.describe('M2 · Tarefa 03 (HOR-126) — Interface de Privacidade e Seguran�
     await expect(page.getByText('PERIGOSA')).not.toBeVisible();
   });
 
+  test('categorização precisa de ferramentas do Hermes (HOR-126 revisão 2)', async ({ page }) => {
+    const categorizedToolsStatus = {
+      ...mockMinimalStatus,
+      hermes: {
+        ...mockMinimalStatus.hermes,
+        tools: {
+          source: 'test_toolset',
+          restricted: true,
+          effective: [
+            'execute_code',
+            'browser_exec',
+            'session_search',
+            'image_generate',
+            'vision_analyze',
+            'memory',
+            'todo_list',
+            'skill_view',
+            'skills_list',
+            'skill_manage',
+            'manage_connections',
+            'terminal',
+            'read_file',
+            'unknown_custom_tool',
+          ],
+          dangerous: [],
+          required_for_editorial: [],
+        },
+      },
+    };
+
+    await setupDefaultRoute(page, { securityStatus: categorizedToolsStatus });
+    await connectSession(page);
+    await page.getByRole('tab', { name: 'PRIVACIDADE E SEGURANÇA', exact: true }).click();
+
+    const hermesSection = page.getByRole('region', { name: 'Permissões do Hermes' });
+    await expect(hermesSection).toBeVisible();
+
+    const getCategoryCard = (categoryName: string) =>
+      hermesSection.locator('.tool-category-card').filter({
+        has: page.getByRole('heading', { name: categoryName, exact: true }),
+      });
+
+    // 1. Execução de código: execute_code (não deve ir para Comandos e processos)
+    const codeCard = getCategoryCard('Execução de código');
+    await expect(codeCard.getByText('execute_code', { exact: true })).toBeVisible();
+
+    // 2. Web e navegador: browser_exec (não deve ir para Comandos e processos)
+    const webCard = getCategoryCard('Web e navegador');
+    await expect(webCard.getByText('browser_exec', { exact: true })).toBeVisible();
+
+    // 3. Memória: session_search (não deve ir para Web), memory, todo_list
+    const memoryCard = getCategoryCard('Memória');
+    await expect(memoryCard.getByText('session_search', { exact: true })).toBeVisible();
+    await expect(memoryCard.getByText('memory', { exact: true })).toBeVisible();
+    await expect(memoryCard.getByText('todo_list', { exact: true })).toBeVisible();
+
+    // 4. Mídia: image_generate, vision_analyze (não são skills/conectores)
+    const mediaCard = getCategoryCard('Mídia');
+    await expect(mediaCard.getByText('image_generate', { exact: true })).toBeVisible();
+    await expect(mediaCard.getByText('vision_analyze', { exact: true })).toBeVisible();
+
+    // 5. Skills e conectores: skill_view, skills_list, skill_manage, manage_connections
+    const skillsCard = getCategoryCard('Skills e conectores');
+    await expect(skillsCard.getByText('skill_view', { exact: true })).toBeVisible();
+    await expect(skillsCard.getByText('skills_list', { exact: true })).toBeVisible();
+    await expect(skillsCard.getByText('skill_manage', { exact: true })).toBeVisible();
+    await expect(skillsCard.getByText('manage_connections', { exact: true })).toBeVisible();
+
+    // 6. Comandos e processos: terminal (não deve conter execute_code ou browser_exec)
+    const cmdCard = getCategoryCard('Comandos e processos');
+    await expect(cmdCard.getByText('terminal', { exact: true })).toBeVisible();
+    await expect(cmdCard.getByText('execute_code')).not.toBeVisible();
+    await expect(cmdCard.getByText('browser_exec')).not.toBeVisible();
+
+    // 7. Arquivos: read_file
+    const fileCard = getCategoryCard('Arquivos');
+    await expect(fileCard.getByText('read_file', { exact: true })).toBeVisible();
+
+    // 8. Outras: ferramentas desconhecidas nunca são omitidas
+    const otherCard = getCategoryCard('Outras');
+    await expect(otherCard.getByText('unknown_custom_tool', { exact: true })).toBeVisible();
+  });
+
   test('campos null -> "Não verificado" com motivo e sem inferir proteção', async ({ page }) => {
     await setupDefaultRoute(page, { securityStatus: mockNullStatus });
     await connectSession(page);

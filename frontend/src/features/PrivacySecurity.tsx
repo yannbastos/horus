@@ -287,7 +287,7 @@ function HermesPermissionsSection({
   const dangerousSet = new Set(tools?.dangerous || []);
   const effectiveTools = tools?.effective || [];
 
-  // Agrupamento em 7 categorias canônicas
+  // Agrupamento em categorias canônicas
   const categorized: Record<string, string[]> = {};
   for (const cat of TOOL_CATEGORIES) {
     categorized[cat] = [];
