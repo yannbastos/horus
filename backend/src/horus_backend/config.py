@@ -74,6 +74,20 @@ def hermes_profile_dir() -> Path:
     return Path(os.environ.get("HORUS_HERMES_PROFILE", profile_default())).expanduser()
 
 
+def frontend_origins() -> tuple[str, ...]:
+    origins = (
+        "http://localhost:1420", "http://127.0.0.1:1420",
+        "http://tauri.localhost", "https://tauri.localhost", "tauri://localhost",
+    )
+    extra = os.environ.get("HORUS_FRONTEND_ORIGIN")
+    if extra is not None:
+        match = re.fullmatch(r"http://(?:127\.0\.0\.1|localhost):([0-9]{1,5})", extra)
+        if not match or not 1 <= int(match[1]) <= 65535:
+            raise ValueError("HORUS_FRONTEND_ORIGIN deve ser http://127.0.0.1:porta ou http://localhost:porta (1..65535)")
+        origins += (extra,)
+    return origins
+
+
 @dataclass(frozen=True)
 class Settings:
     token: str
@@ -98,10 +112,7 @@ class Settings:
     price_output_usd_per_mtok: Decimal | None = field(default_factory=lambda: operator_decimal("HORUS_PRICE_OUTPUT_USD_PER_MTOK"))
     hermes_poll_seconds: float = 2.0
     hermes_run_timeout: float = 900.0
-    origins: tuple[str, ...] = (
-        "http://localhost:1420", "http://127.0.0.1:1420",
-        "http://tauri.localhost", "https://tauri.localhost", "tauri://localhost",
-    )
+    origins: tuple[str, ...] = field(default_factory=frontend_origins)
 
     def worker(self) -> tuple[str, ...]:
         if self.worker_command:

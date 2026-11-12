@@ -4,14 +4,16 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1 --port 1420 --strictPort",
+    "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview --host 127.0.0.1",
+    "preview": "vite preview",
     "tauri": "tauri",
     "desktop": "tauri dev",
     "desktop:dev": "tauri dev",
     "desktop:build": "tauri build",
-    "test": "playwright test"
+    "test": "playwright test",
+    "backend:dev": "node scripts/dev-backend.mjs",
+    "test:config": "node --test scripts/worktree-config.test.mjs"
   },
   "dependencies": {
     "@fontsource/inter": "^5.3.0",
