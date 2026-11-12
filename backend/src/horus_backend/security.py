@@ -222,21 +222,27 @@ def audit_profile(path: Path):
     try:
         config = parse_yaml_subset(_read(path / 'config.yaml'))
         names = env_key_names(path / '.env') | set(os.environ)
-        # Extensões podem registrar ferramentas mesmo com api_server: []. Não as executar/importar.
+        # Extensões podem registrar ferramentas mesmo com api_server: []. Não as executar/importar;
+        # registra somente nomes e contagens, nunca conteúdo.
+        extensions = []
         for key in ('mcp_servers', 'custom_toolsets', 'hooks'):
-            if config.get(key):
-                raise Unverifiable('Extensões não verificáveis.')
+            value = config.get(key)
+            if value:
+                extensions.append((key, len(value) if isinstance(value, (dict, list)) else 1))
         for dirname in ('plugins', 'skills', 'cron'):
             directory = path / dirname
-            if directory.exists() and any(directory.iterdir()):
-                raise Unverifiable('Extensões locais não verificáveis.')
+            if directory.exists():
+                count = sum(1 for _ in directory.iterdir())
+                if count:
+                    extensions.append((dirname, count))
         plugins = _map(config, 'plugins')
         if plugins.get('enabled') or plugins.get('auto_apply'):
-            raise Unverifiable('Plugins não verificáveis.')
+            extensions.append(('config.plugins', 1))
         if _map(config, 'context').get('engine', 'compressor') != 'compressor':
-            raise Unverifiable('Motor contextual não verificável.')
-        if any(name.startswith(('HERMES_TOOL', 'HERMES_MEMORY', 'HERMES_PLUGIN', 'HERMES_ENABLE_PROJECT_PLUGINS', 'HERMES_BUNDLED_PLUGINS', 'MEMORY_')) for name in names):
-            raise Unverifiable('Override de ambiente não verificável.')
+            extensions.append(('context.engine', 1))
+        overrides = sum(1 for name in names if name.startswith(('HERMES_TOOL', 'HERMES_MEMORY', 'HERMES_PLUGIN', 'HERMES_ENABLE_PROJECT_PLUGINS', 'HERMES_BUNDLED_PLUGINS', 'MEMORY_')))
+        if overrides:
+            extensions.append(('env.overrides', overrides))
         effective, source = resolve_tools(config, names)
         memory = _map(config, 'memory')
         flags = {key: memory.get(key, default) for key, default in
@@ -248,18 +254,19 @@ def audit_profile(path: Path):
             raise Unverifiable('Provedor de memória não verificável.')
         extra = _map(_map(_map(config, 'platforms'), 'api_server'), 'extra')
         host = extra.get('host', '127.0.0.1')
-        if ('API_SERVER_HOST' in names and 'host' not in extra) or not isinstance(host, str):
-            raise Unverifiable('Bind pode ser sobrescrito pelo ambiente.')
-        return {'profile_found': found,
-                'tools': {'source': source, 'restricted': not effective, 'effective': effective,
+        # Bind não verificável não impede o relatório de ferramentas e memória.
+        bind_ok = not (('API_SERVER_HOST' in names and 'host' not in extra) or not isinstance(host, str)) \
+            and host in {'127.0.0.1', '::1'}
+        return {'profile_found': found, '_extensions': extensions,
+                'tools': {'source': source, 'restricted': not effective and not extensions, 'effective': effective,
                           'dangerous': effective, 'required_for_editorial': []},
                 'memory': {'local_enabled': flags['memory_enabled'], 'user_profile_enabled': flags['user_profile_enabled'],
                            'write_approval': flags['write_approval'], 'external_provider': 'configured' if provider else None},
                 'provider_configured': bool(config.get('model') or config.get('provider') or
                     names & {'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY', 'XAI_API_KEY'}),
-                'bind_loopback': host in {'127.0.0.1', '::1'}}
+                'bind_loopback': bind_ok}
     except (OSError, ValueError, TypeError, RecursionError, OverflowError):
-        return {'profile_found': found, 'tools': {'source': 'unknown', 'restricted': None, 'effective': None,
+        return {'profile_found': found, '_extensions': [], 'tools': {'source': 'unknown', 'restricted': None, 'effective': None,
                 'dangerous': None, 'required_for_editorial': []}, 'memory': {'local_enabled': None,
                 'user_profile_enabled': None, 'write_approval': None, 'external_provider': None},
                 'provider_configured': None, 'bind_loopback': None}
@@ -306,6 +313,10 @@ def security_status(settings, store=None):
         block('profile_unverifiable', 'Perfil Hermes ausente, inválido ou fora do subconjunto verificável.')
     elif profile['tools']['dangerous']:
         block('dangerous_tools_enabled', 'O perfil Hermes permite ferramentas desnecessárias ao workflow editorial.')
+    extensions = profile.pop('_extensions')
+    if extensions:
+        listing = '; '.join(f'{name}: {count} {"item" if count == 1 else "itens"}' for name, count in extensions)
+        block('profile_extensions_present', f'Extensões não auditáveis no perfil Hermes ({listing}); revise-as manualmente.')
     memory = profile['memory']
     if memory['local_enabled'] is True or memory['user_profile_enabled'] is True:
         block('memory_enabled', 'Desative memória e perfil de usuário do Hermes.')

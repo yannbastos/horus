@@ -10,7 +10,7 @@ A seleção estática herdada contém: `browser_cdp`, `browser_dialog`, `browser
 
 Memória e perfil de usuário não foram desativados no YAML: os defaults do Hermes são `true`; `write_approval` é `false` e `memory.provider` é vazio por padrão. O YAML não configura modelo/provedor e os nomes presentes no `.env` não indicam credencial de inferência. A ausência de provedor não comprova impossibilidade de inferência, pois autenticação externa ao arquivo inspecionado pode existir.
 
-Foram encontrados diretórios não vazios `skills` e `cron`. Seu conteúdo não foi executado nem interpretado. O status agregado do perfil real, por isso, marca ferramentas/memória como **não verificáveis (`null`)**, bloqueando execução. A leitura do YAML acima é evidência parcial, não atestado de segurança do processo em execução. Telemetria compartilhada é desligada por padrão no Hermes; verificações de atualização de plugins usam 24 horas por padrão; o catálogo `models.dev` pode abrir conexão própria.
+Foram encontrados diretórios não vazios `skills` e `cron`. Seu conteúdo não foi executado nem interpretado. O status do perfil real, por isso, continua informando ferramentas e memória a partir do `config.yaml` e acrescenta o blocker `profile_extensions_present` (somente nomes e contagens, ex.: `skills: 2 itens; cron: 6 itens`), bloqueando execução. A leitura do YAML acima é evidência parcial, não atestado de segurança do processo em execução. Telemetria compartilhada é desligada por padrão no Hermes; verificações de atualização de plugins usam 24 horas por padrão; o catálogo `models.dev` pode abrir conexão própria.
 
 ## Ferramentas editoriais necessárias: nenhuma
 
@@ -20,7 +20,9 @@ O Hórus congela o snapshot na etapa local `research` e envia objetivo, perfil e
 
 `backend/src/horus_backend/security.py` implementa um subconjunto estrito de YAML: mapas com chaves simples e indentação por espaços, escalares simples (`string`, inteiro decimal, `true`, `false`, `null`), listas de escalares em bloco e inline, comentários. Arquivos têm limite de 256 KiB e profundidade limitada. Não há avaliação de código nem importação do Hermes.
 
-Âncoras/aliases, tags, blocos multilinha, tabs, chaves duplicadas, múltiplos documentos, flow maps e estruturas fora do subconjunto tornam o perfil não verificável. Configurações válidas para o Hermes podem ser recusadas deliberadamente. Extensões MCP, hooks, plugins ativos, motor contextual customizado, diretórios de extensões não vazios e overrides de ambiente não verificáveis também bloqueiam. O bind explícito do YAML tem precedência sobre o nome `API_SERVER_HOST`, conforme `listen_address` do Hermes; sem bind explícito, a presença desse nome torna o bind desconhecido porque seu valor não é lido pela auditoria.
+Âncoras/aliases, tags, blocos multilinha, tabs, chaves duplicadas, múltiplos documentos, flow maps e estruturas fora do subconjunto tornam o perfil não verificável. Configurações válidas para o Hermes podem ser recusadas deliberadamente. Esses casos geram `profile_unverifiable` (junto de perfil ausente, `config.yaml` ausente/excessivo e `.env` não verificável), com `tools` e `memory` nulos.
+
+Extensões (`mcp_servers`, `custom_toolsets`, `hooks`, plugins ativos, motor contextual customizado, diretórios `plugins/`, `skills/`, `cron/` não vazios e overrides de ambiente) não ocultam o relatório: com `config.yaml` parseável, `hermes.tools` e `hermes.memory` são sempre preenchidos, e o blocker crítico `profile_extensions_present` lista apenas nomes e contagens, nunca conteúdo. Com extensões, `tools.restricted` nunca é `true` e `real_execution_allowed` permanece `false`; o gate recusa. `gateway_bind_unverified` só aparece quando o bind está fora de loopback ou não pode ser verificado (config parseável com host loopback não o emite). O bind explícito do YAML tem precedência sobre o nome `API_SERVER_HOST`, conforme `listen_address` do Hermes; sem bind explícito, a presença desse nome torna o bind desconhecido porque seu valor não é lido pela auditoria.
 
 A resolução reproduz o comportamento relevante de 0.23.1: ausência/lista inválida herda `hermes-api-server`; lista explícita vazia é autoritativa; listas literais salvas como string são reconhecidas; compostos são expandidos para categorias configuráveis, respeitando categorias desligadas por padrão; `agent.disabled_toolsets` é subtraído por ferramenta no final. Categorias/extensões não catalogadas falham fechado. Credencial xAI em seleção composta também impede atestar o conjunto sem executar código do Hermes. A versão instalada foi inspecionada, mas o backend não comprova a versão nem o perfil do gateway remoto por meio da API.
 
@@ -181,14 +183,19 @@ Os exemplos abaixo são respostas efetivamente coletadas por `TestClient` contra
   "real_execution_allowed": false,
   "blockers": [
     {
-      "code": "profile_unverifiable",
+      "code": "dangerous_tools_enabled",
       "severity": "critical",
-      "message": "Perfil Hermes ausente, inválido ou fora do subconjunto verificável."
+      "message": "O perfil Hermes permite ferramentas desnecessárias ao workflow editorial."
     },
     {
-      "code": "gateway_bind_unverified",
+      "code": "profile_extensions_present",
       "severity": "critical",
-      "message": "Bind do gateway fora de loopback ou não verificável."
+      "message": "Extensões não auditáveis no perfil Hermes (skills: 2 itens; cron: 6 itens); revise-as manualmente."
+    },
+    {
+      "code": "memory_enabled",
+      "severity": "critical",
+      "message": "Desative memória e perfil de usuário do Hermes."
     },
     {
       "code": "cost_limits_missing",
@@ -220,19 +227,19 @@ Os exemplos abaixo são respostas efetivamente coletadas por `TestClient` contra
   "hermes": {
     "profile_found": true,
     "tools": {
-      "source": "unknown",
-      "restricted": null,
-      "effective": null,
-      "dangerous": null,
+      "source": "default:hermes-api-server",
+      "restricted": false,
+      "effective": ["browser_cdp", "…", "write_file"],
+      "dangerous": ["browser_cdp", "…", "write_file"],
       "required_for_editorial": []
     },
     "memory": {
-      "local_enabled": null,
-      "user_profile_enabled": null,
-      "write_approval": null,
+      "local_enabled": true,
+      "user_profile_enabled": true,
+      "write_approval": false,
       "external_provider": null
     },
-    "provider_configured": null,
+    "provider_configured": false,
     "connection": "loopback",
     "profile_label": "%LOCALAPPDATA%/hermes/profiles/horus",
     "network_isolation": {
@@ -283,8 +290,8 @@ Os exemplos abaixo são respostas efetivamente coletadas por `TestClient` contra
 
 ### Checks executados
 
-- `backend/.venv/Scripts/python.exe -m pytest backend/tests -q`: **307 aprovados**, com um aviso de depreciação do adaptador Starlette/httpx já existente no ambiente.
+- `backend/.venv/Scripts/python.exe -m pytest backend/tests -q`: **310 aprovados**, com um aviso de depreciação do adaptador Starlette/httpx já existente no ambiente.
 - `backend/.venv/Scripts/python.exe -m pytest contracts/hermes/tests -q -p no:cacheprovider`: **54 aprovados**.
-- Suíte específica `backend/tests/test_security.py`: **78 aprovados**.
+- Suíte específica `backend/tests/test_security.py`: **81 aprovados**.
 - `git diff --check` e referências locais dos três documentos: aprovados.
 - Sem inferência real, rede externa, instalação, alteração de firewall, mudança do perfil operacional ou testes de sandbox de SO.

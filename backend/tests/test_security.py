@@ -130,8 +130,54 @@ def test_environment_override_not_read_or_exposed(secure, monkeypatch):
     rewrite(secure, '      host: 127.0.0.1\n', '')
     monkeypatch.setenv('API_SERVER_HOST', ENV_SECRET)
     report = security_status(secure)
-    assert report['hermes']['tools']['effective'] is None
+    # Ferramentas e memória continuam informadas; só o bind fica não verificável.
+    assert report['hermes']['tools']['effective'] == []
+    assert 'gateway_bind_unverified' in {item['code'] for item in report['blockers']}
     assert ENV_SECRET not in json.dumps(report)
+    with pytest.raises(SecurityGate):
+        require_secure(secure)
+
+
+def test_extensions_do_not_hide_tools_and_memory(secure):
+    # Perfil real típico: toolset padrão herdado, memória ativa, skills/ e cron/ não vazios.
+    profile = secure.hermes_profile
+    (profile / 'config.yaml').write_text('platforms:\n  api_server:\n    extra:\n      host: 127.0.0.1\n', encoding='utf-8')
+    (profile / 'skills').mkdir()
+    (profile / 'skills' / 'skill-privada').write_text(ENV_SECRET, encoding='utf-8')
+    (profile / 'cron').mkdir()
+    for index in range(4):
+        (profile / 'cron' / f'job{index}.json').write_text(SECRET, encoding='utf-8')
+    report = security_status(secure)
+    codes = {item['code']: item for item in report['blockers']}
+    assert {'dangerous_tools_enabled', 'memory_enabled', 'profile_extensions_present'} <= set(codes)
+    assert not {'profile_unverifiable', 'gateway_bind_unverified'} & set(codes)
+    assert codes['profile_extensions_present']['severity'] == 'critical'
+    assert 'skills: 1 item; cron: 4 itens' in codes['profile_extensions_present']['message']
+    tools = report['hermes']['tools']
+    assert tools['source'] == 'default:hermes-api-server' and tools['restricted'] is False
+    assert 'terminal' in tools['dangerous'] and tools['effective'] == tools['dangerous']
+    assert report['hermes']['memory']['local_enabled'] is True
+    assert report['real_execution_allowed'] is False
+    with pytest.raises(SecurityGate, match='security_gate'):
+        require_secure(secure)
+    text = json.dumps(report)
+    assert all(value not in text for value in (ENV_SECRET, SECRET, 'skill-privada', 'job0'))
+
+
+def test_extensions_with_empty_tools_are_not_restricted(secure):
+    (secure.hermes_profile / 'skills').mkdir()
+    (secure.hermes_profile / 'skills' / 'x').write_text('x', encoding='utf-8')
+    report = security_status(secure)
+    assert report['hermes']['tools']['effective'] == []
+    assert report['hermes']['tools']['restricted'] is False
+    assert report['real_execution_allowed'] is False
+    assert {item['code'] for item in report['blockers']} == {'profile_extensions_present'}
+
+
+def test_minimal_profile_is_restricted_without_blockers(secure):
+    report = security_status(secure)
+    assert report['hermes']['tools']['restricted'] is True
+    assert report['blockers'] == []
 
 
 def test_hardening_refuses_real_and_backs_up(tmp_path):
