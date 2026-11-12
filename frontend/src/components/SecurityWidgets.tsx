@@ -135,8 +135,8 @@ export function SummaryBanner({
       </div>
       <p className="muted">
         {realExecutionAllowed
-          ? 'O ambiente atende aos critérios de segurança para operações e despachos com ferramentas do Hermes.'
-          : 'Ações que modificam arquivos, acessam rede ou executam comandos reais estão bloqueadas pelo perfil ou política ativa.'}
+          ? 'O Hórus autoriza o envio de execuções ao Hermes. As ferramentas disponíveis dependem da configuração do perfil ativo.'
+          : 'O Hórus não autoriza execuções reais do Hermes enquanto houver bloqueios críticos. Isso não restringe o perfil Hermes em si: as ferramentas listadas abaixo continuam habilitadas nele.'}
       </p>
 
       {criticalBlockers.length > 0 && (

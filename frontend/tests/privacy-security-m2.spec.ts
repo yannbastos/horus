@@ -330,6 +330,9 @@ test.describe('M2 · Tarefa 03 (HOR-126) — Interface de Privacidade e Seguran�
     const summary = page.getByRole('status', { name: 'Resumo de execução e segurança' });
     await expect(summary).toBeVisible();
     await expect(summary).toContainText('Execução real do Hermes bloqueada');
+    await expect(summary).toContainText(
+      'O Hórus não autoriza execuções reais do Hermes enquanto houver bloqueios críticos. Isso não restringe o perfil Hermes em si: as ferramentas listadas abaixo continuam habilitadas nele.'
+    );
     await expect(summary.getByText('EXECUÇÃO BLOQUEADA')).toBeVisible();
 
     // 2. Bloqueio crítico em destaque
@@ -368,6 +371,9 @@ test.describe('M2 · Tarefa 03 (HOR-126) — Interface de Privacidade e Seguran�
     const summary = page.getByRole('status', { name: 'Resumo de execução e segurança' });
     await expect(summary).toBeVisible();
     await expect(summary).toContainText('Execução real do Hermes permitida');
+    await expect(summary).toContainText(
+      'O Hórus autoriza o envio de execuções ao Hermes. As ferramentas disponíveis dependem da configuração do perfil ativo.'
+    );
     await expect(summary.getByText('EXECUÇÃO LIBERADA')).toBeVisible();
 
     // Restrito ativo
