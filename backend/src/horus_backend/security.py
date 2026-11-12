@@ -10,6 +10,7 @@ import re
 import shutil
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal, localcontext
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -290,21 +291,134 @@ def cost_configured(settings):
                (settings.max_tokens_per_run, settings.max_tokens_per_day)) and settings.max_tokens_per_run <= settings.max_tokens_per_day
 
 
-def daily_tokens(settings, store, db=None):
+def budget_configured(settings):
+    from .config import positive_decimal
+    total, daily = positive_decimal(settings.budget_total_usd), positive_decimal(settings.budget_daily_usd)
+    return total is not None and daily is not None and daily <= total
+
+
+def pricing_configured(settings):
+    from .config import positive_decimal
+    return all(positive_decimal(price) is not None for price in
+               (settings.price_input_usd_per_mtok, settings.price_output_usd_per_mtok))
+
+
+def cost_reservation(settings):
+    """USD = teto de tokens × maior preço explícito por milhão / 1.000.000."""
+    if not cost_configured(settings) or not budget_configured(settings) or not pricing_configured(settings):
+        raise SecurityGate('security_gate: Orçamento, preços ou tetos inválidos.')
+    with localcontext() as ctx:
+        ctx.prec = 80
+        return Decimal(settings.max_tokens_per_run) * max(Decimal(settings.price_input_usd_per_mtok),
+            Decimal(settings.price_output_usd_per_mtok)) / Decimal(1000000)
+
+
+def _stored_usd(value):
+    # JSON monetário é string decimal, nunca float (nem NaN/Infinity/expoente).
+    if not isinstance(value, str) or len(value) > 80 or not re.fullmatch(r'[0-9]+(?:\.[0-9]+)?', value):
+        raise SecurityGate('security_gate: Registro de custo anterior não verificável.')
+    amount = Decimal(value)
+    if amount.adjusted() > 30 or amount.as_tuple().exponent < -30:
+        raise SecurityGate('security_gate: Registro de custo anterior não verificável.')
+    return amount
+
+
+def estimated_cost(usage, metadata):
+    """Preços congelados na intenção. Cache/unclassified recebem o maior preço.
+
+    Cache é somado conservadoramente mesmo se o provedor o incluir em input_tokens.
+    Uso incompleto/inválido mantém a reserva integral, sem liberar saldo.
+    """
+    reservation = _stored_usd(metadata.get('horus_cost_reservation_usd'))
+    usage = dict(usage) if isinstance(usage, dict) else {}
+    names = ('input_tokens', 'output_tokens', 'total_tokens', 'cache_read_tokens', 'cache_write_tokens')
+    known = (all(type(usage.get(name)) is int and usage[name] >= 0 for name in names[:3])
+             and all(type(usage.get(name, 0)) is int and usage.get(name, 0) >= 0 for name in names[3:])
+             and not usage.get('horus_usage_unverifiable'))
+    known = known and usage['total_tokens'] >= usage['input_tokens'] + usage['output_tokens']
+    amount = reservation
+    if known:
+        input_price = _stored_usd(metadata.get('horus_price_input_usd_per_mtok'))
+        output_price = _stored_usd(metadata.get('horus_price_output_usd_per_mtok'))
+        if min(input_price, output_price) <= 0:
+            raise SecurityGate('security_gate: Preços da reserva anterior não verificáveis.')
+        with localcontext() as ctx:
+            ctx.prec = 80
+            cache = usage.get('cache_read_tokens', 0) + usage.get('cache_write_tokens', 0)
+            unclassified = max(usage['total_tokens'] - usage['input_tokens'] - usage['output_tokens'] - cache, 0)
+            amount = (usage['input_tokens'] * input_price + usage['output_tokens'] * output_price
+                      + (cache + unclassified) * max(input_price, output_price)) / Decimal(1000000)
+    usage.update(horus_estimated_cost_usd=format(amount, 'f'), horus_cost_finalized=bool(known))
+    return usage
+
+
+FINAL_RUN_STATUSES = {'completed', 'failed', 'cancelled', 'invalid_output', 'interrupted'}
+
+
+def budget_usage(store, db=None, *, day=None):
+    """Reservas abertas (inclusive usage desconhecido) atravessam a meia-noite UTC."""
+    if db is None:
+        with store.connect() as connection:
+            return budget_usage(store, connection, day=day)
+    today = day or datetime.now(timezone.utc).date().isoformat()
+    rows = db.execute("""SELECT r.usage,r.request,r.status,r.created_at FROM cognitive_runs r
+                      JOIN jobs j ON j.id=r.job_id JOIN workflows w ON w.id=j.workflow_id
+                      WHERE r.provider='hermes' AND w.cognitive_client='live'""").fetchall()
+    total, daily, reserved = Decimal(0), Decimal(0), Decimal(0)
+    with localcontext() as ctx:
+        ctx.prec = 80
+        for row in rows:
+            try:
+                metadata = json.loads(row['request']).get('metadata', {})
+                reservation = _stored_usd(metadata.get('horus_cost_reservation_usd'))
+                if reservation <= 0:
+                    raise SecurityGate('security_gate: Reserva de custo anterior não verificável.')
+                usage = json.loads(row['usage']) if row['usage'] else {}
+                if row['status'] in FINAL_RUN_STATUSES and usage.get('horus_cost_finalized') is True:
+                    amount = _stored_usd(usage.get('horus_estimated_cost_usd'))
+                    total += amount
+                    if row['created_at'][:10] == today:
+                        daily += amount
+                else:
+                    reserved += reservation
+            except (ValueError, TypeError, AttributeError):
+                raise SecurityGate('security_gate: Registro de custo anterior não verificável.') from None
+    return {'estimated_spent_total_usd': total, 'estimated_spent_today_usd': daily, 'reserved_usd': reserved}
+
+
+def _budget_blocker(settings, usage):
+    reservation = cost_reservation(settings)
+    with localcontext() as ctx:
+        ctx.prec = 80
+        if usage['estimated_spent_total_usd'] + usage['reserved_usd'] + reservation > Decimal(settings.budget_total_usd):
+            return 'total_budget_limit', 'Saldo total do orçamento em USD insuficiente para reservar uma execução.'
+        if usage['estimated_spent_today_usd'] + usage['reserved_usd'] + reservation > Decimal(settings.budget_daily_usd):
+            return 'daily_budget_limit', 'Saldo diário do orçamento em USD insuficiente para reservar uma execução.'
+    return None
+
+
+def require_budget(settings, store, db, *, day=None):
+    """Repetir dentro de BEGIN IMMEDIATE, antes de inserir/enviar qualquer intenção."""
+    blocker = _budget_blocker(settings, budget_usage(store, db, day=day))
+    if blocker:
+        raise SecurityGate('security_gate: ' + blocker[1])
+
+
+def daily_tokens(settings, store, db=None, *, day=None):
     """Reserva integral para consumo desconhecido; resultados conhecidos usam usage validado."""
     if db is None:
         with store.connect() as connection:
-            return daily_tokens(settings, store, connection)
+            return daily_tokens(settings, store, connection, day=day)
     rows = db.execute("""SELECT r.usage,r.request,r.status FROM cognitive_runs r JOIN jobs j ON j.id=r.job_id JOIN workflows w ON w.id=j.workflow_id
                       WHERE r.provider='hermes' AND w.cognitive_client='live' AND
                       (r.created_at>=? OR r.status IN ('submitting','admitted','unknown','policy_violation'))""",
-                      (datetime.now(timezone.utc).date().isoformat(),)).fetchall()
+                      (day or datetime.now(timezone.utc).date().isoformat(),)).fetchall()
     total = 0
     for row in rows:
         try:
             usage = json.loads(row['usage']) if row['usage'] else {}
             used = usage.get('total_tokens')
-            if type(used) is not int or used < 0 or row['status'] not in {'completed', 'failed', 'cancelled', 'invalid_output', 'interrupted'}:
+            if type(used) is not int or used < 0 or row['status'] not in FINAL_RUN_STATUSES:
                 request = json.loads(row['request'])
                 reservation = request.get('metadata', {}).get('horus_token_reservation')
                 if not isinstance(reservation, str) or not reservation.isdigit() or int(reservation) <= 0:
@@ -316,15 +430,15 @@ def daily_tokens(settings, store, db=None):
     return total
 
 
-def daily_runs(store, db=None):
+def daily_runs(store, db=None, *, day=None):
     """Cada intenção real conta uma vez, inclusive recusada/sem consumo ou ainda desconhecida."""
     if db is None:
         with store.connect() as connection:
-            return daily_runs(store, connection)
+            return daily_runs(store, connection, day=day)
     return db.execute("""SELECT COUNT(*) FROM cognitive_runs r JOIN jobs j ON j.id=r.job_id
                       JOIN workflows w ON w.id=j.workflow_id
                       WHERE r.provider='hermes' AND w.cognitive_client='live' AND r.created_at>=?""",
-                      (datetime.now(timezone.utc).date().isoformat(),)).fetchone()[0]
+                      (day or datetime.now(timezone.utc).date().isoformat(),)).fetchone()[0]
 
 
 def security_status(settings, store=None):
@@ -360,9 +474,12 @@ def security_status(settings, store=None):
         block('connection_invalid', 'Conexão Hermes inválida; use somente IP de loopback.')
     configured = cost_configured(settings)
     runs_configured = type(settings.max_runs_per_day) is int and settings.max_runs_per_day > 0
+    budget_valid, pricing_valid = budget_configured(settings), pricing_configured(settings)
+    amounts = {name: Decimal(0) for name in ('estimated_spent_total_usd', 'estimated_spent_today_usd', 'reserved_usd')}
+    runs_today = daily_runs(store) if store is not None else 0
     if not runs_configured:
         block('run_limit_missing', 'Configure teto positivo de execuções reais por dia no operador.')
-    elif store is not None and daily_runs(store) >= settings.max_runs_per_day:
+    elif runs_today >= settings.max_runs_per_day:
         block('daily_run_limit', 'O teto diário de execuções reais foi atingido.')
     if not configured:
         block('cost_limits_missing', 'Configure tetos positivos de tokens por execução e por dia no operador.')
@@ -372,11 +489,32 @@ def security_status(settings, store=None):
                 block('daily_token_limit', 'O saldo diário não comporta uma nova execução.')
         except SecurityGate:
             block('usage_unverifiable', 'Consumo diário não verificável.')
+    if not budget_valid:
+        block('budget_limits_invalid', 'Configure orçamento USD positivo, com limite diário menor ou igual ao total.')
+    if not pricing_valid:
+        block('pricing_missing', 'Configure preços explícitos positivos de entrada e saída em USD por milhão de tokens.')
+    if store is not None:
+        try:
+            amounts = budget_usage(store)
+        except SecurityGate:
+            amounts = {name: None for name in amounts}
+            block('cost_usage_unverifiable', 'Consumo monetário anterior não verificável; execução real bloqueada.')
+    if configured and budget_valid and pricing_valid and amounts['reserved_usd'] is not None:
+        budget_blocker = _budget_blocker(settings, amounts)
+        if budget_blocker:
+            block(*budget_blocker)
+    from .config import positive_decimal
+    budget_total, budget_daily = positive_decimal(settings.budget_total_usd), positive_decimal(settings.budget_daily_usd)
     profile.update(connection=connection, profile_label='%LOCALAPPDATA%/hermes/profiles/horus' if settings.hermes_profile == profile_default() else 'perfil selecionado pelo operador',
                    network_isolation={'enforced': False, 'mechanism': None, 'reason': 'Sem bloqueio de rede no nível do SO; gateway externo não é iniciado pelo Hórus.'},
                    cost_limits={'configured': configured, 'max_tokens_per_run': settings.max_tokens_per_run,
                                 'max_tokens_per_day': settings.max_tokens_per_day,
-                                'max_runs_per_day': settings.max_runs_per_day, 'runs_configured': runs_configured})
+                                'max_runs_per_day': settings.max_runs_per_day, 'runs_configured': runs_configured,
+                                'budget_total_usd': format(budget_total, 'f') if budget_total is not None else None,
+                                'budget_daily_usd': format(budget_daily, 'f') if budget_daily is not None else None,
+                                'budget_configured': budget_valid, 'pricing_configured': pricing_valid,
+                                **{name: format(amount, 'f') if amount is not None else None for name, amount in amounts.items()},
+                                'runs_today': runs_today})
     return {'schema_version': 'security.status.v1', 'checked_at': datetime.now(timezone.utc).isoformat(),
             'real_execution_allowed': not blockers, 'blockers': blockers,
             'processing': {'local_only': True if settings.workflow_executor != 'hermes' and settings.radar_executor != 'hermes' else False,

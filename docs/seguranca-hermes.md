@@ -4,7 +4,9 @@
 
 O backend audita configuração local, oferece `GET /v1/security/status` autenticado e recusa autorização/envio real enquanto houver blockers. Não inicia Hermes, escolhe provedor, configura credenciais ou aplica isolamento de SO. Hermes continua externo, sem fork. O incremento integrado em `d050658` já possui limpeza automática do Radar; retenção local não protege o processo Hermes.
 
-O perfil `%LOCALAPPDATA%/hermes/profiles/horus` **não foi alterado** nesta revisão. O diagnóstico integrado informa 24 ferramentas herdadas de `hermes-api-server`, memória/perfil de usuário ativos pelos defaults, ausência de aprovação de escrita e de tetos de tokens. Há `skills: 2 itens; cron: 6 itens`. O inventário abaixo é somente leitura; não foram abertos `.env`, `auth*`, sessões, prompts ou saídas. A conexão privada Hórus–Hermes também não foi modificada.
+O coordenador informou a aplicação autorizada do endurecimento ao perfil `%LOCALAPPDATA%/hermes/profiles/horus`, com backup `.horus-hardening/cc69987dc93c44eea9f8e9d95cc7d457`, zero ferramentas e memória desligada. O gateway está parado, sem provedor configurado e **nenhum gasto ou inferência real está autorizado**. O incremento SEC-C3 não acessou nem alterou esse perfil ou o workspace operacional do Hórus; implementa e testa os limites aprovados no backend. Sem preços explícitos do operador, o novo blocker crítico `pricing_missing` mantém a execução real recusada.
+
+O inventário abaixo preserva a evidência **anterior ao endurecimento**: 24 ferramentas herdadas de `hermes-api-server`, memória/perfil ativos e `skills: 2 itens; cron: 6 itens`. Na auditoria original não foram abertos `.env`, `auth*`, sessões, prompts ou saídas; a conexão privada Hórus–Hermes não foi modificada.
 
 A seleção estática herdada contém `browser_cdp`, `browser_dialog`, `browser_exec`, `browser_vault`, `cronjob_manage`, `delegate_task`, `execute_code`, `image_generate`, `manage_connections`, `memory`, `patch`, `process_manage`, `read_file`, `search_files`, `session_search`, `skill_manage`, `skill_view`, `skills_list`, `terminal`, `todo_list`, `vision_analyze`, `web_extract`, `web_search`, `write_file`. Disponibilidade em runtime depende de credenciais/checks; ausência de credenciais não garante isolamento.
 
@@ -89,6 +91,8 @@ Hashes não autenticam manifesto/payload contra adulteração conjunta. `copy2` 
 
 ## Aplicação operacional — exige autorização, não executada
 
+Este roteiro foi registrado antes da aplicação comunicada pelo coordenador acima. Não foi repetido pelo SEC-C3; restauração, reinício ou nova alteração operacional continuam sujeitos à autorização correspondente.
+
 1. Idealizador aprova parada/reinício **somente do gateway `horus`**, substituição YAML e quarentena inventariada. Isso não aprova inferência, credenciais, provedor ou firewall. Confirmar revisão do Hermes e perfil realmente usado pelo gateway. Abortar por versão divergente, multiplexação/perfil incerto, trabalho/subprocesso pendente.
 2. Parar pelo mecanismo suportado: `hermes -p horus gateway stop`. Não usar `--force`, `--replace`, `--interrupt`, `-z` ou encerramento genérico de Python. Se houver recusa por trabalho ativo, conciliar antes. Confirmar no supervisor do operador que gateway exclusivo/scheduler encerraram; arquivo `.lock` vazio não comprova processo ativo/inativo. Não iniciar gateway para inventariar.
 3. Na raiz do repo, revisar plano sem escrita (flag real continua sujeita à autorização):
@@ -115,18 +119,20 @@ Hashes não autenticam manifesto/payload contra adulteração conjunta. `copy2` 
    $statusHorus | ConvertTo-Json -Depth 12
    ```
 
-   Desktop com porta dinâmica usa origem da sessão atual. Esperado: ferramentas/perigosas `[]`, `restricted: true`, ambas as memórias `false`, provedor de memória nulo. Tetos ausentes devem manter blockers; não forjar aprovação. Endpoint consulta arquivos locais, não prova perfil/estado do gateway.
-6. Após aprovar valores, definir os três tetos no ambiente **do backend** e reiniciá-lo pelo launcher para recarregar `Settings`. Não alterar `.env`/conexão Hermes neste procedimento. Validar teto remoto no provedor separadamente antes de inferência. Com conexão/limites válidos e perfil mínimo, esperar `blockers: []` e `real_execution_allowed: true`: admissão local, não autorização de chamada.
+   Desktop com porta dinâmica usa origem da sessão atual. Esperado: ferramentas/perigosas `[]`, `restricted: true`, ambas as memórias `false`, provedor de memória nulo. Preços ausentes ou limites inválidos mantêm blockers; não forjar aprovação. Endpoint consulta arquivos locais, não prova perfil/estado do gateway.
+6. O backend aplica os padrões aprovados da seção seguinte; overrides e preços explícitos vêm do ambiente **do backend**, carregado em `Settings` ao iniciar. Não alterar `.env`/conexão Hermes neste procedimento. Validar teto remoto no provedor separadamente antes de inferência. Somente com conexão, limites, preços, saldo e perfil válidos, esperar `blockers: []` e `real_execution_allowed: true`: admissão local, não autorização de chamada.
 
-   Exemplo com a proposta deste guia, somente depois de aprovada, na sessão que iniciará o backend:
+   Overrides equivalentes aos padrões já aprovados, na sessão que iniciará o backend:
 
    ```powershell
    $env:HORUS_MAX_TOKENS_PER_RUN = '16384'
    $env:HORUS_MAX_TOKENS_PER_DAY = '32768'
    $env:HORUS_MAX_RUNS_PER_DAY = '2'
+   $env:HORUS_BUDGET_TOTAL_USD = '5'
+   $env:HORUS_BUDGET_DAILY_USD = '1'
    ```
 
-   Processos já abertos não herdam essas mudanças; não basta definir variáveis numa janela diferente do launcher.
+   Processos já abertos não herdam essas mudanças; não basta definir variáveis numa janela diferente do launcher. Os preços de entrada/saída devem ser obtidos e definidos pelo operador; este guia não fornece tabela nem libera inferência.
 
 7. Se autorizado, reiniciar pelo launcher existente `./scripts/Prepare-Hermes.ps1 -StartGateway` (seleciona `-p horus`) e repetir status **antes de qualquer análise**. **Se skills essenciais ou cron reaparecerem, abortar liberação e manter gate fechado.** Não esvaziar diretórios de processo ativo, retirar blockers ou aceitar esses itens automaticamente. A instalação inspecionada pode recriá-los; não foi validado caminho operacional sem essa recriação. Resolver exige ensaio autorizado/decisão adicional, sem fork/bypass nesta tarefa.
 8. Somente após verificações aprovadas e autorização separada de destino/custo/dados, considerar análise delimitada fictícia. Nenhuma inferência é autorizada por este guia.
@@ -143,37 +149,85 @@ if ($LASTEXITCODE -ne 0) { throw 'Restauração falhou/recusou; preservar arquiv
 
 Só declara sucesso após verificar hashes. Conferir `state: restored` e status: perfil anterior inseguro deve **voltar a bloquear**, com extensões preservadas. Reinício permanece sujeito à autorização. Se gateway recriou extensões/terceiro editou YAML, restore recusa sobrescrever: preservar e decidir recuperação supervisionada; não remover arquivos para contornar recusa.
 
-## Limites implementados e proposta pendente
+## Limites aprovados e aplicados no backend (SEC-C3)
 
-`HORUS_MAX_TOKENS_PER_RUN`, `HORUS_MAX_TOKENS_PER_DAY` e **`HORUS_MAX_RUNS_PER_DAY`** são inteiros positivos do operador; ausência/invalidez bloqueia real. Teto por execução não pode superar o diário. Payload/agente/memória não os modificam. `HORUS_HERMES_PROFILE` seleciona diretório auditado, sem trocar gateway externo.
+`Settings` aplica estes padrões quando a variável **não existe**; variáveis presentes sobrescrevem os padrões. Vazio, zero, negativo, texto inválido ou combinação inválida bloqueiam execução real, sem fallback silencioso. Payload, agente e memória não modificam a configuração oficial do operador. `HORUS_HERMES_PROFILE` seleciona diretório auditado, sem trocar o gateway externo.
 
-Proposta para primeiro ensaio, **não aplicada ao ambiente real**:
-
-| Variável | Valor | Justificativa |
+| Variável | Padrão | Validação |
 |---|---:|---|
-| `HORUS_MAX_TOKENS_PER_RUN` | `16384` | Piloto de 3–5 itens, uma análise JSON, saída alvo de 2–4 mil tokens. Fixture com 3 itens: envelope 2.131 bytes UTF-8 e instruções do adaptador 756 bytes (serialização medida). Margem para contexto interno ainda não medido; se insuficiente, parar e medir antes de aumentar. |
-| `HORUS_MAX_TOKENS_PER_DAY` | `32768` | Duas reservas integrais; impede acúmulo inicial de tentativas. |
-| `HORUS_MAX_RUNS_PER_DAY` | `2` | Uma análise e eventual nova análise explicitamente autorizada/revisada; também limita chamadas baratas, falhas e consumo zero. |
+| `HORUS_MAX_TOKENS_PER_RUN` | `16384` | Inteiro positivo, menor ou igual ao teto diário. |
+| `HORUS_MAX_TOKENS_PER_DAY` | `32768` | Inteiro positivo. |
+| `HORUS_MAX_RUNS_PER_DAY` | `2` | Inteiro positivo; falhas e consumo zero também contam. |
+| `HORUS_BUDGET_TOTAL_USD` | `5` | Decimal positivo em USD. |
+| `HORUS_BUDGET_DAILY_USD` | `1` | Decimal positivo em USD, menor ou igual ao total. |
+| `HORUS_PRICE_INPUT_USD_PER_MTOK` | **Ausente** | Preço explícito positivo em USD por milhão de tokens de entrada. |
+| `HORUS_PRICE_OUTPUT_USD_PER_MTOK` | **Ausente** | Preço explícito positivo em USD por milhão de tokens de saída. |
 
-Contrato permite até 50 itens; não se promete admitir snapshots máximos com essa proposta. Antes do envio, bytes UTF-8 de envelope+instruções precisam ser menores que teto por execução. Bytes são heurística para entrada; excluem prompt interno, reasoning e saída. Valores de saída/contexto são estimativas, não medição de modelo.
+Inteiros aceitam até 11 dígitos ASCII. Decimais usam ponto, até 12 casas decimais, valor máximo `1000000000000` e até 40 caracteres; não aceitam vírgula, espaços, sinais, notação científica, `NaN` ou infinito. Operações monetárias usam `Decimal`; JSON usa strings decimais para preservar precisão. Ambos os preços são obrigatórios: ausência/invalidez gera `pricing_missing` crítico, sem tabela de preços embutida nem consulta a provedor. Orçamento inválido gera `budget_limits_invalid`; tetos inválidos mantêm `cost_limits_missing`/`run_limit_missing`.
 
-Antes de enviar, o adaptador verifica quantidade diária/saldo sob o mesmo `BEGIN IMMEDIATE` que insere intenção em `cognitive_runs` e reserva teto integral em `request.metadata.horus_token_reservation`. Cada intenção real criada no dia UTC conta uma vez: concluída, falha, cancelada, desconhecida ou consumo zero. Replay/conciliação não cria linha/vaga nova; nova intenção/retentativa conta. Autorizações ainda não enviadas não reservam vaga e são rechecadas na admissão. Junção com `workflows.cognitive_client='live'` exclui simulações apesar do legado `provider='hermes'`.
+Contrato permite até 50 itens; não se promete admitir snapshots máximos com esses tetos. Antes do envio, bytes UTF-8 de envelope+instruções precisam ser menores que o teto por execução. Bytes são heurística para entrada; excluem prompt interno, reasoning e saída. Polling pede parada ao observar excesso e recusa resultado acima do teto. A API de runs não oferece parâmetro comprovado para teto remoto total; `usage` pode chegar só no final.
 
-Consumo conhecido usa `usage.total_tokens`; desconhecido conserva reserva integral, inclusive pendências antigas. Quantidade diária usa dia UTC da criação; pendência antiga mantém reserva de tokens sem contar como nova chamada. Polling pede parada ao observar excesso e recusa resultado acima do teto. API de runs não oferece parâmetro comprovado para teto remoto total; `usage` pode chegar só no final. **Hórus não garante corte financeiro rígido.**
+### Reserva antes do envio e persistência sem migração
 
-Proposta financeira: credencial/projeto exclusivo, sem recarga automática, saldo inicial máximo equivalente a **US$ 5**, corte diário de **US$ 1** se existir bloqueio efetivo no provedor, e alerta abaixo disso. Valores propostos, sem afirmar preços/recursos de provedor selecionado. Idealizador aprova moeda/teto/provedor e verifica no próprio provedor interrupção de cobrança, incluindo reasoning/caches/auxiliares/tentativas. Alerta sem interrupção não é hard cap. Sem mecanismo confiável, manter real bloqueado operacionalmente até decidir exposição aceitável; Hórus não verifica painel nem controla cobrança remota.
+A reserva conservadora em USD é `R = max_tokens_per_run × max(preço_entrada, preço_saída) / 1.000.000`. Exemplo **fictício de teste**, sem indicação de preço real: com preços 10/20 USD por milhão, `R = 16384 × 20 / 1000000 = 0.32768 USD`.
+
+O adaptador verifica execuções, tokens e orçamento no mesmo `BEGIN IMMEDIATE` que grava a intenção em `cognitive_runs`, **antes de enviar**. Captura o instante depois de obter a trava e usa o mesmo dia UTC nos três controles e na criação da intenção, inclusive se virar meia-noite durante a transação. Recusa se `gasto_total_estimado + reservas_abertas + R > orçamento_total`, ou se `gasto_estimado_do_dia_UTC + reservas_abertas + R > orçamento_diário`; igualdade é permitida. O gate da autorização devolve HTTP 409 `security_gate`, com mensagem de saldo total/diário insuficiente. Uma autorização aceita antes de outra reserva ainda será rechecada na admissão: pode falhar com `security_gate` sem criar execução ou enviar pedido. Não há retentativa paga automática.
+
+Cada intenção real criada no dia UTC conta uma vez: concluída, falha, cancelada, desconhecida ou consumo zero. Replay/conciliação usa a mesma intenção, sem nova vaga/reserva; nova tentativa exige autorização. Autorizações ainda não enviadas não reservam vaga. A junção com `workflows.cognitive_client='live'` exclui `hermes_simulated` de todos os limites e custos, apesar do legado `provider='hermes'` na tabela.
+
+O schema continua v4. Dados adicionais ficam nos JSON existentes:
+
+- `request.metadata.horus_token_reservation`: teto integral de tokens, como string.
+- `request.metadata.horus_cost_reservation_usd`: reserva monetária integral, como string decimal.
+- `request.metadata.horus_price_input_usd_per_mtok` e `horus_price_output_usd_per_mtok`: preços congelados na intenção; mudança posterior na configuração não recalcula o histórico.
+- `usage.horus_estimated_cost_usd`: custo calculado ou reserva integral se consumo desconhecido.
+- `usage.horus_cost_finalized`: `true` somente quando há consumo verificável; a reserva só é liberada em estado final com esse marcador. O adaptador cria os marcadores de custo; conteúdo remoto não os fornece.
+
+Com `input_tokens`, `output_tokens` e `total_tokens` inteiros não negativos e consistentes, o custo é `(entrada × preço_entrada + saída × preço_saída + (cache_leitura + cache_escrita + tokens_não_classificados) × maior_preço) / 1.000.000`. Tokens não classificados são `max(total − entrada − saída − caches, 0)`. Não há tarifas próprias de cache: ele recebe o maior preço configurado, somado conservadoramente mesmo quando também incluído na entrada pelo provedor. Campos incompletos/inválidos preservam a reserva inteira, inclusive após falha/cancelamento/conclusão. Consumo zero completo libera a reserva monetária, mas continua contando uma execução real.
+
+O acumulado total acompanha o banco local, sem reinicialização diária. Gasto diário e quantidade de chamadas usam o dia UTC da criação da intenção. Reservas monetárias desconhecidas/abertas atravessam a meia-noite e oneram também o novo dia, até conciliação com consumo verificável; não são convertidas em saldo livre. Consumo de tokens desconhecido conserva a reserva integral. Intenção antiga ainda pendente conserva tokens, sem contar como nova chamada. Registros reais anteriores sem reserva monetária verificável bloqueiam com `cost_usage_unverifiable`, valores monetários `null` no status e sem migração ou estimativa retroativa automática. Simulações antigas não bloqueiam.
+
+### Consulta do orçamento
+
+`GET /v1/security/status` estende `hermes.cost_limits` de forma aditiva, sem credenciais ou preços privados. Exemplo com os padrões aprovados, banco vazio e preços **não configurados**:
+
+```json
+{
+  "configured": true,
+  "max_tokens_per_run": 16384,
+  "max_tokens_per_day": 32768,
+  "max_runs_per_day": 2,
+  "runs_configured": true,
+  "budget_total_usd": "5",
+  "budget_daily_usd": "1",
+  "budget_configured": true,
+  "pricing_configured": false,
+  "estimated_spent_total_usd": "0",
+  "estimated_spent_today_usd": "0",
+  "reserved_usd": "0",
+  "runs_today": 0
+}
+```
+
+`configured` preserva o significado anterior de tetos de tokens válidos; `budget_configured` e `pricing_configured` são independentes. O exemplo mantém `pricing_missing` crítico e `real_execution_allowed: false`. `reserved_usd` soma todas as reservas abertas, sem duplicar os gastos já finalizados. Novos envios sem saldo geram `total_budget_limit`/`daily_budget_limit`.
+
+### O que o controle local não garante
+
+O Hórus impede **novas admissões locais** que excederiam o orçamento estimado segundo os preços e tetos configurados. **Não garante a cobrança remota real, a correção/atualização dos preços do operador, nem contabiliza reasoning/cache/auxiliares não informados pelo provedor.** Uma execução pode exceder o teto antes de o polling receber `usage`; a estimativa pode superar a reserva e bloquear chamadas seguintes. Repetição de transporte usa a mesma chave de idempotência, mas o Hórus não verifica a política de cobrança remota. Não audita painel, crédito, câmbio ou chamadas feitas fora deste banco. Remover/trocar o banco ou editar sua configuração/histórico afeta o controle e não é um mecanismo de liberação autorizado.
+
+Credencial/projeto exclusivo, recarga e corte remoto devem ser validados separadamente pelo operador. O processo Hermes continua sem confinamento de SO. Aprovação dos limites iniciais não autoriza configurar provedor/credenciais, iniciar gateway ou efetuar gasto; cada chamada paga continua dependendo de autorização humana aplicável.
 
 ## Validação e riscos residuais
 
-Testes usam `tmp_path`, segredos/dados fictícios, simulador em processo e HTTP exclusivamente em loopback. Cobrem reativações por plugins/MCP/skills/código/contexto, seleção não vazia/alias/desconhecidos/ambiente; status sem ler conteúdo; dry-run sem escrita; backup seletivo; restauração de bytes/diretórios vazios; corrupção/drift/falha de aplicação; limites/rechecagem transacional; injeção de dataset sem efeito e resposta com URL externa reprovada pelo validador. Não equivalem a jailbreak de modelo real.
+Testes usam `tmp_path`, segredos/dados fictícios, simulador em processo e HTTP exclusivamente em loopback. Cobrem reativações por plugins/MCP/skills/código/contexto, seleção não vazia/alias/desconhecidos/ambiente; status sem ler conteúdo; dry-run sem escrita; backup seletivo; restauração de bytes/diretórios vazios; corrupção/drift/falha de aplicação; limites/rechecagem transacional; injeção de dataset sem efeito e resposta com URL externa reprovada pelo validador. Os testes de orçamento usam Hermes em memória, relógio UTC controlado e recusa de sockets externos: padrões/overrides/inválidos, falta de preços, igualdade e excesso de reservas/gastos total/diário, duas admissões concorrentes sob lock e duas autorizações humanas concorrentes, virada UTC (inclusive dentro da admissão), consumo/cache registrado, consumo desconhecido, simulação excluída e status numérico. Não equivalem a jailbreak de modelo real.
 
 ```powershell
 & backend/.venv/Scripts/python.exe -m pytest backend/tests -q
 & backend/.venv/Scripts/python.exe -m pytest contracts/hermes/tests -q -p no:cacheprovider
 ```
 
-Resultado final desta revisão: **386 aprovados, 1 ignorado** no backend; **54 aprovados** no contrato. O teste de criação real de symlink foi ignorado por falta de permissão no Windows; não foi contornado por elevação. A recusa de hardlink, restauração de bytes e rollback de falhas de movimento/cópia passaram. Há aviso de depreciação preexistente de Starlette/httpx; nenhuma dependência foi instalada/atualizada. Também passaram ensaio do CLI em perfil temporário (dry-run, aplicação e restore), ensaio offline das funções instaladas e `git diff --check`. Uma falha intermitente Winsock no teste de reflexão foi corrigida consumindo o corpo POST e delimitando a resposta HTTP do servidor fictício; a suíte completa passou após a correção.
+Resultado final do SEC-C3: **455 aprovados, 1 ignorado** no backend (incluindo 34 novos testes de orçamento); **54 aprovados** no contrato, ambos os comandos com saída zero. O teste de criação real de symlink foi ignorado por falta de permissão no Windows; não foi contornado por elevação. Há aviso de depreciação preexistente de Starlette/httpx; nenhuma dependência foi instalada/atualizada. `git diff --check` e conferência de referências documentais locais passaram. Ensaios manuais do CLI/instalação Hermes pertencem à evidência anterior e não foram repetidos pelo SEC-C3; este incremento não acessou perfis ou bancos operacionais nem autorizou tráfego externo.
 
 O processo Hermes continua com permissões do usuário e pode acessar rede por componentes internos/provedor/catálogos. `network_isolation.enforced` permanece `false`. Job Objects não bloqueiam arquivos/rede; AppContainer, usuário dedicado/VM e política de saída exigem desenho, compatibilidade e autorização próprios. Nada disso foi instalado/configurado aqui.
 
-Gate não autentica versão, ambiente completo, plugins já carregados ou perfil realmente usado pelo gateway; mudanças locais após inspeção são risco residual. A seleção mínima vazia sob as condições inspecionadas não comprova operação contínua do perfil real após reinício. Alteração do perfil, limites reais, ensaio de reinício/inferência, credenciais/provedor e confinamento dependem do idealizador.
+Gate não autentica versão, ambiente completo, plugins já carregados ou perfil realmente usado pelo gateway; mudanças locais após inspeção são risco residual. A seleção mínima vazia sob as condições inspecionadas não comprova operação contínua do perfil real após reinício. Os limites iniciais desta seção estão aprovados e implementados; alteração operacional do perfil, ensaio de reinício/inferência, credenciais/provedor, preços aplicáveis e confinamento continuam dependendo do idealizador. Não há decisão de implementação pendente no SEC-C3, nem autorização de gasto real.
