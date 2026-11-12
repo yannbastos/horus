@@ -25,6 +25,15 @@ class WorkflowConflict(ValueError):
     pass
 
 
+RADAR_REDACTED = "Dataset Radar expirado e removido pela política de retenção; colete uma nova revisão do Radar."
+
+
+def radar_redacted(payload) -> bool:
+    """True quando as cópias de dados do YouTube já foram redigidas (ver retention.py)."""
+    radar = payload.get("radar") if isinstance(payload, dict) else None
+    return bool(radar and radar.get("redacted_at"))
+
+
 class WorkflowRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     objective: str = Field(min_length=1, max_length=4000)
@@ -245,6 +254,8 @@ class WorkflowService:
                 return None
             if job["workflow_revision"] != workflow["revision"]:
                 return None
+            if radar_redacted(json.loads(workflow["payload"])):
+                raise WorkflowConflict(RADAR_REDACTED)
             stage = job["step_key"]
             if stage not in STAGES or job["step_index"] != STAGES.index(stage):
                 raise WorkflowConflict("Etapa editorial inválida.")
@@ -453,6 +464,8 @@ class WorkflowService:
         with self.store.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             workflow = self._require(db, workflow_id)
+            if radar_redacted(json.loads(workflow["payload"])):
+                raise WorkflowConflict(RADAR_REDACTED)
             if workflow["revision"] != revision or workflow["status"] not in {"failed", "interrupted"}:
                 raise WorkflowConflict("Somente a revisão atual com falha ou interrupção pode ser retomada.")
             job = db.execute("""SELECT * FROM jobs WHERE workflow_id=? AND workflow_revision=?
@@ -478,6 +491,8 @@ class WorkflowService:
         with self.store.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             workflow = self._require(db, workflow_id)
+            if radar_redacted(json.loads(workflow["payload"])):
+                raise WorkflowConflict(RADAR_REDACTED)
             radar = json.loads(workflow["payload"]).get("radar")
             if radar and datetime.fromisoformat(radar["expires_at"].replace("Z", "+00:00")) <= datetime.now(timezone.utc):
                 raise WorkflowConflict("Dataset Radar expirado; colete uma nova revisão antes de autorizar.")
@@ -511,6 +526,8 @@ class WorkflowService:
         with self.store.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             workflow = self._require(db, workflow_id)
+            if radar_redacted(json.loads(workflow["payload"])):
+                raise WorkflowConflict(RADAR_REDACTED)
             if workflow["revision"] != revision or workflow["status"] not in {"failed", "interrupted"}:
                 raise WorkflowConflict("Somente a revisão atual com falha ou interrupção pode ser conciliada.")
             job = db.execute("""SELECT j.* FROM jobs j JOIN cognitive_runs r ON r.job_id=j.id
@@ -544,6 +561,8 @@ class WorkflowService:
                                       (request.artifact_id, workflow_id, request.expected_revision)).fetchone()
                 if not artifact or digest(json.loads(artifact["content"])) != artifact["content_hash"]:
                     raise WorkflowConflict("Proposta com integridade inválida.")
+                if request.decision == "request_changes" and radar_redacted(json.loads(workflow["payload"])):
+                    raise WorkflowConflict(RADAR_REDACTED)  # nova revisão reexecutaria análise sem o dataset
                 approval_id = uuid.uuid4().hex
                 db.execute("""INSERT INTO approvals VALUES(?,?,?,?,?,?,'local-operator','editorial_proposal',?,?,?)""",
                            (approval_id, workflow_id, workflow["revision"], request.artifact_id, request.decision,

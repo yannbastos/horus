@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Annotated, Literal
@@ -10,6 +11,8 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
 
 from .config import Settings
+from .radar_youtube.state import RadarState
+from .retention import run_retention
 from .processes import OwnedProcess
 from .storage import Store
 from .transcriber import FILE_MARKER, LANGUAGES, MODELS, is_youtube_url
@@ -17,6 +20,8 @@ from .worker_lock import WorkerLock
 from .workflows import WorkflowService
 
 TERMINAL = {"succeeded", "failed", "cancelled", "interrupted", "blocked"}
+RETENTION_INTERVAL_SECONDS = 6 * 3600
+log = logging.getLogger(__name__)
 
 
 class FactoryRequest(BaseModel):
@@ -70,6 +75,7 @@ class JobManager:
         self.queue: asyncio.Queue[str] = asyncio.Queue()
         self.changed = asyncio.Condition()
         self.worker: asyncio.Task | None = None
+        self.retention_task: asyncio.Task | None = None
         self.active_id: str | None = None
         self.active_process: OwnedProcess | None = None
         self.worker_lock = WorkerLock(store.path)
@@ -82,12 +88,32 @@ class JobManager:
         try:
             self.store.recover()
             self.workflows.recover()
+            await self.run_retention()
             for job_id in self.store.queued_ids():
                 self.queue.put_nowait(job_id)
             self.worker = asyncio.create_task(self._work())
+            self.retention_task = asyncio.create_task(self._retention_loop())
         except BaseException:
             self.worker_lock.close()
             raise
+
+    def _retention_cycle(self):
+        # Sem rede. O arquivo do Radar fica ao lado do banco operacional (mesmo diretório de dados).
+        report = run_retention(self.store)
+        RadarState(self.store.path.parent / "radar" / "radar-youtube.sqlite3").purge()
+        return report
+
+    async def run_retention(self):
+        """Falhas de limpeza nunca impedem a inicialização nem o executor; ficam no log e na próxima janela."""
+        try:
+            return await asyncio.to_thread(self._retention_cycle)
+        except Exception as error:
+            log.warning("Ciclo de retenção do Radar falhou: %s", type(error).__name__)
+
+    async def _retention_loop(self):
+        while True:
+            await asyncio.sleep(RETENTION_INTERVAL_SECONDS)
+            await self.run_retention()
 
     async def notify(self):
         async with self.changed:
@@ -307,10 +333,15 @@ class JobManager:
 
     async def close(self):
         try:
+            if self.retention_task:
+                self.retention_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await self.retention_task
             if self.worker:
                 self.worker.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await self.worker
         finally:
+            self.retention_task = None
             self.worker = None
             self.worker_lock.close()
