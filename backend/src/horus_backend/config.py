@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import sys
 from dataclasses import dataclass, field
+from decimal import Decimal
 from pathlib import Path
 
 
@@ -45,9 +47,26 @@ def hermes_connection_file() -> Path:
     return Path(os.environ.get("HORUS_HERMES_CONFIG", default_data_dir() / "integrations/hermes.json"))
 
 
-def operator_limit(name: str) -> int | None:
-    value = os.environ.get(name, "")
-    return int(value) if value.isascii() and value.isdigit() and len(value) < 12 else None
+def operator_limit(name: str, default: int) -> int | None:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return int(value) if value.isascii() and value.isdigit() and len(value) < 12 and int(value) > 0 else None
+
+
+def positive_decimal(value) -> Decimal | None:
+    """Configuração monetária exata e limitada; vazio/inválido nunca usa o padrão."""
+    if not isinstance(value, (str, Decimal, int)) or isinstance(value, bool):
+        return None
+    raw = format(value, 'f') if isinstance(value, Decimal) and value.is_finite() else str(value)
+    if len(raw) > 40 or not re.fullmatch(r'[0-9]+(?:\.[0-9]+)?', raw):
+        return None
+    amount = Decimal(raw)
+    return amount if 0 < amount <= Decimal('1000000000000') and amount.as_tuple().exponent >= -12 else None
+
+
+def operator_decimal(name: str, default: str | None = None) -> Decimal | None:
+    return positive_decimal(os.environ.get(name, default))
 
 
 def hermes_profile_dir() -> Path:
@@ -70,9 +89,13 @@ class Settings:
     workflow_executor: str = field(default_factory=lambda: os.environ.get("HORUS_WORKFLOW_EXECUTOR", "simulated"))
     radar_executor: str = field(default_factory=lambda: os.environ.get("HORUS_RADAR_EXECUTOR", "hermes_simulated"))
     hermes_profile: Path = field(default_factory=hermes_profile_dir)
-    max_tokens_per_run: int | None = field(default_factory=lambda: operator_limit("HORUS_MAX_TOKENS_PER_RUN"))
-    max_tokens_per_day: int | None = field(default_factory=lambda: operator_limit("HORUS_MAX_TOKENS_PER_DAY"))
-    max_runs_per_day: int | None = field(default_factory=lambda: operator_limit("HORUS_MAX_RUNS_PER_DAY"))
+    max_tokens_per_run: int | None = field(default_factory=lambda: operator_limit("HORUS_MAX_TOKENS_PER_RUN", 16384))
+    max_tokens_per_day: int | None = field(default_factory=lambda: operator_limit("HORUS_MAX_TOKENS_PER_DAY", 32768))
+    max_runs_per_day: int | None = field(default_factory=lambda: operator_limit("HORUS_MAX_RUNS_PER_DAY", 2))
+    budget_total_usd: Decimal | None = field(default_factory=lambda: operator_decimal("HORUS_BUDGET_TOTAL_USD", "5"))
+    budget_daily_usd: Decimal | None = field(default_factory=lambda: operator_decimal("HORUS_BUDGET_DAILY_USD", "1"))
+    price_input_usd_per_mtok: Decimal | None = field(default_factory=lambda: operator_decimal("HORUS_PRICE_INPUT_USD_PER_MTOK"))
+    price_output_usd_per_mtok: Decimal | None = field(default_factory=lambda: operator_decimal("HORUS_PRICE_OUTPUT_USD_PER_MTOK"))
     hermes_poll_seconds: float = 2.0
     hermes_run_timeout: float = 900.0
     origins: tuple[str, ...] = (

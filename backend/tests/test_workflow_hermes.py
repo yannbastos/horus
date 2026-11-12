@@ -4,6 +4,7 @@ Comprova o lado do Hórus: autorização antes de custo, chave/referência/consu
 evidências, cancelamento remoto e conciliação sem reenvio. Não comprova o Hermes real.
 """
 import copy
+from decimal import Decimal
 import json
 import sys
 import time
@@ -45,7 +46,8 @@ def settings(tmp_path, hermes):
     profile = tmp_path / "profile"
     harden_profile(profile)
     return Settings(hermes_profile=profile, max_tokens_per_run=100000, max_tokens_per_day=10000000, max_runs_per_day=100, token=TOKEN, data_dir=tmp_path / "data", factory_root=None, hermes_executable=None,
-                    hermes_config=connection, workflow_executor="hermes", hermes_poll_seconds=.05, hermes_run_timeout=5)
+                    hermes_config=connection, workflow_executor="hermes", hermes_poll_seconds=.05, hermes_run_timeout=5,
+                    price_input_usd_per_mtok=Decimal('1'), price_output_usd_per_mtok=Decimal('2'))
 
 
 def client_for(settings):
@@ -315,7 +317,7 @@ def test_daily_run_limit_rechecked_inside_reservation_transaction(settings, herm
     from dataclasses import replace
     import horus_backend.workflow_hermes as adapter
     settings = replace(settings, max_runs_per_day=1)
-    def exhausted_after_authorization(store, db):
+    def exhausted_after_authorization(store, db, *, day=None):
         # Outra admissão pode consumir a última vaga após a autorização; rechecagem sob lock.
         assert db.in_transaction
         return 1

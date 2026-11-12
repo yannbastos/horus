@@ -1,6 +1,7 @@
 """Testes offline de auditoria, configuração, isolamento HTTP e gates de execução."""
 import copy
 from dataclasses import replace
+from decimal import Decimal
 import json
 from pathlib import Path
 from urllib.request import ProxyHandler
@@ -32,7 +33,8 @@ def secure(tmp_path):
     connection.write_text(json.dumps({'base_url': 'http://127.0.0.1:8643', 'token': SECRET}), encoding='utf-8')
     return Settings(token=TOKEN, data_dir=tmp_path / 'data', factory_root=None, hermes_executable=None,
                     hermes_profile=profile, hermes_config=connection, max_tokens_per_run=100000,
-                    max_tokens_per_day=300000, max_runs_per_day=3)
+                    max_tokens_per_day=300000, max_runs_per_day=3,
+                    price_input_usd_per_mtok=Decimal('1'), price_output_usd_per_mtok=Decimal('2'))
 
 
 def rewrite(settings, old, new):
@@ -231,12 +233,11 @@ def test_real_daily_run_limit_must_be_positive_operator_integer(secure, limit):
         require_secure(replace(secure, max_runs_per_day=limit))
 
 
-def test_operator_daily_run_limit_defaults_to_blocking(secure, monkeypatch):
+def test_operator_daily_run_limit_defaults_to_approved_value(secure, monkeypatch):
     monkeypatch.delenv('HORUS_MAX_RUNS_PER_DAY', raising=False)
     default = Settings(token=TOKEN)
-    assert default.max_runs_per_day is None
-    with pytest.raises(SecurityGate):
-        require_secure(replace(secure, max_runs_per_day=default.max_runs_per_day))
+    assert default.max_runs_per_day == 2
+    require_secure(replace(secure, max_runs_per_day=default.max_runs_per_day))
 
 
 def test_simulated_exfiltration_has_no_effect_and_forged_source_is_rejected(secure, tmp_path, monkeypatch):

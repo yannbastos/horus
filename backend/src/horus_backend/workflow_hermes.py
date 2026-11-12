@@ -13,6 +13,7 @@ import json
 import re
 import time
 import uuid
+from decimal import Decimal
 from typing import Any, Callable, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -20,7 +21,8 @@ from urllib.error import HTTPError, URLError
 from urllib.request import ProxyHandler, Request, build_opener
 
 from .hermes import NoRedirect, read_connection, validate_origin
-from .security import SecurityGate, daily_runs, daily_tokens, require_secure
+from .security import (FINAL_RUN_STATUSES, SecurityGate, cost_reservation, daily_runs, daily_tokens,
+                       estimated_cost, require_budget, require_secure)
 from .hermes_contract.mapping import Observation, decide, idempotency_key
 from .hermes_contract.models import ChannelProfile, Dataset, HermesRunRequest, RunEnvelope
 from .hermes_contract.validator import OutputError, parse_output, validate_result
@@ -163,10 +165,17 @@ class HermesStages:
 
     def _record(self, run_id, **fields):
         fields["updated_at"] = now()
-        if "usage" in fields and fields["usage"] is not None:
-            fields["usage"] = json.dumps(fields["usage"])
-        columns = ",".join(f"{name}=?" for name in fields)
         with self.store.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            if 'usage' in fields or fields.get('status') in FINAL_RUN_STATUSES:
+                row = db.execute('SELECT request,usage FROM cognitive_runs WHERE id=?', (run_id,)).fetchone()
+                metadata = json.loads(row['request']).get('metadata', {}) if row else {}
+                if 'horus_cost_reservation_usd' in metadata:
+                    previous = json.loads(row['usage']) if row['usage'] else None
+                    fields['usage'] = estimated_cost(fields.get('usage', previous), metadata)
+            if "usage" in fields and fields["usage"] is not None:
+                fields["usage"] = json.dumps(fields["usage"])
+            columns = ",".join(f"{name}=?" for name in fields)
             db.execute(f"UPDATE cognitive_runs SET {columns} WHERE id=?", (*fields.values(), run_id))
 
     async def analysis(self, context, attempt_id: str, should_stop: Callable[[], bool]):
@@ -188,23 +197,33 @@ class HermesStages:
             envelope = self._envelope(context, attempt_id)
             body = HermesRunRequest(input=envelope.model_dump_json(), instructions=INSTRUCTIONS,
                                     metadata={"horus_workflow": context["workflow_id"], "horus_attempt": attempt_id,
-                                              **({"horus_token_reservation": str(self.settings.max_tokens_per_run)} if live else {})}
+                                              **({"horus_token_reservation": str(self.settings.max_tokens_per_run),
+                                                  "horus_cost_reservation_usd": format(cost_reservation(self.settings), 'f'),
+                                                  "horus_price_input_usd_per_mtok": format(Decimal(self.settings.price_input_usd_per_mtok), 'f'),
+                                                  "horus_price_output_usd_per_mtok": format(Decimal(self.settings.price_output_usd_per_mtok), 'f')} if live else {})}
                                     ).model_dump(exclude_none=True)
             # Limite conservador de admissão do payload (bytes UTF-8 >= tokens de texto).
             # Não substitui limite do provedor para prompt de sistema/reasoning; ver guia de segurança.
             if live and len((body["input"] + body["instructions"]).encode("utf-8")) >= self.settings.max_tokens_per_run:
                 raise CognitiveFailure("security_gate: Entrada excede o teto de tokens por execução.")
             run_id, key, external_ref = uuid.uuid4().hex, idempotency_key(attempt_id), None
-            timestamp = now()
             with self.store.connect() as db:  # reserva e intenção atômicas ANTES de enviar
                 db.execute("BEGIN IMMEDIATE")
-                if live and daily_runs(self.store, db) >= self.settings.max_runs_per_day:
+                timestamp = now()
+                day = timestamp[:10]  # mesmo dia UTC em todas as verificações e na intenção
+                if live and daily_runs(self.store, db, day=day) >= self.settings.max_runs_per_day:
                     raise CognitiveFailure("security_gate: Teto diário de execuções reais atingido.")
-                if live and daily_tokens(self.settings, self.store, db) + self.settings.max_tokens_per_run > self.settings.max_tokens_per_day:
+                if live and daily_tokens(self.settings, self.store, db, day=day) + self.settings.max_tokens_per_run > self.settings.max_tokens_per_day:
                     raise CognitiveFailure("security_gate: Saldo diário de tokens insuficiente.")
+                if live:
+                    try:
+                        require_budget(self.settings, self.store, db, day=day)
+                    except SecurityGate as error:
+                        raise CognitiveFailure(str(error)) from None
                 db.execute("""INSERT INTO cognitive_runs(id,job_id,attempt_id,provider,idempotency_key,request,request_hash,
-                    status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,'submitting',?,?)""",
+                    usage,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,'submitting',?,?)""",
                            (run_id, context["job_id"], attempt_id, "hermes", key, json.dumps(body), _digest(body),
+                            json.dumps(estimated_cost(None, body['metadata'])) if live else None,
                             timestamp, timestamp))
         try:
             if not external_ref:
@@ -298,6 +317,9 @@ class HermesStages:
         raw_usage = status.get("usage")
         usage = {name: raw_usage[name] for name in ('input_tokens', 'output_tokens', 'total_tokens', 'cache_read_tokens', 'cache_write_tokens')
                  if type(raw_usage.get(name)) is int and raw_usage[name] >= 0} if isinstance(raw_usage, dict) else None
+        if isinstance(raw_usage, dict) and any(name in raw_usage and (type(raw_usage[name]) is not int or raw_usage[name] < 0)
+                for name in ('input_tokens', 'output_tokens', 'total_tokens', 'cache_read_tokens', 'cache_write_tokens')):
+            usage['horus_usage_unverifiable'] = True
         if context.get("cognitive_client", "live") == "live" and usage and usage.get("total_tokens", 0) > self.settings.max_tokens_per_run:
             self._record(run_id, status="failed", usage=usage, error="Teto de tokens por execução excedido.")
             raise CognitiveFailure("security_gate: Teto de tokens por execução excedido; revisar provedor antes de repetir.")
