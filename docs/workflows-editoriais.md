@@ -140,11 +140,32 @@ O adapter converte `PublicRecord` de tipo vídeo em `DatasetItem`, preserva a or
 
 A elegibilidade informa `invalid_source_id`, `invalid_url`, `missing_title`, `missing_channel` e `missing_published_at`. O snapshot expõe `radar: {snapshot_id, revision, origin, expires_at, included, excluded}`; exclusões registram as razões de inelegibilidade. A idempotência considera também o corpo original, diferenciando seleção implícita e explícita; chave reutilizada com outro corpo retorna 409.
 
-**Retenção pendente, bloqueio para dados reais em M2:** `research` copia o snapshot para artefatos no banco operacional, e o pedido também preserva os dados adaptados. A criação recusa fonte ausente/expirada (404), e `authorize` recusa `radar.expires_at` vencido (409), inclusive ao repetir uma autorização. Isso não limpa cópias após 28 dias. Implementar expurgo de payloads, artefatos, pedidos cognitivos e backups antes de operar dados reais.
+### Retenção das cópias do Radar (M2)
+
+Implementada em `backend/src/horus_backend/retention.py` (`run_retention(store, clock=..., dry_run=False)`). Vale somente para workflows com bloco `radar`; `simulated`/`hermes` sem Radar não são tocados. Gatilho: `radar.expires_at <= agora` (28 dias após a coleta). Ação: **redação** sem apagar linhas, sem alterar estados e sem mudança de schema. O marcador é `{"redacted": true, "reason": "radar_retention", "expired_at": <expires_at>, "sha256": <hash do conteúdo original>}`; `request_hash`, `snapshot_hash`, `input_hash` e `content_hash` permanecem.
+
+| Local | Conteúdo | Tratamento |
+|---|---|---|
+| `workflows.payload.dataset` | itens: título, canal, URL, métricas, horários | **redigido** |
+| `artifacts.content` `research` | `dataset` congelado | **redigido** |
+| `artifacts.content` `analysis` | `result.sources` (URL/título) e `result.facts` (texto e `metric_refs`) | **redigido** |
+| `cognitive_runs.request` | `input` (envelope serializado com o dataset) | **redigido** (`request_hash` mantido) |
+| `jobs.error`, `job_attempts.error`, `cognitive_runs.error`, `workflow_events.data.error` | mensagens de erro | trocadas só se repetirem literalmente título/URL/canal do dataset |
+| `workflows.payload` (`radar`, `channel_profile`, `objective`, `_radar_request`), `feedback` | metadados, IDs, entrada do operador | preservado; `radar.redacted_at` é acrescentado |
+| `artifacts.content` `planning`, `proposal`; `analysis.result` (hipóteses, oportunidades, recomendação, `unknowns`, `memory_proposals`) | texto editorial derivado | preservado (a proposta mantém `content_hash`, então `review` segue válido); o evento registra `editorial_literal_matches`, a contagem de campos preservados que repetem literalmente texto do YouTube |
+| `jobs.result`, `job_attempts.result`, `events`, demais eventos, `approvals`, `authorizations` | IDs, estados, decisões, feedback | preservado (sem conteúdo do YouTube) |
+
+Cada workflow é redigido em uma transação `BEGIN IMMEDIATE`; falha desfaz só aquele workflow, e o próximo ciclo tenta de novo. Idempotente: `radar.redacted_at` marca o workflow como já tratado. Workflows com etapa em execução (`running`/`cancel_requested`) são adiados ao próximo ciclo, pois a etapa ainda gravaria o dataset. Cada workflow redigido gera um evento `workflow.radar_redacted` (contagens, sem conteúdo). O relatório traz `evaluated`, `redacted`, `already_redacted`, `not_expired`, `deferred_active`, `failed` e `ignored`; `dry_run=True` não escreve.
+
+Execução: `JobManager.start()` (após `recover`) e a cada 6 h, via `asyncio.to_thread`, sem scheduler externo. O mesmo ciclo chama `RadarState.purge()` do arquivo do Radar. Falha no ciclo é registrada em log e não impede a inicialização.
+
+Respostas após a redação: `retry`, `reconcile` e `authorize` retornam 409 ("Dataset Radar expirado e removido…"); `review` `request_changes` também (nova revisão reexecutaria a análise sem o dataset); `approve`/`reject` de proposta existente continuam permitidos; uma etapa já enfileirada é bloqueada por `_claim`. `GET /v1/workflows/{id}` funciona e expõe `radar.redacted_at`; `request.dataset` e os artefatos mostram apenas o marcador. Repetir `POST /v1/workflows/radar` com a mesma chave não reabre o workflow (a fonte expirada já retorna 404).
+
+**Limites:** não alcança backups `horus.backup-v*.sqlite3` gerados em migrações, arquivos `-wal` e páginas livres do SQLite (a redação usa `UPDATE`, sem `secure_delete`/`VACUUM`), exportações do operador, logs nem a cópia mantida pelo Hermes real. Dados reais continuam condicionados a tratar esses itens.
 
 O simulador mantém execuções em memória: reinício conserva a seleção do cliente e autorizações pendentes no SQLite. Uma análise em andamento no encerramento fica `unknown`, como no cliente real; `POST /v1/workflows/{id}/reconcile` consulta o simulador novo, que não conhece a execução perdida e a encerra deterministicamente como `interrupted` (não há trabalho externo a conciliar). O workflow fica `failed`, o retry volta a liberar a etapa e exige **nova autorização**; não há troca para cliente real nem reenvio automático. `stop` de execução desconhecida responde `cancelled`, sem exceção. Coberto por `test_restart_during_simulated_analysis_recovers`. O cliente HTTP existente e as regras de autorização permanecem em uso para `hermes`.
 
-Validação M1 usa exclusivamente bancos temporários e conexão/socket bloqueados durante a execução simulada. Inclui migração aditiva/rollback, reabertura, aprovação/rejeição persistidas, cancelamento confirmado, saída inválida e expiração; não comprova integração com Hermes real ou limpeza de retenção.
+Validação M1 usa exclusivamente bancos temporários e conexão/socket bloqueados durante a execução simulada. Inclui migração aditiva/rollback, reabertura, aprovação/rejeição persistidas, cancelamento confirmado, saída inválida e expiração; não comprova integração com Hermes real. A retenção tem testes próprios em `backend/tests/test_retention.py`.
 
 ### Exemplos observados em teste local da API M1
 
