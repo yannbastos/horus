@@ -20,18 +20,18 @@ Uma capacidade pode estar implementada e parcialmente validada. Builds e testes 
 | Download e transcrição Avalonia | Implementados com ferramentas externas; fila/revisão/salvamento existentes, sem persistência da fila de interface |
 | React/TypeScript + Tauri 2 | Implementados; build Windows e geração NSIS registrados; instalação NSIS ainda pendente |
 | FastAPI/SQLite | Implementados: tarefas persistentes, eventos/logs, executor sequencial, cancelamento e recuperação de estados |
-| Núcleo editorial simulado | Implementado e validado por testes do backend: quatro etapas no JobManager existente, schema v2, tentativas, artefatos, aprovação por revisão e recuperação; sem UI editorial ou serviços externos |
+| Núcleo editorial simulado | Implementado e validado por testes do backend: quatro etapas no JobManager existente, schema v2, tentativas, artefatos, aprovação por revisão e recuperação; UI editorial integrada no M1; sem serviços externos |
 | Consulta de perfil da fábrica | Implementada; validação anterior com CLI real e persistência registrada |
 | Render de rascunho short | Implementado; parcialmente validado via API em TestClient com processos reais; não certifica execução pela tela Produção ou pelo backend empacotado |
 | Cancelamento/encerramento durante render | Parcialmente validados: árvore encerrada e estado recuperado; encerramento normal do backend não simula falha abrupta do Windows |
 | Biblioteca de mídia/player | Implementados; seleção e reprodução de MP4 no Tauri registradas; pasta, busca temporal manual e outros cenários ainda pendentes |
 | Transcrição React/Python | Implementada; testes simulados e transcrição curta tiny/CPU registrados; remoção individual de pendentes da fila (sem remover o item em processamento nem arquivos do disco, ordem FIFO e limite de 20 preservados) coberta por testes Playwright simulados; equivalência completa com Avalonia pendente |
 | Diagnóstico Hermes | Implementado; integração autenticada anteriormente registrada; conectividade depende da configuração da sessão |
-| Executor cognitivo Hermes no workflow | Implementado e validado só com Hermes simulado: autorização por execução, rastreio, validação de evidências, cancelamento remoto e conciliação; sem execução real |
+| Executor cognitivo Hermes no workflow | Implementado e validado só com Hermes simulado: autorização por execução, rastreio, validação de evidências, cancelamento remoto e conciliação. M1: executor `hermes_simulated` em processo, sem rede, padrão para workflows do Radar; sem execução real (bloqueada pelo M2) |
 | Planejamento/delegação multiagente | Planejados; diagnóstico de capacidades não comprova orquestração |
 | Memória ativa e histórico editorial consolidado | Planejados; tarefas/eventos técnicos persistentes não equivalem ao módulo completo |
 | Biblioteca inteligente de técnicas | Planejada; distinta da Biblioteca de mídia atual e dos componentes Remotion existentes |
-| Núcleo isolado do Radar YouTube | Implementado e validado só offline (transportes simulados): descoberta, filtros, paginação, cotas atômicas, cache, retenção de 28 dias, revisões, coletas/refresh serializados por arquivo de estado, cancelamento cooperativo entre chamadas e limpeza explícita idempotente ([detalhes](radar-youtube.md)); sem chamadas reais, credenciais, UI, limpeza periódica no executor ou adaptador Hermes |
+| Núcleo isolado do Radar YouTube | Implementado e validado só offline (transportes simulados): descoberta, filtros, paginação, cotas atômicas, cache, retenção de 28 dias, revisões, coletas/refresh serializados por arquivo de estado, cancelamento cooperativo entre chamadas e limpeza explícita idempotente ([detalhes](radar-youtube.md)); M1: rotas de datasets, demonstração fictícia, adapter para o contrato Hermes e tela do Radar; sem chamadas reais, credenciais ou limpeza periódica no executor. Cópias congeladas no banco operacional ainda sem expurgo após 28 dias |
 | Análise editorial real e analytics | Planejados como fluxos integrados; aprovação por revisão já existe no núcleo simulado, sem autorizar produção |
 | Fábrica e catálogo visual | Repositórios independentes; prontidão da fábrica requer inspeção própria, Storybook usa exemplos fictícios |
 | Publicação automática e múltiplos canais | Evolução futura; publicação inicial manual |
@@ -63,6 +63,12 @@ Primeiro incremento backend concluído em modo simulado: [contratos, limites e r
 
 Segundo incremento: executor cognitivo Hermes ligado ao mesmo workflow persistente, validado com o Hermes simulado de `contracts/hermes` ([detalhes](workflows-editoriais.md#executor-cognitivo-hermes--simulado)). Próximos passos dependem de decisão: modelo/provedor e orçamento do perfil `horus`, restrição das ferramentas do perfil, primeiro ensaio real autorizado e UI editorial.
 
+**M1 concluído (2026-11-12):** Radar → WorkflowService → Hermes simulado → proposta → aprovação humana pela interface, com decisão persistida. Evidências: 225 testes do backend, 54 do contrato, 41 Playwright e um ensaio ponta a ponta com navegador real contra o backend real (dados temporários, executor simulado, nenhuma requisição externa). Migração v4 conferida em cópia de banco v3 com dados (conteúdo idêntico, integridade e FKs válidas). Não valida dados reais do YouTube, Hermes real, custos ou instalação NSIS.
+
+## Prioridade 3 — M2 Security antes de qualquer execução real
+
+Bloqueios identificados no M1: o perfil `horus` não restringe ferramentas (terminal, arquivos, execução de código, web, navegador, delegação e cron ficam disponíveis pela API); memória local ativa sem aprovação de escrita; cópias de dados do Radar no banco operacional sem expurgo. Antes do primeiro ensaio real: restringir ferramentas e memória do perfil (com aprovação do idealizador), controle de saída, testes negativos de exfiltração e prompt injection, teto de custo e retenção automática do Radar. Hermes permanece simulado até esses controles serem validados.
+
 Antes de ampliar produção automatizada, confirmar capacidades reais de delegação do Hermes instalado e contratos com o backend; definir modelo/provedor, orçamento e aprovação aplicável à análise delimitada. O diagnóstico autenticado já existente não precisa ser reimplementado.
 
 Aceite: fontes e hipóteses identificadas, artefatos rastreáveis, responsáveis/estados claros, aprovação humana por revisão e tratamento de falhas sem execução/gasto duplicado. Nenhuma infraestrutura VPS é necessária nesta etapa.
@@ -74,7 +80,7 @@ Os temas abaixo preservam o planejamento existente; sua numeração antiga não 
 | Frente | Entrega e critério para avançar |
 |---|---|
 | Diagnóstico e consolidação | Confirmar ambiente, contratos e situação atual da fábrica; não transportar bloqueios de auditoria antiga como fatos atuais |
-| Radar mínimo | Descoberta/validação de candidatos com fonte/data, paginação, ausências, permissões e cotas verificadas; indicadores somente quando permitidos. Núcleo offline implementado; faltam limpeza periódica e cancelamento no executor existente, ensaio autorizado com a API real, UI e mapeamento aprovado para o contrato Hermes |
+| Radar mínimo | Descoberta/validação de candidatos com fonte/data, paginação, ausências, permissões e cotas verificadas; indicadores somente quando permitidos. Núcleo offline, UI e adapter para o contrato Hermes implementados (M1); faltam limpeza periódica e cancelamento no executor existente, expurgo das cópias no banco operacional e ensaio autorizado com a API real |
 | Integração Hermes | Ferramentas/skills externas e resultados/erros rastreáveis; sem fork e sem efeitos implícitos |
 | Análise e planejamento | Briefings e roteiros originais, observação separada de hipótese, aprovação por revisão |
 | Produção gerenciada | Custos, aprovações, retomada e integridade; uma produção recuperável sem repetir cobrança/render por perda de contato |
