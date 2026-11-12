@@ -186,3 +186,18 @@ def test_unexpected_observations_are_unknown(status_code, run_status):
 def test_unknown_run_id(http):
     status, _, body = http.call("GET", "/v1/runs/run_inexistente")
     assert status == 404 and body["error"]["code"] == "run_not_found"
+
+
+@pytest.mark.parametrize("body", [b'{"input": "x"}', b"{malformed", b"x" * (4 * 1024 * 1024)])
+def test_invalid_token_consumes_body_before_401_without_admission(hermes, body):
+    """Regressão: 401 só depois de consumir o corpo, sem parse/admissão (evita reset de conexão no Windows)."""
+    import http.client
+    for _ in range(5):
+        connection = http.client.HTTPConnection("127.0.0.1", hermes.server.server_address[1], timeout=5)
+        connection.request("POST", "/v1/runs", body=body, headers={
+            "Authorization": "Bearer wrong", "Content-Type": "application/json", "Idempotency-Key": KEY})
+        response = connection.getresponse()
+        payload = json.loads(response.read())
+        connection.close()
+        assert response.status == 401 and payload["error"]["code"] == "invalid_api_key"
+    assert hermes.runs == {} and hermes.requests == [] and hermes.idempotency == {}

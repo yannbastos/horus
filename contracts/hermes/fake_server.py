@@ -211,9 +211,15 @@ class FakeHermes:
                 self._error(404, "Not found", "not_found")
 
             def do_POST(self):
+                # Consumir o corpo antes de qualquer resposta (inclusive 401): no Windows, fechar com corpo
+                # não lido pode abortar a conexão antes de o cliente ler a resposta. Sem parse antes de autenticar.
+                try:
+                    length = max(int(self.headers.get("Content-Length") or 0), 0)
+                except ValueError:
+                    length = 0
+                raw = self.rfile.read(length)
                 if not self._authorized():
                     return
-                raw = self.rfile.read(int(self.headers.get("Content-Length") or 0))
                 parts = self.path.strip("/").split("/")
                 with fake.lock:
                     if parts == ["v1", "runs"]:

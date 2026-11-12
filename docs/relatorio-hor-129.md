@@ -37,3 +37,13 @@ Decisões operacionais do idealizador (itens C1–C10), preços/limites no prove
 ## Revisão documental (segundo commit)
 
 Abertura do checklist esclarece que A/B são offline/loopback sem escrita e C só enumera evidências futuras fora da autorização atual; o exemplo B valida `HORUS_BACKEND_PORT` e `HORUS_API_TOKEN`, aborta se ausentes/inválidos, sem gerar token, presumir porta ou imprimi-los. Não foram executados backend nem endpoint.
+
+## Correção do simulador (terceiro commit)
+
+Escopo ampliado pelo Maestro somente para `contracts/hermes/fake_server.py` e um teste de regressão. Sem retries no cliente; backend, autenticação e Hermes real intocados.
+
+- **Mudança:** `do_POST` lê o corpo (Content-Length inválido ou negativo conta como 0; sem novo timeout, o `urlopen` existente tem 5 s) **antes** de autenticar. Continua sem parse, admissão ou execução antes do 401; status 401 e `invalid_api_key` preservados.
+- **Controle:** o novo `test_invalid_token_consumes_body_before_401_without_admission` (corpos JSON, malformado e 4 MiB, 5 conexões cada, `http.client` direto) **falhou antes da correção** com `ConnectionAbortedError [WinError 10053]` (mesmo erro da falha original) e passa depois. Isso demonstra que o corpo não lido no caminho 401 produz o aborto; não prova que foi a única causa da falha intermitente original, que usava corpo pequeno.
+- Asserção adicional: zero runs, zero requisições registradas e nenhuma chave de idempotência para token inválido, inclusive com JSON malformado.
+- **Validação:** `contracts/hermes/tests` completo: 57 aprovados. Amostra limitada: 30 execuções dos testes de autenticação/regressão, 0 falhas (log exclusivo, fora do repositório). Repetições não constituem prova absoluta.
+- **Limitações:** o corpo é lido por inteiro conforme Content-Length, sem limite (simulador só para loopback de testes); corpo menor que o declarado bloqueia até o timeout do cliente.
