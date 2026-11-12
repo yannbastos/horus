@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react';
 import { api } from '../services/api';
 import type { Connection, HermesStatus } from '../services/api';
 import { connectDesktop, nativeDesktop } from '../platform/desktop';
+import PrivacySecurity from './PrivacySecurity';
 
 export type Theme = 'system' | 'light' | 'dark';
+export type SettingsSection = 'general' | 'privacy';
 type Diagnostics = { checks: { id: string; name: string; available: boolean; detail: string }[]; notice: string };
 
 function EnvironmentDiagnostics({ connection }: { connection: Connection }) {
@@ -25,14 +27,15 @@ function EnvironmentDiagnostics({ connection }: { connection: Connection }) {
     <button className="button" disabled={loading} onClick={() => setRevision(value => value + 1)}>VERIFICAR NOVAMENTE</button>
     {loading && <p role="status">Verificando ferramentas…</p>}
     {error && <p className="error" role="alert">{error}</p>}
-    {report?.checks.map(check => <div key={check.id}><div className="row spread"><h3>{check.name}</h3><span className="tag">{check.available ? 'LOCALIZADO' : 'NÃO LOCALIZADO'}</span></div><p className="muted">{check.detail}</p></div>)}
+    {report?.checks?.map(check => <div key={check.id}><div className="row spread"><h3>{check.name}</h3><span className="tag">{check.available ? 'LOCALIZADO' : 'NÃO LOCALIZADO'}</span></div><p className="muted">{check.detail}</p></div>)}
   </section>;
 }
 
-export default function Settings({ theme, setTheme, connect, connection, hermes, onHermesStatus }: {
+export default function Settings({ theme, setTheme, connect, connection, hermes, onHermesStatus, initialSection = 'general' }: {
   theme: Theme; setTheme: (theme: Theme) => void; connect: (connection: Connection) => void; connection: Connection | null;
-  hermes: HermesStatus | null; onHermesStatus: (status: HermesStatus) => void;
+  hermes: HermesStatus | null; onHermesStatus: (status: HermesStatus) => void; initialSection?: SettingsSection;
 }) {
+  const [section, setSection] = useState<SettingsSection>(initialSection);
   const [url, setUrl] = useState('http://127.0.0.1:8765');
   const [token, setToken] = useState('');
   const [message, setMessage] = useState('');
@@ -54,14 +57,67 @@ export default function Settings({ theme, setTheme, connect, connection, hermes,
       await api(candidate, '/health'); connect(candidate); setToken(''); setMessage('Backend local conectado.');
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : String(reason)); }
   }
-  return <div className="page settings"><p className="eyebrow accent">AJUSTES</p><h1>Aparência</h1><p className="muted">A mesma identidade, no tema que combina com seu espaço.</p><div className="theme-options" aria-label="Tema">{(['system', 'light', 'dark'] as Theme[]).map((value, index) => <button key={value} className={`button ${theme === value ? 'active' : ''}`} aria-pressed={theme === value} onClick={() => setTheme(value)}>{['SISTEMA', 'CLARO', 'ESCURO'][index]}</button>)}</div>
-    <section className="card"><p className="eyebrow">CONEXÃO LOCAL</p><h2>{connection ? 'Backend disponível.' : 'Conecte seu espaço de trabalho.'}</h2><p className="muted">{nativeDesktop ? 'O aplicativo gerencia o backend local. Credenciais de conexão ficam somente na memória desta sessão.' : 'No navegador, você pode conectar um backend iniciado separadamente. A versão desktop faz essa conexão automaticamente.'}</p>
-      {!nativeDesktop && <form onSubmit={event => { event.preventDefault(); void manualConnect(); }}><label>Endereço local<input value={url} onChange={e => setUrl(e.target.value)} autoComplete="off" /></label><label>Token da sessão<input type="password" value={token} onChange={e => setToken(e.target.value)} autoComplete="off" /></label><button className="button primary" type="submit" disabled={token.length < 24}>CONECTAR BACKEND</button></form>}
-      {nativeDesktop && <button className="button" disabled={connecting} onClick={() => void reconnect()}>RECONECTAR BACKEND</button>}
-      {message && <p role="status">{message}</p>}
-    </section>
-    <HermesIntegration connection={connection} report={hermes} onStatus={onHermesStatus} />
-    {connection && <EnvironmentDiagnostics connection={connection} />}
+  return <div className="page settings">
+    <div className="page-heading">
+      <div>
+        <p className="eyebrow accent">AJUSTES</p>
+        <h1>{section === 'privacy' ? 'Privacidade e Segurança' : 'Aparência'}</h1>
+        <p className="muted">{section === 'privacy' ? 'Superfície de segurança local, permissões do agente e integridade de dados.' : 'A mesma identidade, no tema que combina com seu espaço.'}</p>
+      </div>
+      <div className="settings-tabs" role="tablist" aria-label="Seções de Ajustes">
+        <button
+          role="tab"
+          id="tab-general"
+          aria-selected={section === 'general'}
+          aria-controls="panel-general"
+          className={`button ${section === 'general' ? 'active' : ''}`}
+          onClick={() => setSection('general')}
+          onKeyDown={e => {
+            if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+              e.preventDefault();
+              setSection('privacy');
+              document.getElementById('tab-privacy')?.focus();
+            }
+          }}
+        >
+          GERAL
+        </button>
+        <button
+          role="tab"
+          id="tab-privacy"
+          aria-selected={section === 'privacy'}
+          aria-controls="panel-privacy"
+          className={`button ${section === 'privacy' ? 'active' : ''}`}
+          onClick={() => setSection('privacy')}
+          onKeyDown={e => {
+            if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+              e.preventDefault();
+              setSection('general');
+              document.getElementById('tab-general')?.focus();
+            }
+          }}
+        >
+          PRIVACIDADE E SEGURANÇA
+        </button>
+      </div>
+    </div>
+
+    {section === 'general' ? (
+      <div id="panel-general" role="tabpanel" aria-labelledby="tab-general" className="settings-panel">
+        <div className="theme-options" aria-label="Tema">{(['system', 'light', 'dark'] as Theme[]).map((value, index) => <button key={value} className={`button ${theme === value ? 'active' : ''}`} aria-pressed={theme === value} onClick={() => setTheme(value)}>{['SISTEMA', 'CLARO', 'ESCURO'][index]}</button>)}</div>
+        <section className="card"><p className="eyebrow">CONEXÃO LOCAL</p><h2>{connection ? 'Backend disponível.' : 'Conecte seu espaço de trabalho.'}</h2><p className="muted">{nativeDesktop ? 'O aplicativo gerencia o backend local. Credenciais de conexão ficam somente na memória desta sessão.' : 'No navegador, você pode conectar um backend iniciado separadamente. A versão desktop faz essa conexão automaticamente.'}</p>
+          {!nativeDesktop && <form onSubmit={event => { event.preventDefault(); void manualConnect(); }}><label>Endereço local<input value={url} onChange={e => setUrl(e.target.value)} autoComplete="off" /></label><label>Token da sessão<input type="password" value={token} onChange={e => setToken(e.target.value)} autoComplete="off" /></label><button className="button primary" type="submit" disabled={token.length < 24}>CONECTAR BACKEND</button></form>}
+          {nativeDesktop && <button className="button" disabled={connecting} onClick={() => void reconnect()}>RECONECTAR BACKEND</button>}
+          {message && <p role="status">{message}</p>}
+        </section>
+        <HermesIntegration connection={connection} report={hermes} onStatus={onHermesStatus} />
+        {connection && <EnvironmentDiagnostics connection={connection} />}
+      </div>
+    ) : (
+      <div id="panel-privacy" role="tabpanel" aria-labelledby="tab-privacy" className="settings-panel">
+        <PrivacySecurity connection={connection} />
+      </div>
+    )}
   </div>;
 }
 
