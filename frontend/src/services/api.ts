@@ -507,3 +507,115 @@ export async function reconcileWorkflow(
     body: JSON.stringify({ expected_revision: expectedRevision }),
   });
 }
+
+// --- Segurança e Privacidade (M2 / HOR-126) ---
+
+export type SecurityBlockerSeverity = 'critical' | 'warning' | 'info';
+
+export type SecurityBlocker = {
+  code: string;
+  severity: SecurityBlockerSeverity | string;
+  message: string;
+};
+
+export type SecurityExternalConnection = {
+  id: string;
+  kind: 'loopback' | 'external' | string;
+  target: string;
+  enabled: boolean;
+  purpose: string;
+};
+
+export type SecurityProcessing = {
+  local_only: boolean | null;
+  workflow_executor_default: string | null;
+  radar_executor: string | null;
+  external_connections: SecurityExternalConnection[];
+};
+
+export type SecurityHermesTools = {
+  source: string | null;
+  restricted: boolean | null;
+  effective: string[];
+  dangerous: string[];
+  required_for_editorial: string[];
+};
+
+export type SecurityHermesMemory = {
+  local_enabled: boolean | null;
+  user_profile_enabled: boolean | null;
+  write_approval: boolean | null;
+  external_provider: string | null;
+};
+
+export type SecurityHermesNetworkIsolation = {
+  enforced: boolean | null;
+  mechanism: string | null;
+  reason: string | null;
+};
+
+export type SecurityHermesCostLimits = {
+  configured: boolean | null;
+  max_tokens_per_run: number | null;
+  max_tokens_per_day: number | null;
+};
+
+export type SecurityHermes = {
+  connection: 'loopback' | 'not_configured' | 'invalid' | string | null;
+  profile_found: boolean | null;
+  profile_label: string | null;
+  tools: SecurityHermesTools | null;
+  memory: SecurityHermesMemory | null;
+  provider_configured: boolean | null;
+  network_isolation: SecurityHermesNetworkIsolation | null;
+  cost_limits: SecurityHermesCostLimits | null;
+};
+
+export type SecurityRadar = {
+  retention_days: number | null;
+  network_enabled: boolean | null;
+  automatic_cleanup: {
+    available: boolean;
+    last_run_at: string | null;
+  } | null;
+};
+
+export type SecurityCredentialItem = {
+  id: string;
+  storage: string;
+  description?: string;
+  protection?: string;
+  location_label?: string;
+  [key: string]: unknown;
+};
+
+export type SecurityCredentials = {
+  items: SecurityCredentialItem[];
+};
+
+export type SecurityFeatureAvailability = {
+  available: boolean;
+  enabled?: boolean;
+  reason: string;
+};
+
+export type SecurityStatusResponse = {
+  schema_version: string;
+  checked_at: string;
+  real_execution_allowed: boolean;
+  blockers: SecurityBlocker[];
+  processing: SecurityProcessing;
+  hermes: SecurityHermes;
+  radar?: SecurityRadar;
+  credentials: SecurityCredentials;
+  private_mode: SecurityFeatureAvailability;
+  audit: SecurityFeatureAvailability;
+};
+
+export async function getSecurityStatus(
+  connection: Connection,
+  signal?: AbortSignal
+): Promise<SecurityStatusResponse> {
+  return api<SecurityStatusResponse>(connection, '/v1/security/status', { signal });
+}
+

@@ -41,6 +41,7 @@ export default function Radar({ connection }: { connection: Connection | null })
   const [channelId, setChannelId] = useState('canal-01');
   const [channelSummary, setChannelSummary] = useState('Canal com foco em narrativas audiovisuais e tecnologia.');
   const [loading, setLoading] = useState(false);
+  const [initialLoaded, setInitialLoaded] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -67,10 +68,19 @@ export default function Radar({ connection }: { connection: Connection | null })
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
       setLoading(false);
+      setInitialLoaded(true);
     }
   }
 
   useEffect(() => {
+    if (!connection) {
+      setInitialLoaded(false);
+      setDatasets([]);
+      setSelectedSnapshotId(null);
+      setDetail(null);
+      return;
+    }
+    setInitialLoaded(false);
     void loadDatasets();
   }, [connection]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -193,7 +203,13 @@ export default function Radar({ connection }: { connection: Connection | null })
         </div>
       )}
 
-      {connection && !loading && datasets.length === 0 && (
+      {connection && (loading || !initialLoaded) && datasets.length === 0 && !error && (
+        <div className="card sunken" role="status" aria-live="polite">
+          <p className="loading">Carregando datasets do Radar…</p>
+        </div>
+      )}
+
+      {connection && initialLoaded && !loading && datasets.length === 0 && !error && (
         <div className="empty-state">
           <span className="tag">RADAR · NENHUM DATASET COLETADO</span>
           <h2>Nenhum snapshot de pesquisa disponível</h2>

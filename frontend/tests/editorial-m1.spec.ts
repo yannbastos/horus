@@ -362,6 +362,70 @@ test.describe('M1 — Radar, Análise Editorial e Aprovação Humana', () => {
     await expect(page.getByText(/1 excluídos/i)).toBeVisible();
   });
 
+  test('Radar: exibe estado de carregamento com resposta atrasada e só exibe estado vazio após resposta vazia', async ({
+    page,
+  }) => {
+    let resolveDatasetsRoute!: () => void;
+    const datasetsGate = new Promise<void>(resolve => {
+      resolveDatasetsRoute = resolve;
+    });
+
+    await page.route('http://127.0.0.1:8765/**', async route => {
+      const request = route.request();
+      const pathUrl = new URL(request.url()).pathname;
+      if (request.method() === 'OPTIONS') {
+        await route.fulfill({ status: 204, headers: corsHeaders });
+        return;
+      }
+      if (pathUrl === '/health') {
+        await route.fulfill({ status: 200, headers: corsHeaders, json: { status: 'ready' } });
+        return;
+      }
+      if (pathUrl === '/v1/hermes') {
+        await route.fulfill({
+          status: 200,
+          headers: corsHeaders,
+          json: { state: 'ready', connected: true, cli_available: true, configured: true, features: [] },
+        });
+        return;
+      }
+      if (pathUrl === '/v1/radar/datasets' && request.method() === 'GET') {
+        await datasetsGate;
+        await route.fulfill({ status: 200, headers: corsHeaders, json: [] });
+        return;
+      }
+      if (pathUrl === '/v1/workflows') {
+        await route.fulfill({ status: 200, headers: corsHeaders, json: [] });
+        return;
+      }
+      if (pathUrl === '/v1/jobs') {
+        await route.fulfill({ status: 200, headers: corsHeaders, json: [] });
+        return;
+      }
+      await route.fulfill({ status: 404, headers: corsHeaders, json: { detail: 'Não encontrado' } });
+    });
+
+    await connectSession(page);
+    await page.getByRole('button', { name: 'Radar', exact: true }).click();
+
+    // 1. Enquanto a requisição está em trânsito:
+    // O indicador de carregamento está visível
+    const loadingIndicator = page.locator('text=Carregando datasets do Radar…');
+    await expect(loadingIndicator).toBeVisible();
+
+    // O estado vazio com o botão NÃO pode estar visível (não há flash do estado vazio)
+    await expect(page.getByRole('heading', { name: 'Nenhum snapshot de pesquisa disponível' })).not.toBeVisible();
+    await expect(page.getByRole('button', { name: /Carregar dados de demonstração/i })).not.toBeVisible();
+
+    // 2. Libera a resposta atrasada (lista vazia)
+    resolveDatasetsRoute();
+
+    // 3. Somente agora o estado vazio e o botão de carregar demo aparecem
+    await expect(loadingIndicator).not.toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Nenhum snapshot de pesquisa disponível' })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Carregar dados de demonstração/i })).toBeVisible();
+  });
+
   test('Produção: fluxo editorial com pending_authorization, autorização e selo SIMULADO', async ({ page }) => {
     let authorized = false;
     let currentWf = createMockWorkflow();
