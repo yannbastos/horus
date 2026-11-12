@@ -50,7 +50,7 @@ class CognitiveUnknown(Exception):
 class HermesStageOutput(BaseModel):
     model_config = ConfigDict(extra="allow")
     schema_version: Literal[2]
-    simulated: Literal[False]
+    simulated: bool
     stage: Literal["planning", "research", "analysis", "proposal"]
     title: str = Field(min_length=1, max_length=200)
     source_artifact_ids: list[str] = Field(max_length=1)

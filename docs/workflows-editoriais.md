@@ -1,6 +1,6 @@
 # Núcleo de workflows editoriais — simulado
 
-Implementado no backend, sem nova interface ou integração de IA. Pedido → planejamento → pesquisa → análise → proposta → revisão humana. Todos os resultados são identificados como simulação; referências são somente texto fornecido pelo operador, sem consulta externa ou verificação factual.
+Implementado no backend: pedido → planejamento → pesquisa → análise → proposta → revisão humana. O executor básico `simulated` trata referências como texto, sem consulta externa ou verificação factual; as seções seguintes descrevem o executor Hermes e a integração Radar com cliente em processo. A validação desta entrega é offline e não comprova IA real.
 
 ## Execução e persistência
 
@@ -12,7 +12,7 @@ Ao terminar a proposta, o workflow fica em `awaiting_approval` e libera o worker
 
 ## Schema e migrações
 
-`migrations.py` aplica versões sequenciais em uma transação SQLite; a versão atual é 3 (acréscimos do executor cognitivo, descritos abaixo). Não usa `executescript()` para migrações. Banco de versão futura ou banco sem versão com tabelas desconhecidas é recusado. Falha de DDL desfaz a migração e preserva a versão anterior.
+`migrations.py` aplica versões sequenciais em uma transação SQLite; a versão atual é 4 (cliente cognitivo persistido, descrito na seção M1). Não usa `executescript()` para migrações. Banco de versão futura ou banco sem versão com tabelas desconhecidas é recusado. Falha de DDL desfaz a migração e preserva a versão anterior.
 
 Na migração de um banco versão 1 é gerada uma cópia consistente pela API de backup SQLite, com nome único `horus.backup-v1-<id>.sqlite3`, na pasta do banco. A reabertura de um banco já migrado não repete a cópia. A restauração dessa cópia é uma ação manual, com todos os backends encerrados; não há downgrade automático.
 
@@ -122,3 +122,50 @@ Resultado: **89 testes passaram**, incluindo 22 testes do núcleo editorial e os
 Não foram executados builds/testes visuais, instalação NSIS, banco operacional, modelos reais, YouTube API, renderização ou publicação. Não houve alteração de outros repositórios, instalação de dependências, commit ou push.
 
 Limites: fluxo linear fixo, somente simulação, aprovação local de um operador e consulta por API. UI editorial, custos e executores reais continuam para entregas futuras.
+
+## Radar e Hermes em processo (M1)
+
+`HORUS_RADAR_EXECUTOR=hermes_simulated|hermes` escolhe o executor de **novos workflows do Radar**, com padrão `hermes_simulated`. Não altera `HORUS_WORKFLOW_EXECUTOR` nem o contrato de `POST /v1/workflows`. O payload nunca escolhe executor. A migração v3→v4 é exclusivamente aditiva: `workflows.cognitive_client TEXT NOT NULL DEFAULT 'live' CHECK(cognitive_client IN ('live','simulated'))`. Workflows antigos preservam `live`; os novos simulados persistem `executor='hermes'` e `cognitive_client='simulated'`, sem reconstruir tabelas, índices ou FKs. A API traduz essa combinação para `executor='hermes_simulated'` e `simulated: true`.
+
+O cliente `HermesSimulator` é injetado em `HermesStages.client_factory` e executa em processo, sem sockets, ferramentas, provedor ou leitura da conexão privada Hermes. A saída determinística usa somente o envelope: fontes do dataset, fatos com métricas idênticas, proposta genérica e uso de tokens zero. Não interpreta títulos, objetivo ou resumo como instruções; não certifica mérito editorial. As consultas progridem por `queued`, `running` e `completed`; `stop` confirma `cancelled`. `analysis` exige autorização humana, e o artefato `proposal` traz `simulated: true`. A aprovação/rejeição continua registrada em `approvals`.
+
+| Rota autenticada | Resposta e limites |
+|---|---|
+| `GET /v1/radar/datasets` | Resumos da última revisão não expirada por snapshot, máximo 100 |
+| `GET /v1/radar/datasets/{snapshot_id}/{revision}` | `{dataset, eligibility}`; 404 ausente/expirado |
+| `POST /v1/radar/datasets/demo` | 201, resumo fictício; `Idempotency-Key` obrigatório |
+| `POST /v1/workflows/radar` | 202, snapshot; `Idempotency-Key` obrigatório; recebe `snapshot_id`, `revision`, `objective`, `channel: {channel_id, summary}` e `source_ids` opcional, máximo 50 |
+
+O adapter converte `PublicRecord` de tipo vídeo em `DatasetItem`, preserva a origem e os horários, trunca título em 300 caracteres, canal em 200 e idioma em 16, inclui somente métricas não nulas e associa inscritos pelo `youtube_id` do canal correspondente a `channel_id`. `unavailable` não exclui o vídeo por si só. `ChannelProfile.revision_hash` é SHA-256 do resumo UTF-8. Sem seleção explícita, usa os primeiros 50 elegíveis; seleção vazia, duplicada, desconhecida ou inelegível retorna 409. A validação do corpo retorna 422.
+
+A elegibilidade informa `invalid_source_id`, `invalid_url`, `missing_title`, `missing_channel` e `missing_published_at`. O snapshot expõe `radar: {snapshot_id, revision, origin, expires_at, included, excluded}`; exclusões registram as razões de inelegibilidade. A idempotência considera também o corpo original, diferenciando seleção implícita e explícita; chave reutilizada com outro corpo retorna 409.
+
+**Retenção pendente, bloqueio para dados reais em M2:** `research` copia o snapshot para artefatos no banco operacional, e o pedido também preserva os dados adaptados. A criação recusa fonte ausente/expirada (404), e `authorize` recusa `radar.expires_at` vencido (409), inclusive ao repetir uma autorização. Isso não limpa cópias após 28 dias. Implementar expurgo de payloads, artefatos, pedidos cognitivos e backups antes de operar dados reais.
+
+O simulador mantém execuções em memória: reinício conserva a seleção do cliente e autorizações pendentes no SQLite. Uma análise em andamento no encerramento fica `unknown`, como no cliente real; `POST /v1/workflows/{id}/reconcile` consulta o simulador novo, que não conhece a execução perdida e a encerra deterministicamente como `interrupted` (não há trabalho externo a conciliar). O workflow fica `failed`, o retry volta a liberar a etapa e exige **nova autorização**; não há troca para cliente real nem reenvio automático. `stop` de execução desconhecida responde `cancelled`, sem exceção. Coberto por `test_restart_during_simulated_analysis_recovers`. O cliente HTTP existente e as regras de autorização permanecem em uso para `hermes`.
+
+Validação M1 usa exclusivamente bancos temporários e conexão/socket bloqueados durante a execução simulada. Inclui migração aditiva/rollback, reabertura, aprovação/rejeição persistidas, cancelamento confirmado, saída inválida e expiração; não comprova integração com Hermes real ou limpeza de retenção.
+
+### Exemplos observados em teste local da API M1
+
+Respostas resumidas de TestClient em banco temporário; datas/IDs são desta execução, sem dados reais. `POST /v1/radar/datasets/demo` retornou 201 e `GET /v1/radar/datasets` retornou 200 com uma lista contendo o mesmo resumo:
+
+```json
+{"snapshot_id":"rad_4ef08c01b241a5e4eb8f8ef5","revision":1,"origin":"operator_fixture","status":"complete","collected_at":"2026-11-12T10:54:52.094753Z","expires_at":"2026-12-10T10:54:52.094753Z","records":6,"videos":5,"eligible_videos":4,"issues":0}
+```
+
+`GET /v1/radar/datasets/rad_4ef08c01b241a5e4eb8f8ef5/1` retornou 200, com dataset completo (abreviado abaixo) e as cinco entradas de elegibilidade:
+
+```json
+{"dataset":{"schema_version":"radar.youtube.v1","snapshot_id":"rad_4ef08c01b241a5e4eb8f8ef5","revision":1,"origin":"operator_fixture"},"eligibility":{"video_demo_0":{"eligible":true,"reasons":[]},"video_demo_1":{"eligible":true,"reasons":[]},"video_demo_2":{"eligible":true,"reasons":[]},"video_demo_3":{"eligible":true,"reasons":[]},"video_demo_4":{"eligible":false,"reasons":["missing_published_at"]}}}
+```
+
+`POST /v1/workflows/radar` retornou 202:
+
+```json
+{"id":"f798c29e43864f819e24f957ecfa8518","status":"queued","executor":"hermes_simulated","simulated":true,"radar":{"snapshot_id":"rad_4ef08c01b241a5e4eb8f8ef5","revision":1,"origin":"operator_fixture","expires_at":"2026-12-10T10:54:52.094753Z","included":["video_demo_0","video_demo_1","video_demo_2","video_demo_3"],"excluded":[{"source_id":"video_demo_4","reasons":["missing_published_at"]}]}}
+```
+
+Para reproduzir os fluxos completos: `& backend/.venv/Scripts/python.exe -m pytest backend/tests/test_radar_workflow.py -q` (11 casos). As suítes obrigatórias são `& backend/.venv/Scripts/python.exe -m pytest backend/tests -q` e `& backend/.venv/Scripts/python.exe -m pytest contracts/hermes/tests -q -p no:cacheprovider`.
+
+Resultado final desta execução M1: **223 testes backend aprovados** em 75,77 s e **54 testes de contrato aprovados** em 8,88 s; `git diff --check` aprovado. A suíte backend emite somente o aviso preexistente de depreciação Starlette/httpx; não foram instaladas dependências para suprimi-lo. Nenhum banco operacional, provedor, Hermes real ou YouTube real foi acessado.

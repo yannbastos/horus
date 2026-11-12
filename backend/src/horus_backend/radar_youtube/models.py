@@ -49,7 +49,7 @@ class PublicRecord(Strict):
     url: str
     retrieved_at: AwareDatetime
     expires_at: AwareDatetime
-    origin: Literal['youtube_data_api'] = 'youtube_data_api'
+    origin: Literal['youtube_data_api', 'operator_fixture'] = 'youtube_data_api'
     endpoint: Literal['videos.list', 'channels.list']
     title: str | None = None
     channel_id: str | None = None
@@ -88,7 +88,7 @@ class Dataset(Strict):
     schema_version: Literal['radar.youtube.v1'] = 'radar.youtube.v1'
     snapshot_id: str
     revision: int = Field(ge=1)
-    origin: Literal['youtube_data_api'] = 'youtube_data_api'
+    origin: Literal['youtube_data_api', 'operator_fixture'] = 'youtube_data_api'
     collected_at: AwareDatetime
     expires_at: AwareDatetime
     request: CollectionRequest
