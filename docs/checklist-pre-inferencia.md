@@ -2,7 +2,7 @@
 
 Escopo: Issue [HOR-129](https://github.com/yannbastos/horus-management/issues/116) (P0, Security Core). Estado em 12/11/2026, sobre `main` `dfd5286`.
 
-**Este checklist não aprova nem habilita inferência.** Ele separa o que o código já impõe, o que só foi ensaiado com simuladores, o que depende de configuração do operador e o que ainda não existe. Concluir todas as seções é condição necessária; a liberação continua dependendo de autorização humana específica de provedor, destino, custo e dados (veja [seguranca-hermes.md](seguranca-hermes.md)). Nenhum item abaixo exige rede externa, credencial, provedor ou preço.
+**Este checklist não aprova nem habilita inferência.** Ele separa o que o código já impõe, o que só foi ensaiado com simuladores, o que depende de configuração do operador e o que ainda não existe. Concluir todas as seções é condição necessária; a liberação continua dependendo de autorização humana específica de provedor, destino, custo e dados (veja [seguranca-hermes.md](seguranca-hermes.md)). As etapas A e B, executadas automaticamente, são offline/loopback e não escrevem em perfis, bancos operacionais ou configuração; não exigem rede externa, credencial, provedor ou preço. A seção C apenas **enumera evidências operacionais futuras** (provedor, preço, teto remoto, isolamento de SO): elas ficam fora da autorização atual e exigirão decisão e autorização próprias para serem obtidas.
 
 Regras de execução: as etapas A e B são somente leitura/offline. Não iniciar gateway, não usar `hermes -z`, não abrir `.env`/`auth*`/sessões, não definir preços ou credenciais para "ver passar". Qualquer item **ABORTAR** mantém o gate fechado e interrompe o checklist.
 
@@ -33,9 +33,17 @@ Na raiz do repositório, com a `.venv` do backend criada por `uv sync --project 
 Com um backend do operador **já em execução** (não iniciado por este checklist), consultar o endpoint autenticado. Ele lê arquivos locais, não inicia Hermes nem abre rede:
 
 ```powershell
-$s = Invoke-RestMethod -Uri "http://127.0.0.1:$env:HORUS_BACKEND_PORT/v1/security/status" -Headers @{ Authorization = ('Bearer ' + $env:HORUS_API_TOKEN) }
+if (-not $env:HORUS_BACKEND_PORT -or -not $env:HORUS_API_TOKEN) {
+    throw 'Defina HORUS_BACKEND_PORT (porta do backend em execução) e HORUS_API_TOKEN (token da sessão atual) obtidos do operador; não gere token nem presuma a porta. ABORTAR.'
+}
+if ($env:HORUS_BACKEND_PORT -notmatch '^\d{1,5}$' -or [int]$env:HORUS_BACKEND_PORT -lt 1 -or [int]$env:HORUS_BACKEND_PORT -gt 65535) {
+    throw 'HORUS_BACKEND_PORT inválida. ABORTAR.'
+}
+$s = Invoke-RestMethod -Uri "http://127.0.0.1:$($env:HORUS_BACKEND_PORT)/v1/security/status" -Headers @{ Authorization = ('Bearer ' + $env:HORUS_API_TOKEN) }
 $s.real_execution_allowed; $s.blockers | Select-Object code, severity
 ```
+
+Não imprimir o token nem o cabeçalho. Falha de conexão ou 401 também aborta; não repetir com outra porta ou token por tentativa.
 
 Sem backend em execução, o equivalente offline é o teste `test_default_installation_is_simulated_and_refuses_real_execution`.
 

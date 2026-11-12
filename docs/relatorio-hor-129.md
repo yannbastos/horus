@@ -19,9 +19,21 @@ Data: 12/11/2026. Base: `main` `dfd5286`, branch `feat/hor-129-pre-inference-che
 
 - `uv sync --project backend --frozen --extra test`: ok.
 - `pytest backend/tests`: 470 aprovados, 1 ignorado (symlink).
-- `pytest contracts/hermes/tests`: primeira execução 53 aprovados e 1 falha (`test_fake_hermes_api.py::test_authentication_is_required`); duas repetições seguintes passaram (54 e o teste isolado). Falha intermitente não explicada; não investigada além disso.
+- `pytest contracts/hermes/tests`: primeira execução 53 aprovados e 1 falha (`test_fake_hermes_api.py::test_authentication_is_required`); duas repetições seguintes passaram (54 e o teste isolado). Investigada na seção seguinte.
 - Não executados: frontend, dotnet, rede, backend na porta 8773.
 
 ## Pendente
 
 Decisões operacionais do idealizador (itens C1–C10), preços/limites no provedor e autorização da primeira chamada.
+
+## Investigação da falha intermitente (contrato Hermes)
+
+- Traceback original da primeira execução não foi preservado (só o resumo final). Reproduzi isolando o teste, 60 execuções consecutivas, log exclusivo: **1 falha em 60** (execução 28) e 59 aprovações.
+- Erro capturado: `ConnectionAbortedError: [WinError 10053]` em `socket.py` `readinto`, durante a leitura da resposta do `urllib` em `Http.call` (`contracts/hermes/conftest.py`).
+- Evidência de código: `contracts/hermes/fake_server.py::do_POST` responde 401 em `_authorized()` **antes** de ler o corpo (`rfile.read(Content-Length)`). O cliente envia um POST com corpo; no Windows, o servidor que responde e fecha sem consumir o corpo pode abortar a conexão antes de o cliente ler o 401.
+- **Hipótese consistente com o erro, não provada por teste de controle:** corrida entre fechamento da conexão pelo servidor simulado e a leitura do cliente. Não há indício de proxy (o cliente usa `urlopen` padrão e 127.0.0.1; não verifiquei variáveis de proxy do ambiente), timeout (5 s, sem erro de tempo) nem de relação com os arquivos deste incremento.
+- Limitação: um único evento reproduzido; a correção não foi testada. O defeito está no servidor/cliente de teste, não no backend de produção. Correção possível, **a decidir pelo Maestro** (não aplicada, contrato intocado): consumir o corpo antes do 401 em `do_POST` ou o cliente tolerar `ConnectionAbortedError` com uma repetição.
+
+## Revisão documental (segundo commit)
+
+Abertura do checklist esclarece que A/B são offline/loopback sem escrita e C só enumera evidências futuras fora da autorização atual; o exemplo B valida `HORUS_BACKEND_PORT` e `HORUS_API_TOKEN`, aborta se ausentes/inválidos, sem gerar token, presumir porta ou imprimi-los. Não foram executados backend nem endpoint.
