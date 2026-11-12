@@ -173,10 +173,11 @@ def test_guards_return_409_for_redacted_workflow(client, app, monkeypatch):
 def test_idempotent_second_run(client, app):
     create(client, 'a', 'proposal')
     store = app.state.store
-    assert run_retention(store, clock=future).redacted == 1
+    first = run_retention(store, clock=future)
+    assert first.redacted == 1 and first.checkpoint['status'] == 'ok'  # checkpoint(TRUNCATE) após redigir
     after = table_hashes(store)
     second = run_retention(store, clock=future)
-    assert (second.redacted, second.already_redacted, second.failed) == (0, 1, 0)
+    assert (second.redacted, second.already_redacted, second.failed) == (0, 1, 0) and second.checkpoint is None
     assert table_hashes(store) == after
     with store.connect() as db:
         assert db.execute("SELECT COUNT(*) FROM workflow_events WHERE kind='workflow.radar_redacted'").fetchone()[0] == 1

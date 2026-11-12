@@ -32,6 +32,13 @@ class RetentionReport:
     failed: int = 0
     workflow_ids: list[str] = field(default_factory=list)  # redigidos (ou que seriam, em dry-run)
     errors: list[dict] = field(default_factory=list)
+    # Resultado do `wal_checkpoint(TRUNCATE)` (contagens, sem conteúdo); None quando não foi necessário ou em dry-run.
+    checkpoint: dict | None = None
+
+    @property
+    def checkpoint_pending(self) -> bool:
+        """Verdadeiro se o checkpoint rodou e não concluiu; o próximo ciclo deve tentar de novo."""
+        return bool(self.checkpoint) and self.checkpoint["status"] != "ok"
 
     @property
     def ignored(self) -> int:
@@ -156,8 +163,14 @@ def _redact_workflow(db, row, payload, expired_at, stamp) -> None:
         "editorial_literal_matches": editorial_hits})
 
 
-def run_retention(store: Store, *, clock=utcnow, dry_run: bool = False) -> RetentionReport:
-    """Redige as cópias do Radar de workflows com `radar.expires_at <= agora`. Devolve contagens."""
+def run_retention(store: Store, *, clock=utcnow, dry_run: bool = False, retry_checkpoint: bool = False,
+                  checkpoint_timeout: float = 2.0) -> RetentionReport:
+    """Redige as cópias do Radar de workflows com `radar.expires_at <= agora`. Devolve contagens.
+
+    Se ao menos um workflow foi redigido (ou `retry_checkpoint`, após um checkpoint que ficou pendente), executa
+    `wal_checkpoint(TRUNCATE)` para que os valores antigos não permaneçam no `-wal`. Falha ou leitor ativo ficam
+    registrados em `report.checkpoint` e nunca interrompem o ciclo.
+    """
     report = RetentionReport(dry_run=dry_run)
     with store.connect() as db:
         ids = [row["id"] for row in db.execute(
@@ -186,4 +199,8 @@ def run_retention(store: Store, *, clock=utcnow, dry_run: bool = False) -> Reten
             report.failed += 1
             report.errors.append({"workflow_id": workflow_id, "error": type(error).__name__})
             log.warning("Retenção do Radar falhou para %s: %s", workflow_id, type(error).__name__)
+    if not dry_run and (report.redacted or retry_checkpoint):
+        report.checkpoint = store.checkpoint(timeout=checkpoint_timeout)
+        if report.checkpoint["status"] != "ok":
+            log.warning("Checkpoint do WAL após a retenção não concluiu: %s", report.checkpoint["status"])
     return report

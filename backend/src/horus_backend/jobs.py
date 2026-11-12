@@ -79,6 +79,8 @@ class JobManager:
         self.retention_task: asyncio.Task | None = None
         # Último ciclo de retenção (somente contagens, sem conteúdo), exposto em /v1/security/status.
         self.retention_status: dict = {"last_run_at": None, "last_status": None, "redacted_workflows": None}
+        # Checkpoint do WAL que não concluiu (leitor ativo): o próximo ciclo repete mesmo sem novas redações.
+        self.checkpoint_pending = False
         self.active_id: str | None = None
         self.active_process: OwnedProcess | None = None
         self.worker_lock = WorkerLock(store.path)
@@ -102,7 +104,8 @@ class JobManager:
 
     def _retention_cycle(self):
         # Sem rede. O arquivo do Radar fica ao lado do banco operacional (mesmo diretório de dados).
-        report = run_retention(self.store)
+        report = run_retention(self.store, retry_checkpoint=self.checkpoint_pending)
+        self.checkpoint_pending = report.checkpoint_pending
         RadarState(self.store.path.parent / "radar" / "radar-youtube.sqlite3").purge()
         return report
 
@@ -112,11 +115,12 @@ class JobManager:
         try:
             report = await asyncio.to_thread(self._retention_cycle)
         except Exception as error:
-            self.retention_status = {"last_run_at": started, "last_status": "failed", "redacted_workflows": None}
+            self.retention_status = {"last_run_at": started, "last_status": "failed", "redacted_workflows": None,
+                                     "checkpoint": None}
             log.warning("Ciclo de retenção do Radar falhou: %s", type(error).__name__)
             return None
         self.retention_status = {"last_run_at": started, "last_status": "partial" if report.failed else "ok",
-                                 "redacted_workflows": report.redacted}
+                                 "redacted_workflows": report.redacted, "checkpoint": report.checkpoint}
         return report
 
     async def _retention_loop(self):
