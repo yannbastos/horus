@@ -192,6 +192,48 @@ def test_restart_keeps_simulated_client(app):
             row=db.execute('SELECT executor,cognitive_client FROM workflows WHERE id=?',(w['id'],)).fetchone()
             assert tuple(row)==('hermes','simulated')
 
+def test_restart_during_simulated_analysis_recovers(tmp_path, monkeypatch):
+    """Reinício no meio da análise simulada: conciliação termina como interrompida, retry exige nova autorização."""
+    def forbidden(*args, **kwargs): raise AssertionError('Rede/conexão privada proibida')
+    monkeypatch.setattr('horus_backend.workflow_hermes.read_connection', forbidden)
+    def settings(poll):
+        return Settings(token=TOKEN, data_dir=tmp_path, factory_root=None, hermes_executable=None,
+                        hermes_config=tmp_path/'never-read.json', hermes_poll_seconds=poll)
+    first = create_app(settings(5.0))  # consulta lenta: o encerramento ocorre com a execução em andamento
+    first.state.monkeypatch = monkeypatch
+    with TestClient(first, base_url='http://127.0.0.1', headers={'Authorization': f'Bearer {TOKEN}'}) as client:
+        w = start(client); authorize(client, w)
+        wait(client, w['id'], lambda w: any(r['status'] == 'admitted' for r in w['cognitive_runs']))
+    monkeypatch.undo()
+    monkeypatch.setattr('horus_backend.workflow_hermes.read_connection', forbidden)
+    restarted = create_app(settings(.03))
+    with TestClient(restarted, base_url='http://127.0.0.1', headers={'Authorization': f'Bearer {TOKEN}'}) as client:
+        monkeypatch.setattr(socket.socket, 'connect', forbidden)
+        w = client.get('/v1/workflows/' + w['id']).json()
+        assert w['executor'] == 'hermes_simulated' and w['cognitive_runs'][0]['status'] == 'unknown'
+        assert client.post(f"/v1/workflows/{w['id']}/retry", json=dict(expected_revision=1)).status_code == 409
+        assert client.post(f"/v1/workflows/{w['id']}/reconcile", json=dict(expected_revision=1)).status_code == 200
+        w = wait(client, w['id'], lambda w: w['status'] == 'failed')
+        assert w['cognitive_runs'][0]['status'] == 'interrupted'
+        assert client.post(f"/v1/workflows/{w['id']}/retry", json=dict(expected_revision=1)).status_code == 200
+        w = wait(client, w['id'], lambda w: w['pending_authorization'] is not None)
+        response = client.post(f"/v1/workflows/{w['id']}/authorize", json=dict(expected_revision=1,
+            job_id=w['pending_authorization']['job_id']), headers={'Idempotency-Key': 'authorize-after-restart'})
+        assert response.status_code == 200, response.text
+        w = wait(client, w['id'], lambda w: w['status'] == 'awaiting_approval')
+        assert [r['status'] for r in w['cognitive_runs']].count('completed') == 1
+        response = client.post(f"/v1/workflows/{w['id']}/review", json=dict(expected_revision=1,
+            artifact_id=w['current_artifact_id'], decision='approve'), headers={'Idempotency-Key': 'review'})
+        assert response.status_code == 200 and client.get('/v1/workflows/' + w['id']).json()['status'] == 'approved'
+
+
+def test_simulator_unknown_run_after_restart():
+    from horus_backend.hermes_simulator import HermesSimulator
+    simulator = HermesSimulator()
+    assert simulator.status('sim_lost')['status'] == 'interrupted'
+    assert simulator.stop('sim_lost')['status'] == 'cancelled'
+
+
 def test_simulator_determinism_progress_and_stop():
     import json
     from pathlib import Path

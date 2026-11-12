@@ -56,7 +56,9 @@ class HermesSimulator:
     def status(self, run_id):
         with self.lock:
             if run_id not in self.runs:
-                raise HermesHTTPError(404, 'run_not_found', 'Execução simulada indisponível após reinício.')
+                # O simulador não tem trabalho externo pendente após reinício: término
+                # determinístico como interrompido, sem estado 'unknown' sem saída.
+                return dict(run_id=run_id, status='interrupted', error='Execução simulada perdida no reinício do Hórus.')
             run = self.runs[run_id]
             if run['status'] not in {'completed', 'cancelled'}:
                 run['polls'] += 1
@@ -65,5 +67,6 @@ class HermesSimulator:
 
     def stop(self, run_id):
         with self.lock:
-            self.runs[run_id]['status'] = 'cancelled'
+            if run_id in self.runs:
+                self.runs[run_id]['status'] = 'cancelled'
             return dict(run_id=run_id, status='cancelled')
