@@ -293,6 +293,30 @@ main::-webkit-scrollbar-track,
 .external-conn-item { padding: 10px 12px; background: var(--Sunken); border: 1px solid var(--Line); display: flex; flex-direction: column; gap: 6px; }
 .consent-future-area { margin-top: 14px; padding: 12px 14px; background: var(--Sunken); border: 1px solid var(--Line); display: flex; flex-direction: column; gap: 8px; }
 .error-card { border-color: var(--Bad); }
+.status-badge[data-state="active"]::before { content: "● " / ""; }
+.status-badge[data-state="blocked"]::before { content: "■ " / ""; }
+.status-badge[data-state="unverified"]::before { content: "? " / ""; }
+.status-badge[data-state="unavailable"]::before { content: "○ " / ""; }
+.status-legend { border: 1px solid var(--Line); background: var(--Sunken); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.legend-title { font-size: 12px; font-family: Geist, monospace; font-weight: 500; letter-spacing: 1.2px; text-transform: uppercase; color: var(--Muted); }
+.legend-list { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px 16px; }
+.legend-item { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.legend-item dt, .legend-item dd { margin: 0; }
+.summary-split { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px 20px; }
+.summary-split-item { display: flex; flex-direction: column; gap: 4px; padding-left: 10px; border-left: 2px solid var(--Line); }
+.summary-split-item dt, .summary-split-item dd { margin: 0; }
+.summary-split-item dt { color: var(--Muted); }
+.summary-split-item dd { font-size: 13px; line-height: 1.4; }
+.tools-header { align-items: flex-start; flex-wrap: wrap; }
+.tool-category-card.has-danger { border-color: var(--Bad); }
+.tool-category-head { align-items: baseline; flex-wrap: wrap; }
+.tool-count { font-family: Geist, monospace; }
+.disclosure-button { appearance: none; background: transparent; border: 0; padding: 2px 0; margin: 0; color: inherit; font: inherit; cursor: pointer; text-align: left; display: inline-flex; align-items: center; gap: 6px; }
+.disclosure-button::before { content: "▸" / ""; display: inline-block; width: 1em; color: var(--Muted); }
+.disclosure-button[aria-expanded="true"]::before { content: "▾" / ""; }
+.disclosure-button:hover { color: var(--AccentInk); }
+.tool-tags-list[hidden] { display: none; }
+@media (prefers-reduced-motion: reduce) { .disclosure-button, .button { transition: none; } }
 @media(max-width: 900px) {
   .topbar { flex-wrap: wrap; }
   .hero { grid-template-columns: minmax(0,1fr) 150px; }

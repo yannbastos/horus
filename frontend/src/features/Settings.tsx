@@ -70,10 +70,11 @@ export default function Settings({ theme, setTheme, connect, connection, hermes,
           id="tab-general"
           aria-selected={section === 'general'}
           aria-controls="panel-general"
+          tabIndex={section === 'general' ? 0 : -1}
           className={`button ${section === 'general' ? 'active' : ''}`}
           onClick={() => setSection('general')}
           onKeyDown={e => {
-            if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+            if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === 'End') {
               e.preventDefault();
               setSection('privacy');
               document.getElementById('tab-privacy')?.focus();
@@ -87,10 +88,11 @@ export default function Settings({ theme, setTheme, connect, connection, hermes,
           id="tab-privacy"
           aria-selected={section === 'privacy'}
           aria-controls="panel-privacy"
+          tabIndex={section === 'privacy' ? 0 : -1}
           className={`button ${section === 'privacy' ? 'active' : ''}`}
           onClick={() => setSection('privacy')}
           onKeyDown={e => {
-            if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+            if (e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'Home') {
               e.preventDefault();
               setSection('general');
               document.getElementById('tab-general')?.focus();

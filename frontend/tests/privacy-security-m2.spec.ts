@@ -330,10 +330,12 @@ test.describe('M2 · Tarefa 03 (HOR-126) — Interface de Privacidade e Seguran�
     const summary = page.getByRole('status', { name: 'Resumo de execução e segurança' });
     await expect(summary).toBeVisible();
     await expect(summary).toContainText('Execução real do Hermes bloqueada');
-    await expect(summary).toContainText(
-      'O Hórus não autoriza execuções reais do Hermes enquanto houver bloqueios críticos. Isso não restringe o perfil Hermes em si: as ferramentas listadas abaixo continuam habilitadas nele.'
-    );
-    await expect(summary.getByText('EXECUÇÃO BLOQUEADA')).toBeVisible();
+    await expect(summary).toContainText('O QUE O HÓRUS BLOQUEIA');
+    await expect(summary).toContainText('O envio de execuções reais ao Hermes, enquanto houver bloqueios críticos.');
+    await expect(summary).toContainText('O QUE O PERFIL HERMES PERMITE');
+    await expect(summary).toContainText('Perfil não restrito, com 7 ferramentas efetivas (3 de alto risco).');
+    await expect(summary).toContainText('O bloqueio do Hórus não altera o perfil');
+    await expect(summary.getByText('BLOQUEADO', { exact: true })).toBeVisible();
 
     // 2. Bloqueio crítico em destaque
     const criticalHighlight = page.getByRole('region', { name: 'Bloqueios críticos' });
@@ -371,10 +373,9 @@ test.describe('M2 · Tarefa 03 (HOR-126) — Interface de Privacidade e Seguran�
     const summary = page.getByRole('status', { name: 'Resumo de execução e segurança' });
     await expect(summary).toBeVisible();
     await expect(summary).toContainText('Execução real do Hermes permitida');
-    await expect(summary).toContainText(
-      'O Hórus autoriza o envio de execuções ao Hermes. As ferramentas disponíveis dependem da configuração do perfil ativo.'
-    );
-    await expect(summary.getByText('EXECUÇÃO LIBERADA')).toBeVisible();
+    await expect(summary).toContainText('Nenhum bloqueio crítico informado');
+    await expect(summary).toContainText('Perfil informado como restrito, com 1 ferramenta efetiva.');
+    await expect(summary.getByText('ATIVO', { exact: true })).toBeVisible();
 
     // Restrito ativo
     const hermesSection = page.getByRole('region', { name: 'Permissões do Hermes' });
@@ -422,6 +423,7 @@ test.describe('M2 · Tarefa 03 (HOR-126) — Interface de Privacidade e Seguran�
 
     const hermesSection = page.getByRole('region', { name: 'Permissões do Hermes' });
     await expect(hermesSection).toBeVisible();
+    await hermesSection.getByRole('button', { name: 'EXPANDIR TODAS' }).click();
 
     const getCategoryCard = (categoryName: string) =>
       hermesSection.locator('.tool-category-card').filter({
@@ -580,12 +582,12 @@ test.describe('M2 · Tarefa 03 (HOR-126) — Interface de Privacidade e Seguran�
 
     // 500
     mode = '500';
-    await page.getByRole('button', { name: 'TENTAR NOVAMENTE' }).click();
+    await page.getByRole('button', { name: 'VERIFICAR NOVAMENTE' }).click();
     await expect(page.getByRole('alert')).toContainText('500');
 
     // network
     mode = 'network';
-    await page.getByRole('button', { name: 'TENTAR NOVAMENTE' }).click();
+    await page.getByRole('button', { name: 'VERIFICAR NOVAMENTE' }).click();
     await expect(page.getByRole('alert')).toBeVisible();
   });
 
