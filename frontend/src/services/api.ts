@@ -576,7 +576,10 @@ export type SecurityRadar = {
   network_enabled: boolean | null;
   automatic_cleanup: {
     available: boolean;
+    interval_hours?: number | null;
     last_run_at: string | null;
+    last_status?: 'ok' | 'partial' | 'failed' | string | null;
+    redacted_workflows?: number | null;
   } | null;
 };
 

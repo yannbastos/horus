@@ -1,68 +1,114 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import type { Connection, SecurityBlocker, SecurityStatusResponse } from '../services/api';
 import { ApiError, getSecurityStatus } from '../services/api';
 import {
   AvailabilityBadge,
   BlockerList,
   StatusCard,
+  StatusLegend,
   SummaryBanner,
   TOOL_CATEGORIES,
+  TOOL_CATEGORY_RISK,
   UnverifiedBadge,
   categorizeTool,
 } from '../components/SecurityWidgets';
+import type { ToolCategory } from '../components/SecurityWidgets';
+
+type LoadFailure = {
+  kind: 'auth' | 'missing' | 'server' | 'network' | 'timeout' | 'other';
+  eyebrow: string;
+  title: string;
+  message: string;
+};
+
+const TIMEOUT_SECONDS = 15;
+
+function describeFailure(reason: unknown): LoadFailure {
+  if (reason instanceof ApiError) {
+    if (reason.status === 401) {
+      return {
+        kind: 'auth',
+        eyebrow: 'NÃO AUTORIZADO',
+        title: 'O backend recusou o token da sessão.',
+        message:
+          'Token inválido ou expirado (401). Reconecte o backend na aba GERAL e verifique novamente.',
+      };
+    }
+    if (reason.status === 404) {
+      return {
+        kind: 'missing',
+        eyebrow: 'BACKEND DESATUALIZADO',
+        title: 'Atualize o backend',
+        message:
+          'A rota GET /v1/security/status não existe neste backend (404). Nenhum diagnóstico foi obtido.',
+      };
+    }
+    if (reason.status >= 500) {
+      return {
+        kind: 'server',
+        eyebrow: 'FALHA NO BACKEND',
+        title: 'O backend não conseguiu montar o diagnóstico.',
+        message: `Erro interno (${reason.status}). Verifique novamente; se persistir, consulte os registros do backend.`,
+      };
+    }
+    return {
+      kind: 'other',
+      eyebrow: 'FALHA NA VERIFICAÇÃO',
+      title: 'Não foi possível verificar a segurança.',
+      message: `${reason.message} (${reason.status}).`,
+    };
+  }
+  if (reason instanceof Error && reason.name === 'AbortError') {
+    return {
+      kind: 'timeout',
+      eyebrow: 'TEMPO ESGOTADO',
+      title: 'O backend não respondeu a tempo.',
+      message: `Sem resposta em ${TIMEOUT_SECONDS} segundos. Verifique novamente.`,
+    };
+  }
+  return {
+    kind: 'network',
+    eyebrow: 'SEM CONEXÃO',
+    title: 'Não foi possível alcançar o backend local.',
+    message: 'Confirme que o aplicativo está em execução e verifique novamente.',
+  };
+}
 
 export default function PrivacySecurity({ connection }: { connection: Connection | null }) {
   const [status, setStatus] = useState<SecurityStatusResponse | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [errorStatus, setErrorStatus] = useState<number | null>(null);
+  const [failure, setFailure] = useState<LoadFailure | null>(null);
   const [revision, setRevision] = useState(0);
+  const [announce, setAnnounce] = useState('');
 
   useEffect(() => {
     if (!connection) {
       setStatus(null);
       setLoading(false);
-      setError('');
-      setErrorStatus(null);
+      setFailure(null);
+      setAnnounce('');
       return;
     }
 
     const controller = new AbortController();
     setLoading(true);
-    setError('');
-    setErrorStatus(null);
+    setFailure(null);
+    setAnnounce('');
 
     void getSecurityStatus(connection, controller.signal)
       .then(res => {
-        if (!controller.signal.aborted) {
-          setStatus(res);
-        }
+        if (controller.signal.aborted) return;
+        setStatus(res);
+        setAnnounce('Diagnóstico de segurança atualizado.');
       })
       .catch(reason => {
         if (controller.signal.aborted) return;
-        if (reason instanceof ApiError) {
-          setErrorStatus(reason.status);
-          if (reason.status === 404) {
-            setError('Atualize o backend: a rota de diagnóstico de segurança (/v1/security/status) não foi encontrada (404).');
-          } else if (reason.status === 401) {
-            setError('Acesso não autorizado ao verificar segurança (401). Verifique o token da sessão em Ajustes.');
-          } else if (reason.status >= 500) {
-            setError(`Falha interna do backend ao consultar status de segurança (${reason.status}).`);
-          } else {
-            setError(reason.message);
-          }
-        } else if (reason instanceof Error) {
-          if (reason.name !== 'AbortError') {
-            setError(reason.message || 'Falha de conexão com o backend local.');
-          }
-        } else {
-          setError(String(reason));
-        }
+        // Sem dados antigos: um diagnóstico obsoleto não pode sugerir proteção atual.
+        setStatus(null);
+        setFailure(describeFailure(reason));
       })
       .finally(() => {
-        if (!controller.signal.aborted) {
-          setLoading(false);
-        }
+        if (!controller.signal.aborted) setLoading(false);
       });
 
     return () => controller.abort();
@@ -76,10 +122,13 @@ export default function PrivacySecurity({ connection }: { connection: Connection
   if (!connection) {
     return (
       <section className="privacy-security-page" aria-label="Privacidade e Segurança">
-        <section className="card" aria-label="Backend desconectado">
+        <section className="card" aria-label="Backend desconectado" role="status" aria-live="polite">
           <p className="eyebrow bad">CONEXÃO PENDENTE</p>
           <h2>Backend desconectado.</h2>
-          <p className="muted">Conecte o backend local para verificar privacidade e segurança.</p>
+          <p className="muted">
+            Nenhum diagnóstico foi obtido. Na aba GERAL, conecte o backend local; depois, volte aqui e
+            verifique novamente.
+          </p>
         </section>
       </section>
     );
@@ -97,64 +146,76 @@ export default function PrivacySecurity({ connection }: { connection: Connection
               : 'Alimentado exclusivamente por GET /v1/security/status.'}
           </p>
         </div>
-        <button
-          className="button"
-          disabled={loading}
-          onClick={handleRefresh}
-        >
-          {loading ? 'VERIFICANDO…' : 'VERIFICAR NOVAMENTE'}
-        </button>
+        {!failure && (
+          <button className="button" disabled={loading} onClick={handleRefresh}>
+            {loading ? 'VERIFICANDO…' : 'VERIFICAR NOVAMENTE'}
+          </button>
+        )}
       </div>
 
-      {loading && (
-        <p role="status" aria-live="polite" className="loading">
-          Verificando privacidade e segurança…
-        </p>
-      )}
+      {/* Região viva única e persistente: anuncia carregamento e conclusão. */}
+      <p role="status" aria-live="polite" className={loading ? 'loading' : 'visually-hidden'}>
+        {loading ? 'Verificando privacidade e segurança…' : announce}
+      </p>
 
-      {error && (
-        <section className="card error-card" role="alert" aria-label="Erro na verificação">
-          <p className="eyebrow bad">{errorStatus === 404 ? 'BACKEND DESATUALIZADO' : 'FALHA NA VERIFICAÇÃO'}</p>
-          <h2>{errorStatus === 404 ? 'Atualize o backend' : 'Não foi possível verificar a segurança.'}</h2>
-          <p className="error">{error}</p>
-          <button className="button" onClick={handleRefresh}>
-            TENTAR NOVAMENTE
-          </button>
+      {failure && (
+        <section
+          className="card error-card"
+          role="alert"
+          aria-label="Erro na verificação"
+          data-failure={failure.kind}
+        >
+          <p className="eyebrow bad">{failure.eyebrow}</p>
+          <h2>{failure.title}</h2>
+          <p className="error">{failure.message}</p>
+          <div>
+            <button className="button" disabled={loading} onClick={handleRefresh}>
+              {loading ? 'VERIFICANDO…' : 'VERIFICAR NOVAMENTE'}
+            </button>
+          </div>
         </section>
       )}
 
+      <StatusLegend />
+
       {status && (
         <div className="privacy-sections-stack">
-          {/* 8. Faixa de Resumo: real_execution_allowed & Bloqueios Críticos */}
+          {/* Faixa de resumo: o que o Hórus bloqueia × o que o perfil Hermes permite */}
           <SummaryBanner
             realExecutionAllowed={status.real_execution_allowed}
             blockers={status.blockers || []}
+            tools={
+              status.hermes?.tools
+                ? {
+                    restricted: status.hermes.tools.restricted,
+                    total: status.hermes.tools.effective.length,
+                    dangerous: status.hermes.tools.effective.filter(t =>
+                      status.hermes.tools?.dangerous.includes(t)
+                    ).length,
+                  }
+                : null
+            }
           />
 
-          {/* 1. Estado da Privacidade */}
           <PrivacyStateSection processing={status.processing} />
 
-          {/* 2. Permissões do Hermes */}
           <HermesPermissionsSection
             hermes={status.hermes}
             blockers={status.blockers || []}
           />
 
-          {/* 3. Memória */}
           <AgentMemorySection memory={status.hermes?.memory ?? null} />
 
-          {/* 4. Modo Privado */}
+          <RadarRetentionSection radar={status.radar ?? null} />
+
           <PrivateModeSection privateMode={status.private_mode} />
 
-          {/* 5. Serviços Externos e Consentimento */}
           <ExternalServicesSection
             connections={status.processing?.external_connections || []}
           />
 
-          {/* 6. Auditoria */}
           <AuditSection audit={status.audit} />
 
-          {/* 7. Credenciais */}
           <CredentialsSection credentials={status.credentials} />
         </div>
       )}
@@ -189,12 +250,12 @@ function PrivacyStateSection({
           {processing.local_only === true ? (
             <div className="row">
               <span className="tag good">SOMENTE LOCAL</span>
-              <span className="muted small">Nenhum dado é enviado para nuvem</span>
+              <span className="muted small">Informado pelo backend; não é bloqueio de rede.</span>
             </div>
           ) : processing.local_only === false ? (
             <div className="row">
               <span className="tag warn">EXTERNO</span>
-              <span className="muted small">Conexões para serviços externos permitidas</span>
+              <span className="muted small">O backend admite conexões externas.</span>
             </div>
           ) : (
             <UnverifiedBadge reason="Origem de processamento não informada" />
@@ -275,6 +336,31 @@ function HermesPermissionsSection({
   hermes: SecurityStatusResponse['hermes'] | null;
   blockers: SecurityBlocker[];
 }) {
+  const baseId = useId();
+  const tools = hermes?.tools ?? null;
+  const dangerousSet = new Set(tools?.dangerous || []);
+  const effectiveTools = tools?.effective || [];
+
+  // Agrupamento em categorias canônicas; nenhuma ferramenta é omitida.
+  const categorized = new Map<ToolCategory, string[]>();
+  for (const cat of TOOL_CATEGORIES) categorized.set(cat, []);
+  for (const tool of effectiveTools) categorized.get(categorizeTool(tool))?.push(tool);
+
+  const dangerCount = (cat: ToolCategory) =>
+    (categorized.get(cat) || []).filter(t => dangerousSet.has(t)).length;
+
+  // Categorias com ferramentas perigosas primeiro; depois, a ordem canônica.
+  const populated = TOOL_CATEGORIES.filter(cat => (categorized.get(cat) || []).length > 0).sort(
+    (a, b) => dangerCount(b) - dangerCount(a)
+  );
+  const empty = TOOL_CATEGORIES.filter(cat => (categorized.get(cat) || []).length === 0);
+  const outsideEffective = [...dangerousSet].filter(t => !effectiveTools.includes(t));
+
+  const [open, setOpen] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(populated.map(cat => [cat, dangerCount(cat) > 0]))
+  );
+  const allOpen = populated.length > 0 && populated.every(cat => open[cat]);
+
   if (!hermes) {
     return (
       <StatusCard eyebrow="MOTOR HERMES" title="Permissões do Hermes">
@@ -283,25 +369,11 @@ function HermesPermissionsSection({
     );
   }
 
-  const tools = hermes.tools;
-  const dangerousSet = new Set(tools?.dangerous || []);
-  const effectiveTools = tools?.effective || [];
-
-  // Agrupamento em categorias canônicas
-  const categorized: Record<string, string[]> = {};
-  for (const cat of TOOL_CATEGORIES) {
-    categorized[cat] = [];
-  }
-  for (const tool of effectiveTools) {
-    const cat = categorizeTool(tool);
-    categorized[cat].push(tool);
-  }
-
   return (
     <StatusCard
       eyebrow="MOTOR HERMES"
       title="Permissões do Hermes"
-      subtitle="Origem do perfil, restrições e ferramentas efetivas ativas."
+      subtitle="O que o perfil Hermes permite, independentemente do que o Hórus bloqueia."
       ariaLabel="Permissões do Hermes"
     >
       <div className="info-grid">
@@ -348,7 +420,7 @@ function HermesPermissionsSection({
         </div>
 
         <div className="info-block">
-          <p className="small muted">Política de restrição:</p>
+          <p className="small muted">Política de restrição do perfil:</p>
           {tools?.restricted === true ? (
             <span className="tag good">RESTRITO</span>
           ) : tools?.restricted === false ? (
@@ -360,40 +432,97 @@ function HermesPermissionsSection({
       </div>
 
       <div className="tools-section">
-        <p className="eyebrow">FERRAMENTAS EFETIVAS POR CATEGORIA</p>
+        <div className="row spread tools-header">
+          <div>
+            <p className="eyebrow">FERRAMENTAS EFETIVAS POR CATEGORIA</p>
+            {tools && (
+              <p className="small muted" data-testid="tools-total">
+                {effectiveTools.length} {effectiveTools.length === 1 ? 'ferramenta' : 'ferramentas'} em{' '}
+                {populated.length} {populated.length === 1 ? 'categoria' : 'categorias'}
+                {dangerousSet.size > 0 ? ` · ${dangerousSet.size} de alto risco` : ''}
+              </p>
+            )}
+          </div>
+          {tools && populated.length > 0 && (
+            <button
+              type="button"
+              className="button"
+              onClick={() =>
+                setOpen(Object.fromEntries(populated.map(cat => [cat, !allOpen])))
+              }
+            >
+              {allOpen ? 'RECOLHER TODAS' : 'EXPANDIR TODAS'}
+            </button>
+          )}
+        </div>
+
         {!tools ? (
           <UnverifiedBadge reason="Conjunto de ferramentas não inspecionado." />
+        ) : effectiveTools.length === 0 ? (
+          <p className="muted small">O diagnóstico não lista nenhuma ferramenta efetiva.</p>
         ) : (
           <div className="tool-categories-grid">
-            {TOOL_CATEGORIES.map(category => {
-              const items = categorized[category] || [];
+            {populated.map(category => {
+              const items = [...(categorized.get(category) || [])].sort(
+                (a, b) => Number(dangerousSet.has(b)) - Number(dangerousSet.has(a))
+              );
+              const danger = dangerCount(category);
+              const isOpen = !!open[category];
+              const listId = `${baseId}-${category.replace(/\W+/g, '-')}`;
               return (
-                <div key={category} className="tool-category-card">
-                  <h3 className="tool-category-title">{category}</h3>
-                  {items.length > 0 ? (
-                    <div className="tool-tags-list">
-                      {items.map(tool => {
-                        const isDangerous = dangerousSet.has(tool);
-                        return (
-                          <div
-                            key={tool}
-                            className={`tool-tag-item ${isDangerous ? 'dangerous' : ''}`}
-                          >
-                            <code>{tool}</code>
-                            {isDangerous && (
-                              <span className="tag bad tool-danger-tag">PERIGOSA</span>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <span className="muted small">Nenhuma ferramenta ativa</span>
-                  )}
+                <div
+                  key={category}
+                  className={`tool-category-card ${danger > 0 ? 'has-danger' : ''}`}
+                >
+                  <div className="row spread tool-category-head">
+                    <h3 className="tool-category-title">
+                      <button
+                        type="button"
+                        className="disclosure-button"
+                        aria-expanded={isOpen}
+                        aria-controls={listId}
+                        onClick={() => setOpen(prev => ({ ...prev, [category]: !isOpen }))}
+                      >
+                        {category}
+                      </button>
+                    </h3>
+                    <span className="small muted tool-count">
+                      {items.length}
+                      {danger > 0 ? ` · ${danger} de alto risco` : ''}
+                    </span>
+                  </div>
+                  <p className="small muted">{TOOL_CATEGORY_RISK[category]}</p>
+                  <div id={listId} className="tool-tags-list" hidden={!isOpen}>
+                    {items.map(tool => {
+                      const isDangerous = dangerousSet.has(tool);
+                      return (
+                        <div
+                          key={tool}
+                          className={`tool-tag-item ${isDangerous ? 'dangerous' : ''}`}
+                        >
+                          <code>{tool}</code>
+                          {isDangerous && (
+                            <span className="tag bad tool-danger-tag">PERIGOSA</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               );
             })}
           </div>
+        )}
+        {tools && empty.length > 0 && effectiveTools.length > 0 && (
+          <p className="small muted">Sem ferramentas em: {empty.join(', ')}.</p>
+        )}
+        {outsideEffective.length > 0 && (
+          <p className="small muted">
+            Marcadas como de alto risco, mas fora da lista efetiva:{' '}
+            {outsideEffective.map(t => (
+              <code key={t}>{t}</code>
+            ))}
+          </p>
         )}
       </div>
 
@@ -461,11 +590,121 @@ function AgentMemorySection({
             {memory.external_provider ? (
               <span className="tag warn">{memory.external_provider}</span>
             ) : memory.external_provider === null ? (
-              <span className="tag good">NENHUM (ARMAZENAMENTO LOCAL)</span>
+              <span className="tag good">NENHUM INFORMADO</span>
             ) : (
               <UnverifiedBadge reason="Provedor externo não verificado" />
             )}
           </div>
+        </div>
+      )}
+    </StatusCard>
+  );
+}
+
+// --- 3b. Retenção do Radar ---
+const CLEANUP_STATUS: Record<string, { label: string; tone: string; note: string }> = {
+  ok: { label: 'CONCLUÍDO', tone: 'good', note: 'Todos os workflows foram processados.' },
+  partial: {
+    label: 'PARCIAL',
+    tone: 'warn',
+    note: 'Algum workflow falhou e foi preservado sem alteração.',
+  },
+  failed: { label: 'FALHOU', tone: 'bad', note: 'O ciclo não foi concluído.' },
+};
+
+function RadarRetentionSection({ radar }: { radar: SecurityStatusResponse['radar'] | null }) {
+  const cleanup = radar?.automatic_cleanup ?? null;
+
+  return (
+    <StatusCard
+      eyebrow="RETENÇÃO DE DADOS"
+      title="Retenção do Radar"
+      subtitle="Limpeza automática dos dados coletados pelo Radar."
+      ariaLabel="Retenção do Radar"
+      badge={
+        cleanup ? <AvailabilityBadge available={cleanup.available === true} /> : undefined
+      }
+    >
+      {!radar ? (
+        <UnverifiedBadge reason="O diagnóstico não informou a retenção do Radar." />
+      ) : (
+        <div className="info-grid">
+          <div className="info-block">
+            <p className="small muted">Retenção configurada:</p>
+            {typeof radar.retention_days === 'number' ? (
+              <span>{radar.retention_days} dias</span>
+            ) : (
+              <UnverifiedBadge reason="Prazo não informado" />
+            )}
+          </div>
+
+          <div className="info-block">
+            <p className="small muted">Coleta de rede do Radar:</p>
+            {radar.network_enabled === true ? (
+              <span className="tag warn">HABILITADA</span>
+            ) : radar.network_enabled === false ? (
+              <span className="tag">DESATIVADA</span>
+            ) : (
+              <UnverifiedBadge reason="Estado não informado" />
+            )}
+          </div>
+
+          {!cleanup ? (
+            <div className="info-block">
+              <p className="small muted">Limpeza automática:</p>
+              <UnverifiedBadge reason="Ciclo de limpeza não informado" />
+            </div>
+          ) : cleanup.available !== true ? (
+            <div className="info-block">
+              <p className="small muted">Limpeza automática:</p>
+              <p className="small muted">Rotina não disponível nesta versão do backend.</p>
+            </div>
+          ) : (
+            <>
+              <div className="info-block">
+                <p className="small muted">Intervalo da limpeza:</p>
+                {typeof cleanup.interval_hours === 'number' ? (
+                  <span>a cada {cleanup.interval_hours} h</span>
+                ) : (
+                  <UnverifiedBadge reason="Intervalo não informado" />
+                )}
+              </div>
+
+              <div className="info-block" data-testid="cleanup-last-run">
+                <p className="small muted">Último ciclo:</p>
+                {cleanup.last_run_at ? (
+                  <>
+                    <span>{new Date(cleanup.last_run_at).toLocaleString('pt-BR')}</span>
+                    {cleanup.last_status && CLEANUP_STATUS[cleanup.last_status] ? (
+                      <>
+                        <span className={`tag ${CLEANUP_STATUS[cleanup.last_status].tone}`}>
+                          {CLEANUP_STATUS[cleanup.last_status].label}
+                        </span>
+                        <span className="small muted">
+                          {CLEANUP_STATUS[cleanup.last_status].note}
+                        </span>
+                      </>
+                    ) : cleanup.last_status ? (
+                      <span className="tag">{cleanup.last_status}</span>
+                    ) : (
+                      <UnverifiedBadge reason="Estado do ciclo não informado" />
+                    )}
+                  </>
+                ) : (
+                  <span className="muted">Ainda não executado nesta sessão</span>
+                )}
+              </div>
+
+              <div className="info-block">
+                <p className="small muted">Workflows redigidos no último ciclo:</p>
+                {typeof cleanup.redacted_workflows === 'number' ? (
+                  <span>{cleanup.redacted_workflows}</span>
+                ) : (
+                  <span className="muted">—</span>
+                )}
+              </div>
+            </>
+          )}
         </div>
       )}
     </StatusCard>
@@ -490,18 +729,16 @@ function PrivateModeSection({
     >
       <p className="muted">
         {privateMode?.reason ||
-          'Impede gravação de logs em disco, bloqueia provedores externos e encerra sessões ao fechar.'}
+          (isAvailable
+            ? 'Impede gravação de logs em disco, bloqueia provedores externos e encerra sessões ao fechar.'
+            : 'Recurso ainda não implementado; não há controle para ativá-lo.')}
       </p>
-      <div className="row">
-        <span className="small muted">Status atual:</span>
-        {!isAvailable ? (
-          <span className="tag">NÃO DISPONÍVEL</span>
-        ) : privateMode?.enabled ? (
-          <span className="tag good">ATIVO</span>
-        ) : (
+      {isAvailable && !privateMode?.enabled && (
+        <div className="row">
+          <span className="small muted">Estado atual:</span>
           <span className="tag muted">INATIVO</span>
-        )}
-      </div>
+        </div>
+      )}
       {/* Regra: Sem interruptor ativo nesta etapa */}
     </StatusCard>
   );
@@ -554,8 +791,7 @@ function ExternalServicesSection({
           />
         </div>
         <p className="muted small">
-          O gerenciamento granular de permissões e consentimento para serviços externos ainda não está
-          disponível nesta versão.
+          Sem controles nesta versão: o Hórus não pede nem registra consentimento por serviço externo.
         </p>
         {/* Regra: Sem controles ativos */}
       </div>

@@ -1,6 +1,45 @@
 import React from 'react';
 import type { SecurityBlocker } from '../services/api';
 
+export type BadgeState = 'active' | 'blocked' | 'unverified' | 'unavailable';
+
+export const BADGE_META: Record<BadgeState, { label: string; tone: string; meaning: string }> = {
+  active: { label: 'ATIVO', tone: 'good', meaning: 'O diagnóstico confirma que está em vigor.' },
+  blocked: { label: 'BLOQUEADO', tone: 'bad', meaning: 'O Hórus impede esta ação.' },
+  unverified: {
+    label: 'NÃO VERIFICADO',
+    tone: 'warn',
+    meaning: 'O diagnóstico não confirmou; nenhuma proteção é presumida.',
+  },
+  unavailable: {
+    label: 'NÃO DISPONÍVEL',
+    tone: '',
+    meaning: 'Ainda não implementado nesta versão; sem controles.',
+  },
+};
+
+/** Único selo de estado da tela: texto + glifo (não depende só de cor). */
+export function StatusBadge({
+  state,
+  reason,
+  className = '',
+}: {
+  state: BadgeState;
+  reason?: string;
+  className?: string;
+}) {
+  const meta = BADGE_META[state];
+  return (
+    <span
+      className={`tag status-badge ${meta.tone} ${className}`.trim()}
+      data-state={state}
+      title={reason}
+    >
+      {meta.label}
+    </span>
+  );
+}
+
 export function AvailabilityBadge({
   available,
   reason,
@@ -10,26 +49,36 @@ export function AvailabilityBadge({
   reason?: string;
   className?: string;
 }) {
-  if (!available) {
-    return (
-      <span className={`tag ${className}`} title={reason}>
-        NÃO DISPONÍVEL
-      </span>
-    );
-  }
-  return (
-    <span className={`tag good ${className}`}>
-      DISPONÍVEL
-    </span>
-  );
+  return <StatusBadge state={available ? 'active' : 'unavailable'} reason={reason} className={className} />;
 }
 
 export function UnverifiedBadge({ reason }: { reason?: string }) {
   return (
     <span className="unverified-badge-wrapper">
-      <span className="tag warn">NÃO VERIFICADO</span>
+      <StatusBadge state="unverified" />
       {reason && <span className="muted small unverified-reason">{reason}</span>}
     </span>
+  );
+}
+
+export function StatusLegend() {
+  const states: BadgeState[] = ['active', 'blocked', 'unverified', 'unavailable'];
+  return (
+    <section className="status-legend" aria-labelledby="status-legend-title">
+      <h2 id="status-legend-title" className="legend-title">
+        Legenda dos selos
+      </h2>
+      <dl className="legend-list">
+        {states.map(state => (
+          <div key={state} className="legend-item">
+            <dt>
+              <StatusBadge state={state} />
+            </dt>
+            <dd className="muted small">{BADGE_META[state].meaning}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
   );
 }
 
@@ -105,14 +154,39 @@ export function StatusCard({
   );
 }
 
+export type HermesToolsSummary = {
+  restricted: boolean | null;
+  total: number;
+  dangerous: number;
+} | null;
+
+function hermesProfileLine(tools: HermesToolsSummary): string {
+  if (!tools) return 'Não verificado: o diagnóstico não inspecionou as ferramentas do perfil.';
+  const count = `${tools.total} ${tools.total === 1 ? 'ferramenta efetiva' : 'ferramentas efetivas'}`;
+  if (tools.restricted === true) {
+    return `Perfil informado como restrito, com ${count}${
+      tools.dangerous > 0 ? ` (${tools.dangerous} de alto risco)` : ''
+    }.`;
+  }
+  if (tools.restricted === false) {
+    return `Perfil não restrito, com ${count}${
+      tools.dangerous > 0 ? ` (${tools.dangerous} de alto risco)` : ''
+    }.`;
+  }
+  return `Restrição do perfil não informada; ${count} listadas abaixo.`;
+}
+
 export function SummaryBanner({
   realExecutionAllowed,
   blockers,
+  tools = null,
 }: {
   realExecutionAllowed: boolean;
   blockers: SecurityBlocker[];
+  tools?: HermesToolsSummary;
 }) {
   const criticalBlockers = blockers.filter(b => b.severity === 'critical');
+  const profileNotRestricted = tools !== null && tools.restricted !== true && tools.total > 0;
 
   return (
     <section
@@ -122,22 +196,35 @@ export function SummaryBanner({
     >
       <div className="row spread">
         <div className="summary-status-header">
-          <span className={`status-dot ${realExecutionAllowed ? 'good' : 'bad'}`} />
+          <span className={`status-dot ${realExecutionAllowed ? 'good' : 'bad'}`} aria-hidden="true" />
           <h2 className="summary-title">
             {realExecutionAllowed
               ? 'Execução real do Hermes permitida'
               : 'Execução real do Hermes bloqueada'}
           </h2>
         </div>
-        <span className={`tag ${realExecutionAllowed ? 'good' : 'bad'}`}>
-          {realExecutionAllowed ? 'EXECUÇÃO LIBERADA' : 'EXECUÇÃO BLOQUEADA'}
-        </span>
+        <StatusBadge state={realExecutionAllowed ? 'active' : 'blocked'} />
       </div>
-      <p className="muted">
-        {realExecutionAllowed
-          ? 'O Hórus autoriza o envio de execuções ao Hermes. As ferramentas disponíveis dependem da configuração do perfil ativo.'
-          : 'O Hórus não autoriza execuções reais do Hermes enquanto houver bloqueios críticos. Isso não restringe o perfil Hermes em si: as ferramentas listadas abaixo continuam habilitadas nele.'}
-      </p>
+
+      <dl className="summary-split">
+        <div className="summary-split-item">
+          <dt className="eyebrow">O QUE O HÓRUS BLOQUEIA</dt>
+          <dd>
+            {realExecutionAllowed
+              ? 'Nenhum bloqueio crítico informado: o Hórus pode enviar execuções reais ao Hermes.'
+              : 'O envio de execuções reais ao Hermes, enquanto houver bloqueios críticos.'}
+          </dd>
+        </div>
+        <div className="summary-split-item">
+          <dt className="eyebrow">O QUE O PERFIL HERMES PERMITE</dt>
+          <dd>
+            {hermesProfileLine(tools)}
+            {!realExecutionAllowed && profileNotRestricted
+              ? ' O bloqueio do Hórus não altera o perfil: essas ferramentas seguem habilitadas nele.'
+              : ''}
+          </dd>
+        </div>
+      </dl>
 
       {criticalBlockers.length > 0 && (
         <section className="critical-blockers-highlight" aria-label="Bloqueios críticos">
@@ -246,3 +333,16 @@ export function categorizeTool(toolName: string): ToolCategory {
   // 9. Outras (ferramentas desconhecidas nunca são omitidas)
   return 'Outras';
 }
+
+/** Uma linha sobre o que cada categoria pode fazer. Descreve capacidade, não proteção. */
+export const TOOL_CATEGORY_RISK: Record<ToolCategory, string> = {
+  'Comandos e processos': 'Pode rodar comandos e processos na máquina do usuário.',
+  'Arquivos': 'Pode ler ou alterar arquivos acessíveis ao perfil.',
+  'Execução de código': 'Pode executar código gerado pelo próprio agente.',
+  'Web e navegador': 'Pode acessar a internet e trocar dados com serviços externos.',
+  'Delegação e agendamento': 'Pode criar subagentes e tarefas agendadas.',
+  'Skills e conectores': 'Pode ampliar o agente com skills e conexões de terceiros.',
+  'Memória': 'Pode ler e gravar contexto persistente do agente.',
+  'Mídia': 'Pode processar imagens, áudio e vídeo.',
+  'Outras': 'Categoria não reconhecida pelo Hórus; avalie cada ferramenta.',
+};
