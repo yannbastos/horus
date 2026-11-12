@@ -30,11 +30,36 @@ class Store:
         db = sqlite3.connect(self.path, timeout=5)
         db.row_factory = sqlite3.Row
         db.execute("PRAGMA foreign_keys=ON")
+        # Por conexão: páginas liberadas por DELETE/UPDATE são zeradas, em vez de manter o valor antigo no arquivo.
+        db.execute("PRAGMA secure_delete=ON")
         try:
             with db:
                 yield db
         finally:
             db.close()
+
+    def checkpoint(self, *, timeout: float = 2.0) -> dict:
+        """`wal_checkpoint(TRUNCATE)`: leva o WAL ao arquivo principal e o esvazia. Nunca levanta exceção.
+
+        Leitores ativos impedem o truncamento (`status="busy"`); o chamador decide quando tentar de novo.
+        Devolve somente contagens: status, quadros do WAL, bytes restantes do `-wal` e páginas livres.
+        """
+        wal = self.path.with_name(self.path.name + "-wal")
+        db = None
+        try:
+            db = sqlite3.connect(self.path, timeout=timeout, isolation_level=None)
+            busy, frames, checkpointed = db.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+            result = {"status": "busy" if busy else "ok", "wal_frames": max(frames, 0),
+                      "checkpointed_frames": max(checkpointed, 0)}
+            result["wal_bytes"] = wal.stat().st_size if wal.exists() else 0
+            result["freelist_pages"] = db.execute("PRAGMA freelist_count").fetchone()[0]
+            result["page_count"] = db.execute("PRAGMA page_count").fetchone()[0]
+            return result
+        except (sqlite3.Error, OSError) as error:
+            return {"status": "error", "error": type(error).__name__}
+        finally:
+            if db is not None:
+                db.close()
 
     @staticmethod
     def job(row):
