@@ -143,8 +143,11 @@ Os exemplos abaixo são respostas efetivamente coletadas por `TestClient` contra
     "retention_days": 28,
     "network_enabled": false,
     "automatic_cleanup": {
-      "available": false,
-      "last_run_at": null
+      "available": true,
+      "interval_hours": 6,
+      "last_run_at": "2026-11-12T12:00:00Z",
+      "last_status": "ok",
+      "redacted_workflows": 0
     }
   },
   "credentials": {
@@ -257,8 +260,11 @@ Os exemplos abaixo são respostas efetivamente coletadas por `TestClient` contra
     "retention_days": 28,
     "network_enabled": false,
     "automatic_cleanup": {
-      "available": false,
-      "last_run_at": null
+      "available": true,
+      "interval_hours": 6,
+      "last_run_at": "2026-11-12T12:00:00Z",
+      "last_status": "ok",
+      "redacted_workflows": 0
     }
   },
   "credentials": {
@@ -295,3 +301,7 @@ Os exemplos abaixo são respostas efetivamente coletadas por `TestClient` contra
 - Suíte específica `backend/tests/test_security.py`: **81 aprovados**.
 - `git diff --check` e referências locais dos três documentos: aprovados.
 - Sem inferência real, rede externa, instalação, alteração de firewall, mudança do perfil operacional ou testes de sandbox de SO.
+
+## Limpeza automática do Radar no status
+
+`radar.automatic_cleanup` reflete o ciclo real de retenção executado pelo `JobManager` (na inicialização e a cada 6 horas): `available` é `true` porque a rotina existe no backend; `last_run_at`, `last_status` (`ok`, `partial` quando algum workflow falhou e foi preservado, `failed`) e `redacted_workflows` vêm do último ciclo desta execução do backend, mantidos em memória e sem conteúdo do YouTube. Antes do primeiro ciclo, esses três campos são `null`. Coberto por `test_status_reports_real_radar_cleanup_cycle`.
