@@ -45,6 +45,16 @@ def hermes_connection_file() -> Path:
     return Path(os.environ.get("HORUS_HERMES_CONFIG", default_data_dir() / "integrations/hermes.json"))
 
 
+def operator_limit(name: str) -> int | None:
+    value = os.environ.get(name, "")
+    return int(value) if value.isascii() and value.isdigit() and len(value) < 12 else None
+
+
+def hermes_profile_dir() -> Path:
+    from .security import profile_default
+    return Path(os.environ.get("HORUS_HERMES_PROFILE", profile_default())).expanduser()
+
+
 @dataclass(frozen=True)
 class Settings:
     token: str
@@ -59,6 +69,9 @@ class Settings:
     # Executor dos novos workflows editoriais; definido pelo operador, nunca pelo payload da API.
     workflow_executor: str = field(default_factory=lambda: os.environ.get("HORUS_WORKFLOW_EXECUTOR", "simulated"))
     radar_executor: str = field(default_factory=lambda: os.environ.get("HORUS_RADAR_EXECUTOR", "hermes_simulated"))
+    hermes_profile: Path = field(default_factory=hermes_profile_dir)
+    max_tokens_per_run: int | None = field(default_factory=lambda: operator_limit("HORUS_MAX_TOKENS_PER_RUN"))
+    max_tokens_per_day: int | None = field(default_factory=lambda: operator_limit("HORUS_MAX_TOKENS_PER_DAY"))
     hermes_poll_seconds: float = 2.0
     hermes_run_timeout: float = 900.0
     origins: tuple[str, ...] = (

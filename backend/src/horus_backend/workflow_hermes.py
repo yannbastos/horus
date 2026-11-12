@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import re
 import time
 import uuid
 from typing import Any, Callable, Literal
@@ -18,7 +19,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from urllib.error import HTTPError, URLError
 from urllib.request import ProxyHandler, Request, build_opener
 
-from .hermes import NoRedirect, read_connection
+from .hermes import NoRedirect, read_connection, validate_origin
+from .security import SecurityGate, daily_tokens, require_secure
 from .hermes_contract.mapping import Observation, decide, idempotency_key
 from .hermes_contract.models import ChannelProfile, Dataset, HermesRunRequest, RunEnvelope
 from .hermes_contract.validator import OutputError, parse_output, validate_result
@@ -66,10 +68,14 @@ class HermesRunClient:
     """Cliente mínimo da API de execuções; somente loopback, sem proxy e sem redirects."""
 
     def __init__(self, base_url: str, token: str):
-        self.base_url, self.token = base_url, token
+        validate_origin(base_url)
+        self.base_url, self.token = base_url.rstrip("/"), token
         self.opener = build_opener(ProxyHandler({}), NoRedirect())
 
     def _call(self, method: str, path: str, body: dict | None = None, headers: dict | None = None, timeout: float = 15):
+        validate_origin(self.base_url)
+        if not re.fullmatch(r"/v1/runs(?:/[A-Za-z0-9_-]+(?:/stop)?)?", path):
+            raise ValueError("Referência de execução inválida.")
         data = json.dumps(body).encode() if body is not None else None
         request = Request(self.base_url + path, data=data, method=method, headers={
             "Authorization": f"Bearer {self.token}", "Content-Type": "application/json",
@@ -78,18 +84,22 @@ class HermesRunClient:
             with self.opener.open(request, timeout=timeout) as response:
                 raw = response.read(MAX_RESPONSE + 1)
         except HTTPError as error:
-            raw = error.read(64 * 1024)
             error.close()
-            try:
-                detail = json.loads(raw).get("error", {})
-            except (ValueError, AttributeError):
-                detail = {}
-            raise HermesHTTPError(error.code, detail.get("code"), str(detail.get("message") or error.reason)) from None
+            # Corpo e códigos remotos podem refletir credenciais; nunca persistir esse conteúdo.
+            raise HermesHTTPError(error.code, "remote_error", "O Hermes recusou o pedido.") from None
         if len(raw) > MAX_RESPONSE:
             raise ValueError("Resposta do Hermes acima do limite.")
+        if self.token.encode() in raw:
+            raise ValueError("Resposta remota contém credencial e foi descartada.")
         value = json.loads(raw)
         if not isinstance(value, dict):
             raise ValueError("Resposta do Hermes inválida.")
+        if self.token in json.dumps(value, ensure_ascii=False):
+            raise ValueError("Resposta remota contém credencial e foi descartada.")
+        if "run_id" in value and (not isinstance(value["run_id"], str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", value["run_id"])):
+            raise ValueError("Referência remota inválida.")
+        if "status" in value and value["status"] not in {"queued", "running", "completed", "failed", "cancelled", "interrupted", "waiting_for_approval", "stopping"}:
+            raise ValueError("Estado remoto inválido.")
         return value
 
     def submit(self, body: dict, key: str):
@@ -160,6 +170,12 @@ class HermesStages:
             db.execute(f"UPDATE cognitive_runs SET {columns} WHERE id=?", (*fields.values(), run_id))
 
     async def analysis(self, context, attempt_id: str, should_stop: Callable[[], bool]):
+        live = context.get("cognitive_client", "live") == "live"
+        if live:
+            try:
+                require_secure(self.settings)  # repetir antes do envio, inclusive após mudança de perfil
+            except SecurityGate as error:
+                raise CognitiveFailure(str(error)) from None
         client = await asyncio.to_thread(self.client_factory)
         resume = context.get("resume_run")
         if resume:
@@ -171,11 +187,19 @@ class HermesStages:
         else:
             envelope = self._envelope(context, attempt_id)
             body = HermesRunRequest(input=envelope.model_dump_json(), instructions=INSTRUCTIONS,
-                                    metadata={"horus_workflow": context["workflow_id"], "horus_attempt": attempt_id}
+                                    metadata={"horus_workflow": context["workflow_id"], "horus_attempt": attempt_id,
+                                              **({"horus_token_reservation": str(self.settings.max_tokens_per_run)} if live else {})}
                                     ).model_dump(exclude_none=True)
+            # Limite conservador de admissão do payload (bytes UTF-8 >= tokens de texto).
+            # Não substitui limite do provedor para prompt de sistema/reasoning; ver guia de segurança.
+            if live and len((body["input"] + body["instructions"]).encode("utf-8")) >= self.settings.max_tokens_per_run:
+                raise CognitiveFailure("security_gate: Entrada excede o teto de tokens por execução.")
             run_id, key, external_ref = uuid.uuid4().hex, idempotency_key(attempt_id), None
             timestamp = now()
-            with self.store.connect() as db:  # persistido ANTES do envio: resposta perdida é recuperável
+            with self.store.connect() as db:  # reserva e intenção atômicas ANTES de enviar
+                db.execute("BEGIN IMMEDIATE")
+                if live and daily_tokens(self.settings, self.store, db) + self.settings.max_tokens_per_run > self.settings.max_tokens_per_day:
+                    raise CognitiveFailure("security_gate: Saldo diário de tokens insuficiente.")
                 db.execute("""INSERT INTO cognitive_runs(id,job_id,attempt_id,provider,idempotency_key,request,request_hash,
                     status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,'submitting',?,?)""",
                            (run_id, context["job_id"], attempt_id, "hermes", key, json.dumps(body), _digest(body),
@@ -183,7 +207,7 @@ class HermesStages:
         try:
             if not external_ref:
                 external_ref = await self._admit(client, run_id, body, key)
-            status = await self._follow(client, run_id, external_ref)
+            status = await self._follow(client, run_id, external_ref, self.settings.max_tokens_per_run if live else None)
         except asyncio.CancelledError:
             await self._on_cancel(client, run_id, external_ref, should_stop())
             raise
@@ -208,7 +232,7 @@ class HermesStages:
         self._record(run_id, status="unknown", error="Admissão sem resposta após repetir com a mesma chave.")
         raise CognitiveUnknown("Não foi possível confirmar a admissão no Hermes. Concilie antes de nova tentativa.")
 
-    async def _follow(self, client, run_id, external_ref):
+    async def _follow(self, client, run_id, external_ref, token_limit=None):
         deadline = time.monotonic() + self.settings.hermes_run_timeout
         while True:
             try:
@@ -217,6 +241,13 @@ class HermesStages:
                 status, code = {}, error.status
             except (URLError, OSError, TimeoutError, ValueError):
                 status, code = {}, None
+            usage = status.get("usage")
+            total = usage.get("total_tokens") if isinstance(usage, dict) else None
+            if token_limit is not None and type(total) is int and total > token_limit:
+                stopped = status.get("status") in {"completed", "failed", "cancelled", "interrupted"} or await self._stop(client, external_ref)
+                self._record(run_id, status="failed" if stopped else "unknown", usage={"total_tokens": total},
+                             error="Teto de tokens por execução excedido.")
+                raise (CognitiveFailure if stopped else CognitiveUnknown)("security_gate: Teto de tokens excedido.")
             action = decide(Observation(admitted=True, http_status=code, run_status=status.get("status")))
             if action in {"validate_output", "record_failed", "record_cancelled", "record_interrupted"}:
                 return status
@@ -262,13 +293,17 @@ class HermesStages:
                      error=None if stopped else "Cancelamento remoto não confirmado.")
 
     def _accept(self, run_id, external_ref, status, envelope, context):
-        usage = status.get("usage")
+        raw_usage = status.get("usage")
+        usage = {name: raw_usage[name] for name in ('input_tokens', 'output_tokens', 'total_tokens', 'cache_read_tokens', 'cache_write_tokens')
+                 if type(raw_usage.get(name)) is int and raw_usage[name] >= 0} if isinstance(raw_usage, dict) else None
+        if context.get("cognitive_client", "live") == "live" and usage and usage.get("total_tokens", 0) > self.settings.max_tokens_per_run:
+            self._record(run_id, status="failed", usage=usage, error="Teto de tokens por execução excedido.")
+            raise CognitiveFailure("security_gate: Teto de tokens por execução excedido; revisar provedor antes de repetir.")
         remote = status.get("status")
         if remote != "completed":
             self._record(run_id, status="cancelled" if remote == "cancelled" else "interrupted" if remote == "interrupted" else "failed",
-                         remote_status=remote, usage=usage, error=str(status.get("error") or status.get("turn_exit_reason") or "")[:2000])
-            raise CognitiveFailure(f"Hermes encerrou a execução como {remote}"
-                                   f"{' (' + status['turn_exit_reason'] + ')' if status.get('turn_exit_reason') else ''}.")
+                         remote_status=remote, usage=usage, error="Execução remota encerrada sem resultado.")
+            raise CognitiveFailure("Hermes encerrou a execução sem resultado aceitável.")
         try:
             raw = parse_output(status.get("output") or "")
         except OutputError as error:
@@ -276,10 +311,11 @@ class HermesStages:
             raise CognitiveFailure(f"Resposta do Hermes fora do contrato: {error}") from None
         result, issues = validate_result(raw, envelope)
         if issues:
-            detail = "; ".join(f"{issue.code} em {issue.path}" for issue in issues[:5])
+            # Caminhos de erros de schema podem conter chaves arbitrárias do modelo.
+            detail = "; ".join(issue.code for issue in issues[:5])
             self._record(run_id, status="invalid_output", remote_status=remote, usage=usage, error=detail[:2000])
             raise CognitiveFailure(f"Resultado reprovado na validação de evidências: {detail}")
         self._record(run_id, status="completed", remote_status=remote, usage=usage, error=None)
         return {"schema_version": 2, "simulated": False, "stage": "analysis", "title": "Análise editorial validada",
-                "result": result.model_dump(mode="json"), "usage": usage, "provider": "hermes",
+                "result": result.model_dump(mode="json"), "usage": usage, "provider": "hermes_simulated" if context.get("cognitive_client") == "simulated" else "hermes",
                 "external_ref": external_ref, "source_artifact_ids": [context["sources"][0]["id"]]}
