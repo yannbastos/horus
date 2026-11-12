@@ -22,7 +22,7 @@ from .config import Settings
 from .diagnostics import diagnose
 from .dependencies import transcription_capabilities
 from .hermes import HermesConnector
-from .jobs import JobManager, JobRequest, TERMINAL
+from .jobs import RETENTION_INTERVAL_SECONDS, JobManager, JobRequest, TERMINAL
 from .radar_youtube.state import RadarState
 from .radar_workflow import RadarWorkflowRequest, adapt, demo, eligibility, summary
 from .security import SecurityGate, require_secure, security_status
@@ -92,7 +92,11 @@ def create_app(settings: Settings, shutdown=None, ready=None):
 
     @app.get("/v1/security/status")
     async def inspect_security():
-        return security_status(settings, store)
+        report = security_status(settings, store)
+        # A limpeza automática roda no JobManager (início + a cada 6 h); o estado vem do último ciclo real.
+        report["radar"]["automatic_cleanup"] = {"available": True, "interval_hours": RETENTION_INTERVAL_SECONDS // 3600,
+                                                **manager.retention_status}
+        return report
 
     @app.get("/v1/hermes")
     async def hermes_status():
