@@ -231,3 +231,5 @@ Resultado final do SEC-C3: **455 aprovados, 1 ignorado** no backend (incluindo 3
 O processo Hermes continua com permissões do usuário e pode acessar rede por componentes internos/provedor/catálogos. `network_isolation.enforced` permanece `false`. Job Objects não bloqueiam arquivos/rede; AppContainer, usuário dedicado/VM e política de saída exigem desenho, compatibilidade e autorização próprios. Nada disso foi instalado/configurado aqui.
 
 Gate não autentica versão, ambiente completo, plugins já carregados ou perfil realmente usado pelo gateway; mudanças locais após inspeção são risco residual. A seleção mínima vazia sob as condições inspecionadas não comprova operação contínua do perfil real após reinício. Os limites iniciais desta seção estão aprovados e implementados; alteração operacional do perfil, ensaio de reinício/inferência, credenciais/provedor, preços aplicáveis e confinamento continuam dependendo do idealizador. Não há decisão de implementação pendente no SEC-C3, nem autorização de gasto real.
+
+Checklist executável pré-inferência (HOR-129): [checklist-pre-inferencia.md](checklist-pre-inferencia.md).
