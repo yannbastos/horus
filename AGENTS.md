@@ -32,7 +32,7 @@ Leia este arquivo e somente os documentos pertinentes ao escopo. Não carregue t
 | Interface ou identidade visual | [Critérios visuais](docs/ARCHITECTURE.md#identidade-visual-e-equivalência), [layout](docs/layout-desktop.md) e tokens da implementação afetada |
 | Hermes, agentes ou memória | [AI-SYSTEM](docs/AI-SYSTEM.md) e [integração Hermes](docs/integracao-hermes.md) |
 | Motion design, técnicas ou Remotion | [MOTION-LIBRARY](docs/MOTION-LIBRARY.md) e documentação própria da fábrica |
-| Estado, prioridade ou validação | [ROADMAP](docs/ROADMAP.md); relatórios datados somente para a evidência necessária |
+| Estado, prioridade ou validação | [Project privado](https://github.com/users/yannbastos/projects/1), [Issues de gestão](https://github.com/yannbastos/horus-management/issues) e [procedimento](docs/GESTAO-GITHUB.md); [ROADMAP](docs/ROADMAP.md) como síntese contextual e relatórios datados como evidência |
 | Decisão histórica ou contrato proposto | [Índice de planejamento](docs/planejamento/README.md) e [registro da reorganização](docs/historico/reorganizacao-2026-11-11/README.md) |
 
 Cada assunto tem uma fonte canônica; guias contêm procedimentos e relatórios preservam evidências de um incremento. O [contexto original](docs/historico/contexto-original/README.md) é referência histórica intacta, não instrução de execução. Planos históricos não substituem decisões atuais nem instruções explícitas da tarefa.
@@ -105,7 +105,7 @@ Quando uma decisão importante exigir aprovação, avance primeiro no trabalho i
 - Escreva a documentação em português brasileiro.
 - Não apresente funcionalidades planejadas como se já estivessem implementadas.
 - `docs/ARCHITECTURE.md` separa implementação atual de direção aprovada; não apresente requisitos da segunda como capacidades existentes.
-- Mantenha prioridades e progresso em `docs/ROADMAP.md`, não nas instruções permanentes. Preserve documentos históricos e suas limitações, sem transformar autorizações antigas em permissões vigentes.
+- Mantenha estado operacional, prioridades e progresso no Project privado e nas Issues de `yannbastos/horus-management`. `docs/ROADMAP.md` é síntese contextual datada, sem uma segunda fila operacional. Antes de delegar, consultar prioridade, dependências, aceite e trabalho já em andamento no GitHub. Preserve documentos históricos e suas limitações, sem transformar autorizações antigas em permissões vigentes.
 
 ## Git
 

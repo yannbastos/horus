@@ -1,6 +1,6 @@
 # Estado e prioridades do Hórus
 
-Fonte canônica do estado consolidado e da ordem de evolução, sem datas prometidas. A [visão](VISION.md) descreve objetivos; a [arquitetura](ARCHITECTURE.md) aponta as evidências de código.
+Síntese contextual datada da evolução, sem datas prometidas. A fonte operacional de tarefas, estado, prioridade e dependências passa a ser o [Project privado HÓRUS — Desenvolvimento e Roadmap](https://github.com/users/yannbastos/projects/1), com [Issues no repositório privado de gestão](https://github.com/yannbastos/horus-management/issues). A [visão](VISION.md) descreve objetivos; a [arquitetura](ARCHITECTURE.md) aponta as evidências de código. Consulte o [procedimento de gestão](GESTAO-GITHUB.md) antes de delegar; não manter uma fila operacional paralela neste documento ou na planilha.
 
 Revisão documental em 2026-11-11. Os ensaios abaixo são registros anteriores, não testes executados nesta reorganização. Este roadmap não concede autorização para implementar, gastar, publicar, instalar, fazer commit ou push.
 

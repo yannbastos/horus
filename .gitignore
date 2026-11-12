@@ -48,3 +48,6 @@ __pycache__/
 *.sqlite3.worker.lock
 frontend/test-results/
 frontend/playwright-report/
+
+# Artefatos da migração de gestão: versionados somente em yannbastos/horus-management (privado).
+docs/migracao-github/
