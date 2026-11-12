@@ -20,7 +20,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import ProxyHandler, Request, build_opener
 
 from .hermes import NoRedirect, read_connection, validate_origin
-from .security import SecurityGate, daily_tokens, require_secure
+from .security import SecurityGate, daily_runs, daily_tokens, require_secure
 from .hermes_contract.mapping import Observation, decide, idempotency_key
 from .hermes_contract.models import ChannelProfile, Dataset, HermesRunRequest, RunEnvelope
 from .hermes_contract.validator import OutputError, parse_output, validate_result
@@ -198,6 +198,8 @@ class HermesStages:
             timestamp = now()
             with self.store.connect() as db:  # reserva e intenção atômicas ANTES de enviar
                 db.execute("BEGIN IMMEDIATE")
+                if live and daily_runs(self.store, db) >= self.settings.max_runs_per_day:
+                    raise CognitiveFailure("security_gate: Teto diário de execuções reais atingido.")
                 if live and daily_tokens(self.settings, self.store, db) + self.settings.max_tokens_per_run > self.settings.max_tokens_per_day:
                     raise CognitiveFailure("security_gate: Saldo diário de tokens insuficiente.")
                 db.execute("""INSERT INTO cognitive_runs(id,job_id,attempt_id,provider,idempotency_key,request,request_hash,

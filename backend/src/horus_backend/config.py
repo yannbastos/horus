@@ -72,6 +72,7 @@ class Settings:
     hermes_profile: Path = field(default_factory=hermes_profile_dir)
     max_tokens_per_run: int | None = field(default_factory=lambda: operator_limit("HORUS_MAX_TOKENS_PER_RUN"))
     max_tokens_per_day: int | None = field(default_factory=lambda: operator_limit("HORUS_MAX_TOKENS_PER_DAY"))
+    max_runs_per_day: int | None = field(default_factory=lambda: operator_limit("HORUS_MAX_RUNS_PER_DAY"))
     hermes_poll_seconds: float = 2.0
     hermes_run_timeout: float = 900.0
     origins: tuple[str, ...] = (

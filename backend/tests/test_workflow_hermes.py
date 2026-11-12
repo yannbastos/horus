@@ -44,7 +44,7 @@ def settings(tmp_path, hermes):
     from horus_backend.security import harden_profile
     profile = tmp_path / "profile"
     harden_profile(profile)
-    return Settings(hermes_profile=profile, max_tokens_per_run=100000, max_tokens_per_day=10000000, token=TOKEN, data_dir=tmp_path / "data", factory_root=None, hermes_executable=None,
+    return Settings(hermes_profile=profile, max_tokens_per_run=100000, max_tokens_per_day=10000000, max_runs_per_day=100, token=TOKEN, data_dir=tmp_path / "data", factory_root=None, hermes_executable=None,
                     hermes_config=connection, workflow_executor="hermes", hermes_poll_seconds=.05, hermes_run_timeout=5)
 
 
@@ -281,6 +281,50 @@ def test_daily_budget_is_reserved_and_blocks_next_authorization(settings, hermes
         status = client.get('/v1/security/status').json()
         assert any(b['code'] == 'daily_token_limit' for b in status['blockers'])
         assert status['real_execution_allowed'] is False
+
+
+@pytest.mark.parametrize('failed', [False, True])
+def test_daily_real_run_limit_counts_zero_usage_and_failures(settings, hermes, failed):
+    from dataclasses import replace
+    from horus_backend.security import daily_runs
+    settings = replace(settings, max_runs_per_day=1)
+    hermes.scenarios.append(Scenario(output='' if failed else echo(), final_status='failed' if failed else 'completed',
+                                    usage={'input_tokens': 0, 'output_tokens': 0, 'total_tokens': 0}))
+    app = create_app(settings)
+    with TestClient(app, base_url='http://127.0.0.1', headers=HEADERS) as client:
+        workflow = authorize(client, pending(client, create(client)['id']))
+        wait(client, workflow['id'], lambda w: w['status'] == ('failed' if failed else 'awaiting_approval'))
+        assert daily_runs(app.state.store) == 1
+        report = client.get('/v1/security/status').json()
+        assert 'daily_run_limit' in {b['code'] for b in report['blockers']}
+        second = pending(client, create(client, key='pedido-2')['id'])
+        response = client.post(f"/v1/workflows/{second['id']}/authorize", headers={'Idempotency-Key': 'segunda'},
+            json={'expected_revision': second['revision'], 'job_id': second['pending_authorization']['job_id']})
+        assert response.status_code == 409 and len(hermes.requests) == 1
+        # A fonte oficial é cognitive_client: simulação não consome quota e dia anterior não conta.
+        with app.state.store.connect() as db:
+            db.execute("UPDATE workflows SET cognitive_client='simulated' WHERE id=?", (workflow['id'],))
+        assert daily_runs(app.state.store) == 0
+        with app.state.store.connect() as db:
+            db.execute("UPDATE workflows SET cognitive_client='live' WHERE id=?", (workflow['id'],))
+            db.execute("UPDATE cognitive_runs SET created_at='2000-01-01T00:00:00Z'")
+        assert daily_runs(app.state.store) == 0
+
+
+def test_daily_run_limit_rechecked_inside_reservation_transaction(settings, hermes, monkeypatch):
+    from dataclasses import replace
+    import horus_backend.workflow_hermes as adapter
+    settings = replace(settings, max_runs_per_day=1)
+    def exhausted_after_authorization(store, db):
+        # Outra admissão pode consumir a última vaga após a autorização; rechecagem sob lock.
+        assert db.in_transaction
+        return 1
+    monkeypatch.setattr(adapter, 'daily_runs', exhausted_after_authorization)
+    with client_for(settings) as client:
+        workflow = authorize(client, pending(client, create(client)['id']))
+        result = wait(client, workflow['id'], lambda w: w['status'] == 'failed')
+        assert result['cognitive_runs'] == [] and hermes.requests == []
+        assert 'Teto diário' in result['steps'][2]['error']
 
 
 def test_remote_error_body_never_reaches_events(settings, hermes, caplog):
