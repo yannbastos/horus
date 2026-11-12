@@ -520,25 +520,25 @@ export type SecurityBlocker = {
 
 export type SecurityExternalConnection = {
   id: string;
-  kind: 'loopback' | 'external' | string;
-  target: string;
-  enabled: boolean;
-  purpose: string;
+  kind: 'loopback' | 'external' | string | null;
+  target: string | null;
+  enabled: boolean | null;
+  purpose: string | null;
 };
 
 export type SecurityProcessing = {
   local_only: boolean | null;
   workflow_executor_default: string | null;
   radar_executor: string | null;
-  external_connections: SecurityExternalConnection[];
+  external_connections: SecurityExternalConnection[] | null;
 };
 
 export type SecurityHermesTools = {
   source: string | null;
   restricted: boolean | null;
-  effective: string[];
-  dangerous: string[];
-  required_for_editorial: string[];
+  effective: string[] | null;
+  dangerous: string[] | null;
+  required_for_editorial: string[] | null;
 };
 
 export type SecurityHermesMemory = {
@@ -558,6 +558,16 @@ export type SecurityHermesCostLimits = {
   configured: boolean | null;
   max_tokens_per_run: number | null;
   max_tokens_per_day: number | null;
+  max_runs_per_day?: number | null;
+  runs_configured?: boolean | null;
+  budget_total_usd?: string | null;
+  budget_daily_usd?: string | null;
+  budget_configured?: boolean | null;
+  pricing_configured?: boolean | null;
+  estimated_spent_total_usd?: string | null;
+  estimated_spent_today_usd?: string | null;
+  reserved_usd?: string | null;
+  runs_today?: number | null;
 };
 
 export type SecurityHermes = {
@@ -575,7 +585,7 @@ export type SecurityRadar = {
   retention_days: number | null;
   network_enabled: boolean | null;
   automatic_cleanup: {
-    available: boolean;
+    available: boolean | null;
     interval_hours?: number | null;
     last_run_at: string | null;
     last_status?: 'ok' | 'partial' | 'failed' | string | null;
@@ -585,34 +595,34 @@ export type SecurityRadar = {
 
 export type SecurityCredentialItem = {
   id: string;
-  storage: string;
-  description?: string;
-  protection?: string;
-  location_label?: string;
+  storage: string | null;
+  description?: string | null;
+  protection?: string | null;
+  location_label?: string | null;
   [key: string]: unknown;
 };
 
 export type SecurityCredentials = {
-  items: SecurityCredentialItem[];
+  items: SecurityCredentialItem[] | null;
 };
 
 export type SecurityFeatureAvailability = {
-  available: boolean;
-  enabled?: boolean;
-  reason: string;
+  available: boolean | null;
+  enabled?: boolean | null;
+  reason: string | null;
 };
 
 export type SecurityStatusResponse = {
-  schema_version: string;
-  checked_at: string;
-  real_execution_allowed: boolean;
-  blockers: SecurityBlocker[];
-  processing: SecurityProcessing;
-  hermes: SecurityHermes;
-  radar?: SecurityRadar;
-  credentials: SecurityCredentials;
-  private_mode: SecurityFeatureAvailability;
-  audit: SecurityFeatureAvailability;
+  schema_version: string | null;
+  checked_at: string | null;
+  real_execution_allowed: boolean | null;
+  blockers: SecurityBlocker[] | null;
+  processing: SecurityProcessing | null;
+  hermes: SecurityHermes | null;
+  radar?: SecurityRadar | null;
+  credentials: SecurityCredentials | null;
+  private_mode: SecurityFeatureAvailability | null;
+  audit: SecurityFeatureAvailability | null;
 };
 
 export async function getSecurityStatus(
