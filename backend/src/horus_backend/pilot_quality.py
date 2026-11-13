@@ -534,3 +534,56 @@ def inspect_pilot_files(root, evidence: dict) -> dict:
     report.done("acoustic_evidence", problems,
                 detail=f"duração, pico {peak:.2f}, clipping {clipped:.4%}; loudness e inteligibilidade não medidos")
     return report.result()
+
+
+# --------------------------------------------------------------------------- análise acústica reutilizável
+
+SILENCE_WINDOW = 0.02           # s; janela da detecção de silêncio por pico
+
+
+def analyze_wav(path: Path, *, silence_peak: float = SILENCE_PEAK, min_silence: float = 1.0) -> dict | None:
+    """Medição de um WAV PCM 16 bits (só stdlib): duração, pico, RMS, clipping e silêncios >= `min_silence` s.
+
+    Devolve `None` se o formato não é PCM 16 bits (duração ainda vem por `wave`). Levanta `wave.Error`/`ValueError`/
+    `OSError` para arquivo ilegível ou truncado: o chamador decide como reportar. Silêncio = janelas de 20 ms cujo
+    pico fica abaixo de `silence_peak` do fundo de escala (todos os canais). Tempos em segundos.
+    """
+    with wave.open(str(path), "rb") as wav:
+        rate, channels, width, total = wav.getframerate(), wav.getnchannels(), wav.getsampwidth(), wav.getnframes()
+        if rate <= 0 or channels <= 0 or total <= 0:
+            raise ValueError("WAV vazio")
+        out = {"duration": total / rate, "sample_rate": rate, "channels": channels}
+        if width != 2 or wav.getcomptype() != "NONE":
+            return None
+        window, peak, clipped, count, squares = max(1, int(rate * SILENCE_WINDOW)), 0, 0, 0, 0.0
+        runs, run_start, position, limit = [], None, 0, silence_peak * 32768
+        while True:
+            raw = wav.readframes(window)
+            if not raw:
+                break
+            data = array("h")
+            data.frombytes(raw[: len(raw) - len(raw) % 2])
+            if sys.byteorder == "big":
+                data.byteswap()
+            if not data:
+                break
+            loud = max(max(data), -min(data))
+            peak = max(peak, loud)
+            clipped += sum(1 for v in data if v >= 32767 or v <= -32768)
+            squares += sum(v * v for v in data)
+            count += len(data)
+            frames = len(data) // channels
+            if loud < limit:
+                run_start = position if run_start is None else run_start
+            elif run_start is not None:
+                runs.append((run_start / rate, position / rate))
+                run_start = None
+            position += frames
+        if count != total * channels:
+            raise ValueError("WAV truncado: dados PCM lidos menores que o declarado no header")
+        if run_start is not None:
+            runs.append((run_start / rate, position / rate))
+    rms = math.sqrt(squares / count) / 32768
+    out.update(peak=peak / 32768, rms=rms, clipped_fraction=clipped / count, clipped_samples=clipped,
+               silences=[(a, b) for a, b in runs if b - a >= min_silence])
+    return out
