@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Protocol
 
 # Registro de origens dos motores locais; novos adaptadores declaram aqui sua origem.
-PRODUCTION_ORIGINS = {'windows_sapi': 'system_voice', 'piper': 'local_tts_model'}
+PRODUCTION_ORIGINS = {'windows_sapi': 'system_voice', 'piper': 'local_tts_model', 'kokoro': 'local_tts_model'}
 
 
 class NarrationError(Exception):

@@ -26,7 +26,7 @@ class MemoryKeyring(KeyringBackend):
 
 @pytest.fixture(autouse=True)
 def no_network(monkeypatch):
-    for name in ('HORUS_PIPER_EXECUTABLE','HORUS_PIPER_MODELS','HORUS_NARRATION_PAID_ENABLED',
+    for name in ('HORUS_KOKORO_PYTHON','HORUS_KOKORO_MODEL_DIR','HORUS_PIPER_EXECUTABLE','HORUS_PIPER_MODELS','HORUS_NARRATION_PAID_ENABLED',
                  'HORUS_ELEVENLABS_PRICE_PER_1K_CHARS','HORUS_ELEVENLABS_CURRENCY'):
         monkeypatch.delenv(name,raising=False)
     def blocked(*args, **kwargs): raise AssertionError('Network forbidden')
@@ -55,8 +55,9 @@ def test_contract_auth_status(client):
     response = client.get('/v1/narration/providers')
     assert response.status_code == 200
     providers = {p['id']: p for p in response.json()}
-    assert set(providers) == {'windows_sapi', 'piper', 'elevenlabs'}
+    assert set(providers) == {'windows_sapi', 'piper', 'kokoro', 'elevenlabs'}
     assert providers['piper']['status'] == 'not_installed'
+    assert providers['kokoro']['status'] == 'not_installed'
     assert providers['elevenlabs']['status'] == 'disabled'
     for p in providers.values():
         assert set(p) == {'id', 'name', 'kind', 'status', 'reason', 'engine_license', 'voices', 'native_word_timestamps', 'requires_authorization'}

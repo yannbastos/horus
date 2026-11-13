@@ -41,7 +41,7 @@ async def synthesize(input_path):
     env = {k:v for k,v in os.environ.items() if k.upper() in {'PATH','SYSTEMROOT','WINDIR','TEMP','TMP','COMSPEC','PATHEXT'}}
     request = json.loads(input_path.read_text(encoding='utf-8'))
     if request.get('narration'):
-        for name in ('HORUS_PIPER_EXECUTABLE', 'HORUS_PIPER_MODELS'):
+        for name in ('HORUS_PIPER_EXECUTABLE', 'HORUS_PIPER_MODELS', 'HORUS_KOKORO_PYTHON', 'HORUS_KOKORO_MODEL_DIR'):
             if os.environ.get(name): env[name] = os.environ[name]
         # Módulo do mesmo backend; PYTHONPATH não vem do operador.
         env['PYTHONPATH'] = str(Path(__file__).resolve().parents[1])

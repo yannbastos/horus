@@ -14,6 +14,8 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 from starlette.background import BackgroundTask
 from .providers import WindowsSapi, Piper, ElevenLabs, NarrationError
 
+from .kokoro import Kokoro
+
 DEFAULT_TEXT = 'Esta é uma frase fictícia para testar a voz de narração.'
 
 
@@ -70,6 +72,7 @@ class CredentialRequest(BaseModel):
 def provider_registry(settings):
     credentials = Credentials(settings.data_dir)
     return {p.id: p for p in (WindowsSapi(), Piper(settings.piper_executable, settings.piper_models),
+                              Kokoro(getattr(settings, "kokoro_python", None), getattr(settings, "kokoro_model_dir", None)),
                               ElevenLabs(settings, credentials))}
 
 
