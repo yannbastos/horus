@@ -6,7 +6,7 @@ import uuid
 from contextlib import closing
 from pathlib import Path
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 MIGRATIONS = {
     1: (
         """CREATE TABLE jobs (
@@ -92,6 +92,18 @@ MIGRATIONS = {
     4: (
         """ALTER TABLE workflows ADD COLUMN cognitive_client TEXT NOT NULL DEFAULT 'live'
             CHECK(cognitive_client IN ('live','simulated'))""",
+    ),
+    5: (
+        """CREATE TABLE scripts (
+            id TEXT PRIMARY KEY, workflow_id TEXT NOT NULL REFERENCES workflows(id),
+            workflow_revision INTEGER NOT NULL, proposal_artifact_id TEXT NOT NULL REFERENCES artifacts(id),
+            proposal_content_hash TEXT NOT NULL, version INTEGER NOT NULL CHECK(version > 0),
+            status TEXT NOT NULL CHECK(status IN ('awaiting_review','approved','rejected','changes_requested')),
+            document TEXT NOT NULL, created_at TEXT NOT NULL, review TEXT,
+            UNIQUE(workflow_id, version))""",
+        """CREATE TABLE script_receipts (
+            scope TEXT NOT NULL, idempotency_key TEXT NOT NULL, request TEXT NOT NULL,
+            response TEXT NOT NULL, PRIMARY KEY(scope, idempotency_key))""",
     ),
 }
 

@@ -15,6 +15,8 @@ from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -26,6 +28,7 @@ from .jobs import RETENTION_INTERVAL_SECONDS, JobManager, JobRequest, TERMINAL
 from .radar_youtube.state import RadarState
 from .radar_workflow import RadarWorkflowRequest, adapt, demo, eligibility, summary
 from .security import SecurityGate, require_secure, security_status
+from .scripts import ScriptRequest, ScriptReviewRequest, ScriptService
 from .storage import Store
 from .workflows import AuthorizationRequest, ReviewRequest, RevisionRequest, WorkflowConflict, WorkflowRequest
 
@@ -52,6 +55,7 @@ def create_app(settings: Settings, shutdown=None, ready=None):
     radar_state = RadarState(settings.data_dir / "radar" / "radar-youtube.sqlite3")
     manager = JobManager(store, settings)
     hermes = HermesConnector(settings)
+    scripts = ScriptService(store)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -68,6 +72,13 @@ def create_app(settings: Settings, shutdown=None, ready=None):
     app.state.store, app.state.manager = store, manager
     app.add_middleware(CORSMiddleware, allow_origins=list(settings.origins), allow_methods=["GET", "POST"],
                        allow_headers=["Authorization", "Content-Type", "Idempotency-Key"])
+
+    @app.exception_handler(RequestValidationError)
+    async def invalid_payload(request: Request, error: RequestValidationError):
+        # Pydantic inclui input_value: roteiro/feedback privados não devem voltar no erro.
+        if request.url.path.startswith("/v1/scripts/") or request.url.path.endswith("/scripts"):
+            return JSONResponse({"detail": "Pedido de roteiro inválido."}, status_code=422)
+        return await request_validation_exception_handler(request, error)
 
     @app.middleware("http")
     async def authorize(request: Request, call_next):
@@ -120,6 +131,35 @@ def create_app(settings: Settings, shutdown=None, ready=None):
             return await manager.workflows.create(request, idempotency_key)
         except WorkflowConflict as error:
             raise HTTPException(409, str(error)) from error
+
+    def script_call(action):
+        try:
+            return action()
+        except KeyError as error:
+            raise HTTPException(404, "Roteiro ou workflow não encontrado.") from error
+        except WorkflowConflict as error:
+            raise HTTPException(409, str(error)) from error
+        except ValueError as error:
+            raise HTTPException(422, "Estrutura do roteiro inválida.") from error
+
+    @app.post("/v1/workflows/{workflow_id}/scripts", status_code=201)
+    def generate_script(workflow_id: str, request: ScriptRequest,
+                        idempotency_key: str = Header(min_length=1, max_length=128)):
+        record, created = script_call(lambda: scripts.create(workflow_id, request, idempotency_key))
+        return JSONResponse(record, status_code=201 if created else 200)
+
+    @app.get("/v1/workflows/{workflow_id}/scripts")
+    def list_scripts(workflow_id: str):
+        return script_call(lambda: scripts.list(workflow_id))
+
+    @app.get("/v1/scripts/{script_id}")
+    def inspect_script(script_id: str):
+        return script_call(lambda: scripts.get(script_id))
+
+    @app.post("/v1/scripts/{script_id}/review")
+    def review_script(script_id: str, request: ScriptReviewRequest,
+                      idempotency_key: str = Header(min_length=1, max_length=128)):
+        return script_call(lambda: scripts.review(script_id, request, idempotency_key))
 
     @app.get("/v1/workflows")
     async def list_workflows():
