@@ -1,5 +1,6 @@
 import { api, ApiError } from './api';
 import type { Connection, JobStatus } from './api';
+import type { ScriptSection } from './scripts';
 
 export type ProductionMode = 'simulated' | 'local_demo' | 'local_pilot';
 
@@ -9,6 +10,7 @@ export type ProductionStage =
   | 'scenes'
   | 'subtitles'
   | 'render'
+  | 'quality'
   | 'review';
 
 export type ProductionArtifactKind =
@@ -29,21 +31,99 @@ export type ProductionArtifact = {
 
 export type ProductionReviewDecision = 'approve' | 'reject';
 
+// Contrato 4 — Revisão por timecode e reconhecimento de erros de QC
+export type ProductionReviewNote = {
+  at_seconds: number;
+  text: string;
+};
+
 export type ProductionReview = {
   decision: ProductionReviewDecision;
   artifact_sha256: string;
   reviewed_at: string;
+  notes?: ProductionReviewNote[];
+  acknowledge_quality_errors?: boolean;
+  acknowledged_quality_errors?: boolean;
 };
+
+// Contrato 1 — word-timings.json (contracts/media/word-timings.schema.json)
+export type WordTimingSource = 'tts_engine_events' | 'forced_alignment' | 'estimated';
+
+export type WordTimingEngine = {
+  name: string;
+  voice: string;
+};
+
+export type WordTimingItem = {
+  index: number;
+  text: string;
+  section: number | string;
+  start: number;
+  end: number;
+  char_offset: number;
+  char_length: number;
+};
+
+export type WordTimingsReport = {
+  schema_version: 1 | number;
+  narration_sha256: string;
+  duration_seconds: number;
+  source: WordTimingSource | string;
+  engine: WordTimingEngine;
+  words: WordTimingItem[];
+};
+
+// Contrato 2 — quality-report.json (contracts/media/quality-report.schema.json)
+export type QualityCheckCategory =
+  | 'integrity'
+  | 'duration'
+  | 'audio'
+  | 'sync'
+  | 'subtitles'
+  | 'provenance'
+  | 'visual';
+
+export type QualityCheckStatus = 'pass' | 'warn' | 'fail' | 'skipped' | 'not_checked';
+
+export type QualityCheckMethod = 'measured' | 'declared' | 'estimated';
+
+export type QualityCheckTimecode = {
+  start: number;
+  end: number;
+};
+
+export type QualityScalarValue =
+  | string
+  | number
+  | boolean
+  | null
+  | Array<string | number | boolean | null>;
 
 export type PilotQualityCheckItem = {
   id: string;
-  status: 'pass' | 'fail' | 'not_checked' | string;
+  category?: QualityCheckCategory | string;
+  status: QualityCheckStatus | string;
+  method?: QualityCheckMethod | string;
+  measured?: Record<string, QualityScalarValue | unknown> | null;
+  threshold?: Record<string, QualityScalarValue | unknown> | null;
   detail?: string;
+  timecode?: QualityCheckTimecode | null;
 };
 
+export type QualityReportTool = {
+  name: string;
+  version: string;
+};
+
+export type QualityReportOverallStatus = 'pass' | 'warn' | 'fail' | 'not_run';
+
 export type ProductionQualityReport = {
-  schema_version?: number;
-  status?: string | null;
+  schema_version?: 1 | number;
+  production_id?: string;
+  video_sha256?: string;
+  generated_at?: string;
+  tool?: QualityReportTool | null;
+  status?: QualityReportOverallStatus | string | null;
   passed?: boolean | null;
   valid?: boolean | null;
   summary?: string | null;
@@ -54,6 +134,50 @@ export type ProductionQualityReport = {
   publishable?: boolean | null;
 };
 
+// Contrato 3 — asset-provenance.json (contracts/media/asset-provenance.schema.json)
+export type AssetProvenanceKind = 'image' | 'video' | 'audio' | 'voice' | 'music' | 'font';
+
+export type AssetProvenanceOrigin =
+  | 'original_local'
+  | 'system_voice'
+  | 'local_tts_model'
+  | 'stock_pexels'
+  | 'stock_pixabay'
+  | 'licensed_manual';
+
+export type CommercialUseStatus = 'allowed' | 'restricted' | 'unknown';
+
+export type AssetLicenseInfo = {
+  id?: string | null;
+  name?: string | null;
+  url?: string | null;
+  commercial_use: CommercialUseStatus | string;
+  attribution_required: boolean | null;
+  verified_by: 'human' | null | string;
+  verified_at: string | null;
+};
+
+export type AssetVerificationStatus = 'verified' | 'unverified' | 'rejected';
+
+export type AssetProvenanceItem = {
+  asset_id: string;
+  relative_path: string;
+  sha256: string;
+  kind: AssetProvenanceKind | string;
+  origin: AssetProvenanceOrigin | string;
+  source_url?: string | null;
+  author?: string | null;
+  license: AssetLicenseInfo;
+  status: AssetVerificationStatus | string;
+  notes?: string | null;
+};
+
+export type AssetProvenanceReport = {
+  schema_version: 1 | number;
+  assets: AssetProvenanceItem[];
+};
+
+// Contrato 5 — Registro da produção
 export type ProductionRecord = {
   id: string;
   script_id: string;
@@ -76,7 +200,13 @@ export type ProductionRecord = {
   narration_disclosure?: string | null;
   alignment_method?: 'measured_sections' | string | null;
   publishable?: boolean | null;
-  // Campos opcionais defensivos adicionais para proveniência e QC (Sonnet schema v1)
+  // Campos expostos em GET /v1/productions/{id} (Contrato 5) e flag de reconhecimento de QC
+  quality_report?: ProductionQualityReport | Record<string, unknown> | null;
+  asset_provenance?: AssetProvenanceReport | Record<string, unknown> | null;
+  word_timings?: WordTimingsReport | Record<string, unknown> | null;
+  quality_acknowledgement_required?: boolean | null;
+  requires_quality_acknowledgement?: boolean | null;
+  // Campos opcionais defensivos adicionais (Sonnet schema v1)
   audio_kind?: string | null;
   voice_kind?: string | null;
   tts_engine?: string | null;
@@ -85,7 +215,6 @@ export type ProductionRecord = {
   subtitles_kind?: string | null;
   scenes_kind?: string | null;
   visual_origin?: string | null;
-  quality_report?: ProductionQualityReport | Record<string, unknown> | null;
   quality_status?: string | null;
   pilot_evidence?: Record<string, unknown> | null;
   provenance?: Record<string, unknown> | null;
@@ -103,6 +232,8 @@ export type CreateProductionPayload = {
 export type ReviewProductionPayload = {
   decision: ProductionReviewDecision;
   artifact_sha256: string;
+  notes?: ProductionReviewNote[];
+  acknowledge_quality_errors?: boolean;
 };
 
 export type NarrationProvenanceKind =
@@ -175,6 +306,126 @@ export type SrtSegment = {
   index: number;
   start: string;
   end: string;
+  startSeconds: number | null;
+  endSeconds: number | null;
+  text: string;
+};
+
+export type NormalizedQualityCheck = {
+  id: string;
+  category: string;
+  categoryLabel: string;
+  status: 'pass' | 'warn' | 'fail' | 'skipped' | 'not_checked';
+  statusLabel: string;
+  method: 'measured' | 'declared' | 'estimated' | 'unverified';
+  methodLabel: string;
+  measuredSource: string | null;
+  measuredText: string;
+  thresholdText: string;
+  detail: string;
+  timecode: QualityCheckTimecode | null;
+  isBlocking: boolean;
+  isWarning: boolean;
+};
+
+export type NormalizedQualityHighlight = {
+  id: string;
+  kind: 'blocking_error' | 'warning';
+  detail: string;
+  categoryLabel: string | null;
+  methodLabel: string | null;
+  timecode: QualityCheckTimecode | null;
+};
+
+export type NormalizedQualityReport = {
+  executed: boolean;
+  overallStatus: QualityReportOverallStatus;
+  overallStatusLabel: string;
+  overallTone: 'good' | 'warn' | 'bad' | '';
+  productionId: string | null;
+  videoSha256: string | null;
+  generatedAt: string | null;
+  toolName: string | null;
+  toolVersion: string | null;
+  checks: NormalizedQualityCheck[];
+  blockingErrors: NormalizedQualityHighlight[];
+  warnings: NormalizedQualityHighlight[];
+  passCount: number;
+  warnCount: number;
+  failCount: number;
+  skippedCount: number;
+};
+
+export type NormalizedAssetProvenanceItem = {
+  assetId: string;
+  relativePath: string;
+  sha256: string;
+  kind: string;
+  kindLabel: string;
+  origin: string;
+  originLabel: string;
+  isStock: boolean;
+  isExternalOrigin: boolean;
+  sourceUrl: string | null;
+  author: string | null;
+  licenseId: string | null;
+  licenseName: string | null;
+  licenseUrl: string | null;
+  commercialUse: 'allowed' | 'restricted' | 'unknown';
+  commercialUseLabel: string;
+  commercialUsePermitted: boolean;
+  attributionRequired: boolean | null;
+  attributionLabel: string;
+  verifiedBy: 'human' | null;
+  verifiedAt: string | null;
+  verificationLabel: string;
+  status: 'verified' | 'unverified' | 'rejected';
+  statusLabel: string;
+  notes: string | null;
+  warnings: string[];
+};
+
+export type NormalizedAssetProvenance = {
+  hasContractReport: boolean;
+  hasLegacyFallback: boolean;
+  assets: NormalizedAssetProvenanceItem[];
+  hasUnverifiedOrUnknown: boolean;
+  hasStockPexels: boolean;
+  hasStockPixabay: boolean;
+  unverifiedCount: number;
+  rejectedCount: number;
+  unknownCommercialCount: number;
+  restrictedCommercialCount: number;
+  unverifiedByHumanCount: number;
+  summaryWarnings: string[];
+};
+
+export type NormalizedWordTimings = {
+  available: boolean;
+  narrationSha256: string | null;
+  durationSeconds: number | null;
+  source: WordTimingSource | string | null;
+  sourceLabel: string;
+  isEstimated: boolean;
+  engineName: string | null;
+  engineVoice: string | null;
+  words: WordTimingItem[];
+  speechAligned: boolean;
+  validationReason: string;
+};
+
+export type TimecodeSceneNavItem = {
+  id: string;
+  label: string;
+  start: number;
+  end: number;
+  assetId?: string | null;
+};
+
+export type TimecodeSubtitleNavItem = {
+  index: number;
+  start: number;
+  end: number;
   text: string;
 };
 
@@ -190,17 +441,69 @@ function readBoolean(value: unknown): boolean | undefined {
   return typeof value === 'boolean' ? value : undefined;
 }
 
+function readFiniteNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
 function readSha256(value: unknown): string | null {
   const s = readString(value);
   return s && /^[a-f0-9]{64}$/i.test(s) ? s.toLowerCase() : null;
 }
 
+export function formatTimecode(seconds: number | null | undefined): string {
+  if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds < 0) {
+    return '00:00.000';
+  }
+  const clamped = Math.max(0, seconds);
+  const mins = Math.floor(clamped / 60);
+  const secs = clamped - mins * 60;
+  const minsStr = String(mins).padStart(2, '0');
+  const secsWhole = Math.floor(secs);
+  const ms = Math.round((secs - secsWhole) * 1000);
+  const adjustedSecs = ms === 1000 ? secsWhole + 1 : secsWhole;
+  const adjustedMs = ms === 1000 ? 0 : ms;
+  return `${minsStr}:${String(adjustedSecs).padStart(2, '0')}.${String(adjustedMs).padStart(3, '0')}`;
+}
+
+export function parseSrtTimestampToSeconds(raw: string): number | null {
+  const trimmed = raw.trim();
+  const match = /^(\d{1,2}):(\d{2}):(\d{2})[,.](\d{1,3})$/.exec(trimmed);
+  if (!match) return null;
+  const hours = Number.parseInt(match[1], 10);
+  const minutes = Number.parseInt(match[2], 10);
+  const seconds = Number.parseInt(match[3], 10);
+  const msStr = match[4].padEnd(3, '0');
+  const ms = Number.parseInt(msStr, 10);
+  return hours * 3600 + minutes * 60 + seconds + ms / 1000;
+}
+
 export function adaptProductionRecord(raw: ProductionRecord): ProductionRecord {
   const artifacts = Array.isArray(raw.artifacts) ? raw.artifacts : [];
+  const review = raw.review
+    ? {
+        ...raw.review,
+        notes: Array.isArray(raw.review.notes)
+          ? raw.review.notes
+              .filter(
+                (n): n is ProductionReviewNote =>
+                  isRecord(n) &&
+                  typeof n.at_seconds === 'number' &&
+                  Number.isFinite(n.at_seconds) &&
+                  n.at_seconds >= 0 &&
+                  typeof n.text === 'string' &&
+                  n.text.trim().length > 0
+              )
+              .map(n => ({
+                at_seconds: Math.round(n.at_seconds * 1000) / 1000,
+                text: n.text.trim(),
+              }))
+          : undefined,
+      }
+    : null;
   return {
     ...raw,
     artifacts,
-    review: raw.review ?? null,
+    review,
     publishable: false,
   };
 }
@@ -212,6 +515,861 @@ export function parsePilotEvidencePayload(rawText: string): Record<string, unkno
   } catch {
     return null;
   }
+}
+
+const CATEGORY_LABELS: Record<string, string> = {
+  integrity: 'Integridade (integrity)',
+  duration: 'Duração (duration)',
+  audio: 'Áudio (audio)',
+  sync: 'Sincronização (sync)',
+  subtitles: 'Legendas (subtitles)',
+  provenance: 'Proveniência (provenance)',
+  visual: 'Visual (visual)',
+};
+
+const CHECK_STATUS_LABELS: Record<string, string> = {
+  pass: 'Aprovado (pass)',
+  warn: 'Aviso (warn)',
+  fail: 'Falha (fail)',
+  skipped: 'Ignorado (skipped)',
+  not_checked: 'Não medido (not_checked)',
+};
+
+const METHOD_LABELS: Record<string, string> = {
+  measured: 'Medido (measured)',
+  declared: 'Declarado (declared)',
+  estimated: 'Estimado (estimated — não é medição real)',
+  unverified: 'Não informado',
+};
+
+function formatMetricObject(
+  obj: Record<string, unknown> | null | undefined,
+  method?: string
+): string {
+  if (!isRecord(obj)) return '—';
+  const entries = Object.entries(obj).filter(([, v]) => v !== undefined);
+  if (entries.length === 0) return '—';
+  const formatted = entries
+    .map(([key, val]) => {
+      if (typeof val === 'number') {
+        const numStr = Number.isInteger(val) ? String(val) : String(Math.round(val * 10000) / 10000);
+        return `${key}: ${numStr}`;
+      }
+      if (typeof val === 'boolean' || typeof val === 'string') {
+        return `${key}: ${String(val)}`;
+      }
+      return `${key}: ${JSON.stringify(val)}`;
+    })
+    .join(' · ');
+  if (method === 'estimated') {
+    return `Estimado (heurística): ${formatted}`;
+  }
+  if (method === 'declared') {
+    return `Declarado: ${formatted}`;
+  }
+  return formatted;
+}
+
+export function normalizeQualityReport(
+  record: ProductionRecord,
+  qualityArtifactData?: Record<string, unknown> | null,
+  pilotEvidence?: Record<string, unknown> | null
+): NormalizedQualityReport {
+  const rawQuality =
+    record.quality_report ??
+    qualityArtifactData ??
+    pilotEvidence?.quality_report ??
+    pilotEvidence?.qc ??
+    pilotEvidence?.quality ??
+    null;
+
+  if (!isRecord(rawQuality)) {
+    return {
+      executed: false,
+      overallStatus: 'not_run',
+      overallStatusLabel: 'QC não executado',
+      overallTone: 'warn',
+      productionId: null,
+      videoSha256: null,
+      generatedAt: null,
+      toolName: null,
+      toolVersion: null,
+      checks: [],
+      blockingErrors: [],
+      warnings: [],
+      passCount: 0,
+      warnCount: 0,
+      failCount: 0,
+      skippedCount: 0,
+    };
+  }
+
+  const rawStatus = readString(rawQuality.status)?.toLowerCase() ?? null;
+  const toolObj = isRecord(rawQuality.tool) ? rawQuality.tool : null;
+  const toolName = readString(toolObj?.name);
+  const toolVersion = readString(toolObj?.version);
+  const productionId = readString(rawQuality.production_id);
+  const videoSha256 = readSha256(rawQuality.video_sha256);
+  const generatedAt = readString(rawQuality.generated_at);
+
+  const rawBlocking = Array.isArray(rawQuality.blocking_errors)
+    ? rawQuality.blocking_errors.filter((e): e is string => typeof e === 'string' && e.trim().length > 0)
+    : [];
+  const rawWarnings = Array.isArray(rawQuality.warnings)
+    ? rawQuality.warnings.filter((w): w is string => typeof w === 'string' && w.trim().length > 0)
+    : [];
+
+  const rawChecks = Array.isArray(rawQuality.checks) ? rawQuality.checks.filter(isRecord) : [];
+
+  const checks: NormalizedQualityCheck[] = rawChecks.map((item, idx) => {
+    const id = readString(item.id) ?? `check_${idx + 1}`;
+    const rawCategory = readString(item.category)?.toLowerCase() ?? 'integrity';
+    const categoryLabel = CATEGORY_LABELS[rawCategory] ?? rawCategory;
+
+    const rawCheckStatus = readString(item.status)?.toLowerCase() ?? 'not_checked';
+    let status: NormalizedQualityCheck['status'] = 'not_checked';
+    if (
+      rawCheckStatus === 'pass' ||
+      rawCheckStatus === 'warn' ||
+      rawCheckStatus === 'fail' ||
+      rawCheckStatus === 'skipped' ||
+      rawCheckStatus === 'not_checked'
+    ) {
+      status = rawCheckStatus;
+    }
+
+    const rawMethod = readString(item.method)?.toLowerCase() ?? 'unverified';
+    let method: NormalizedQualityCheck['method'] = 'unverified';
+    if (rawMethod === 'measured' || rawMethod === 'declared' || rawMethod === 'estimated') {
+      method = rawMethod;
+    }
+
+    const measuredObj = isRecord(item.measured) ? item.measured : null;
+    const thresholdObj = isRecord(item.threshold) ? item.threshold : null;
+    const measuredSource = readString(measuredObj?.source);
+
+    const tcObj = isRecord(item.timecode) ? item.timecode : null;
+    const tcStart = readFiniteNumber(tcObj?.start);
+    const tcEnd = readFiniteNumber(tcObj?.end);
+    const timecode: QualityCheckTimecode | null =
+      tcStart !== null && tcStart >= 0
+        ? {
+            start: tcStart,
+            end: tcEnd !== null && tcEnd >= tcStart ? tcEnd : tcStart,
+          }
+        : null;
+
+    const isBlocking =
+      status === 'fail' ||
+      rawBlocking.some(b => b === id || b.startsWith(`${id}:`));
+    const isWarning =
+      status === 'warn' ||
+      rawWarnings.some(w => w === id || w.startsWith(`${id}:`));
+
+    let methodLabel = METHOD_LABELS[method] ?? method;
+    if (method === 'measured' && status !== 'skipped') {
+      if (!measuredSource) {
+        methodLabel = 'Medido (measured · source não declarada)';
+      } else if (/estimat|heur[ií]stic|declared/i.test(measuredSource)) {
+        methodLabel = `Inválido: source="${measuredSource}" não é medição real`;
+      } else {
+        methodLabel = `Medido (measured · source: ${measuredSource})`;
+      }
+    }
+
+    return {
+      id,
+      category: rawCategory,
+      categoryLabel,
+      status,
+      statusLabel: CHECK_STATUS_LABELS[status] ?? status,
+      method,
+      methodLabel,
+      measuredSource,
+      measuredText: formatMetricObject(measuredObj, method),
+      thresholdText: formatMetricObject(thresholdObj),
+      detail: readString(item.detail) ?? '—',
+      timecode,
+      isBlocking,
+      isWarning,
+    };
+  });
+
+  const checkById = new Map<string, NormalizedQualityCheck>();
+  for (const c of checks) {
+    checkById.set(c.id, c);
+  }
+
+  const blockingErrors: NormalizedQualityHighlight[] = [];
+  const seenBlockingIds = new Set<string>();
+
+  for (const entry of rawBlocking) {
+    const matched =
+      checkById.get(entry) ??
+      checks.find(c => entry.startsWith(`${c.id}:`)) ??
+      null;
+    const id = matched?.id ?? entry;
+    seenBlockingIds.add(id);
+    blockingErrors.push({
+      id,
+      kind: 'blocking_error',
+      detail:
+        matched && entry === matched.id
+          ? `${matched.id}: ${matched.detail}`
+          : entry,
+      categoryLabel: matched?.categoryLabel ?? null,
+      methodLabel: matched?.methodLabel ?? null,
+      timecode: matched?.timecode ?? null,
+    });
+  }
+  for (const c of checks) {
+    if (c.status === 'fail' && !seenBlockingIds.has(c.id)) {
+      seenBlockingIds.add(c.id);
+      blockingErrors.push({
+        id: c.id,
+        kind: 'blocking_error',
+        detail: `${c.id}: ${c.detail}`,
+        categoryLabel: c.categoryLabel,
+        methodLabel: c.methodLabel,
+        timecode: c.timecode,
+      });
+    }
+  }
+
+  const warnings: NormalizedQualityHighlight[] = [];
+  const seenWarningIds = new Set<string>();
+
+  for (const entry of rawWarnings) {
+    const matched =
+      checkById.get(entry) ??
+      checks.find(c => entry.startsWith(`${c.id}:`)) ??
+      null;
+    const id = matched?.id ?? entry;
+    seenWarningIds.add(id);
+    warnings.push({
+      id,
+      kind: 'warning',
+      detail:
+        matched && entry === matched.id
+          ? `${matched.id}: ${matched.detail}`
+          : entry,
+      categoryLabel: matched?.categoryLabel ?? null,
+      methodLabel: matched?.methodLabel ?? null,
+      timecode: matched?.timecode ?? null,
+    });
+  }
+  for (const c of checks) {
+    if (c.status === 'warn' && !seenWarningIds.has(c.id)) {
+      seenWarningIds.add(c.id);
+      warnings.push({
+        id: c.id,
+        kind: 'warning',
+        detail: `${c.id}: ${c.detail}`,
+        categoryLabel: c.categoryLabel,
+        methodLabel: c.methodLabel,
+        timecode: c.timecode,
+      });
+    }
+  }
+
+  const passCount = checks.filter(c => c.status === 'pass').length;
+  const warnCount = checks.filter(c => c.status === 'warn').length;
+  const failCount = checks.filter(c => c.status === 'fail').length;
+  const skippedCount = checks.filter(
+    c => c.status === 'skipped' || c.status === 'not_checked'
+  ).length;
+  const notCheckedCount = checks.filter(c => c.status === 'not_checked').length;
+
+  // Regra Contrato 2: status derivado dos checks (fail > warn > pass, e not_run se lista vazia ou apenas skipped)
+  const onlySkipped =
+    checks.length > 0 &&
+    passCount === 0 &&
+    warnCount === 0 &&
+    failCount === 0 &&
+    notCheckedCount === 0;
+
+  if (
+    rawStatus === 'not_run' ||
+    onlySkipped ||
+    (checks.length === 0 && rawStatus === null && blockingErrors.length === 0)
+  ) {
+    return {
+      executed: false,
+      overallStatus: 'not_run',
+      overallStatusLabel: 'QC não executado',
+      overallTone: 'warn',
+      productionId,
+      videoSha256,
+      generatedAt,
+      toolName,
+      toolVersion,
+      checks,
+      blockingErrors,
+      warnings,
+      passCount,
+      warnCount,
+      failCount,
+      skippedCount,
+    };
+  }
+
+  let overallStatus: QualityReportOverallStatus = 'pass';
+  if (rawStatus === 'fail' || failCount > 0 || blockingErrors.length > 0) {
+    overallStatus = 'fail';
+  } else if (
+    rawStatus === 'warn' ||
+    warnCount > 0 ||
+    notCheckedCount > 0 ||
+    warnings.length > 0
+  ) {
+    overallStatus = 'warn';
+  } else if (rawStatus === 'pass' || passCount > 0) {
+    overallStatus = 'pass';
+  } else {
+    overallStatus = 'not_run';
+  }
+
+  const overallStatusLabel =
+    overallStatus === 'fail'
+      ? 'QC reprovado (fail)'
+      : overallStatus === 'warn'
+      ? 'QC com avisos / pendências (warn)'
+      : overallStatus === 'pass'
+      ? 'QC técnico aprovado (pass · publishable: false)'
+      : 'QC não executado';
+
+  const overallTone =
+    overallStatus === 'fail'
+      ? 'bad'
+      : overallStatus === 'warn' || overallStatus === 'not_run'
+      ? 'warn'
+      : 'good';
+
+  return {
+    executed: overallStatus !== 'not_run',
+    overallStatus,
+    overallStatusLabel,
+    overallTone,
+    productionId,
+    videoSha256,
+    generatedAt,
+    toolName,
+    toolVersion,
+    checks,
+    blockingErrors,
+    warnings,
+    passCount,
+    warnCount,
+    failCount,
+    skippedCount,
+  };
+}
+
+const ASSET_KIND_LABELS: Record<string, string> = {
+  image: 'Imagem (image)',
+  video: 'Vídeo (video)',
+  audio: 'Áudio (audio)',
+  voice: 'Voz (voice)',
+  music: 'Música (music)',
+  font: 'Fonte (font)',
+};
+
+const ASSET_ORIGIN_LABELS: Record<string, string> = {
+  original_local: 'Original local (original_local)',
+  system_voice: 'Voz do sistema (system_voice)',
+  local_tts_model: 'Modelo TTS local (local_tts_model)',
+  stock_pexels: 'Stock Pexels (stock_pexels)',
+  stock_pixabay: 'Stock Pixabay (stock_pixabay)',
+  licensed_manual: 'Licença manual (licensed_manual)',
+};
+
+const COMMERCIAL_USE_LABELS: Record<string, string> = {
+  allowed: 'Permitido (allowed)',
+  restricted: 'Restrito / Não comercial (restricted)',
+  unknown: 'Desconhecido (unknown — nunca equivale a permitido)',
+};
+
+const ASSET_STATUS_LABELS: Record<string, string> = {
+  verified: 'Verificado (verified)',
+  unverified: 'Não verificado (unverified)',
+  rejected: 'Rejeitado (rejected)',
+};
+
+export function normalizeAssetProvenance(
+  record: ProductionRecord,
+  assetProvenanceData?: Record<string, unknown> | null,
+  pilotEvidence?: Record<string, unknown> | null
+): NormalizedAssetProvenance {
+  const rawProvenance = record.asset_provenance ?? assetProvenanceData ?? null;
+  const hasContractReport =
+    isRecord(rawProvenance) && Array.isArray(rawProvenance.assets);
+
+  let rawAssets: Record<string, unknown>[] = [];
+  let hasLegacyFallback = false;
+
+  if (hasContractReport && isRecord(rawProvenance) && Array.isArray(rawProvenance.assets)) {
+    rawAssets = rawProvenance.assets.filter(isRecord);
+  } else if (isRecord(pilotEvidence) && Array.isArray(pilotEvidence.assets)) {
+    const legacyAssets = pilotEvidence.assets.filter(isRecord);
+    if (legacyAssets.length > 0) {
+      hasLegacyFallback = true;
+      rawAssets = legacyAssets.map(legacy => {
+        const origin = readString(legacy.origin) ?? 'original_local';
+        const legacyLicense = readString(legacy.license) ?? 'unverified';
+        return {
+          asset_id: readString(legacy.id) ?? readString(legacy.asset_id) ?? 'asset',
+          relative_path: readString(legacy.relative_path) ?? '—',
+          sha256: readSha256(legacy.sha256) ?? readString(legacy.sha256) ?? '—',
+          kind: origin === 'system_voice' ? 'voice' : 'image',
+          origin,
+          source_url: null,
+          author: readString(legacy.attribution),
+          license: {
+            id: legacyLicense,
+            name: legacyLicense === 'original' ? 'Original local (demo)' : 'Não verificada (unverified)',
+            url: null,
+            commercial_use: 'unknown',
+            attribution_required: null,
+            verified_by: null,
+            verified_at: null,
+          },
+          status: 'unverified',
+          notes: readString(legacy.attribution),
+        };
+      });
+    }
+  }
+
+  const assets: NormalizedAssetProvenanceItem[] = rawAssets.map((item, idx) => {
+    const assetId =
+      readString(item.asset_id) ?? readString(item.id) ?? `asset_${idx + 1}`;
+    const relativePath = readString(item.relative_path) ?? '—';
+    const sha256 = readSha256(item.sha256) ?? readString(item.sha256) ?? '—';
+    const kind = readString(item.kind)?.toLowerCase() ?? 'image';
+    const origin = readString(item.origin)?.toLowerCase() ?? 'original_local';
+    const isStock = origin === 'stock_pexels' || origin === 'stock_pixabay';
+    const isExternalOrigin = isStock || origin === 'licensed_manual';
+    const sourceUrl = readString(item.source_url);
+    const author = readString(item.author);
+
+    const licObj = isRecord(item.license) ? item.license : {};
+    const licenseId = readString(licObj.id);
+    const licenseName = readString(licObj.name);
+    const licenseUrl = readString(licObj.url);
+
+    const rawCommercial = readString(licObj.commercial_use)?.toLowerCase() ?? 'unknown';
+    const commercialUse: NormalizedAssetProvenanceItem['commercialUse'] =
+      rawCommercial === 'allowed' || rawCommercial === 'restricted'
+        ? rawCommercial
+        : 'unknown';
+
+    const attributionRequired =
+      typeof licObj.attribution_required === 'boolean'
+        ? licObj.attribution_required
+        : null;
+    const attributionLabel =
+      attributionRequired === true
+        ? 'Atribuição obrigatória'
+        : attributionRequired === false
+        ? 'Sem atribuição obrigatória'
+        : 'Atribuição não verificada (null)';
+
+    const rawVerifiedBy = readString(licObj.verified_by);
+    const verifiedAt = readString(licObj.verified_at);
+    const verifiedBy: 'human' | null =
+      rawVerifiedBy === 'human' && verifiedAt !== null ? 'human' : null;
+    const verificationLabel =
+      verifiedBy === 'human'
+        ? `Verificado por humano (${verifiedAt})`
+        : 'Não verificado por humano (verified_by: null)';
+
+    const rawStatus = readString(item.status)?.toLowerCase() ?? 'unverified';
+    // Regra Contrato 3: status=verified exige verified_by="human" + verified_at, commercial_use != unknown e attribution_required conhecido
+    const meetsVerifiedRequirements =
+      verifiedBy === 'human' &&
+      verifiedAt !== null &&
+      commercialUse !== 'unknown' &&
+      attributionRequired !== null;
+
+    let status: NormalizedAssetProvenanceItem['status'] = 'unverified';
+    if (rawStatus === 'rejected') {
+      status = 'rejected';
+    } else if (rawStatus === 'verified' && meetsVerifiedRequirements) {
+      status = 'verified';
+    } else {
+      status = 'unverified';
+    }
+
+    const commercialUsePermitted =
+      status === 'verified' && commercialUse === 'allowed' && verifiedBy === 'human';
+
+    const notes = readString(item.notes);
+    const itemWarnings: string[] = [];
+
+    if (rawStatus === 'verified' && !meetsVerifiedRequirements) {
+      itemWarnings.push(
+        'Status verified inválido: exige verified_by="human", verified_at, commercial_use conhecido e attribution_required definido.'
+      );
+    }
+    if (status === 'unverified') {
+      itemWarnings.push('Status unverified: direitos e licença pendentes de verificação.');
+    } else if (status === 'rejected') {
+      itemWarnings.push('Status rejected: asset rejeitado para uso.');
+    }
+
+    if (commercialUse === 'unknown') {
+      itemWarnings.push('commercial_use: unknown — nunca equivale a uso comercial permitido.');
+    } else if (commercialUse === 'restricted') {
+      itemWarnings.push('commercial_use: restricted — uso comercial restrito/bloqueado.');
+    }
+
+    if (verifiedBy !== 'human') {
+      itemWarnings.push('Sem verificação humana (verified_by: null).');
+    }
+
+    if (isExternalOrigin && status !== 'rejected') {
+      const missingExternalFields: string[] = [];
+      if (!sourceUrl) missingExternalFields.push('source_url');
+      if (!author) missingExternalFields.push('author');
+      if (!licenseId || !licenseName || !licenseUrl) {
+        missingExternalFields.push('termos de licença (id, name, url)');
+      }
+      if (verifiedBy !== 'human') {
+        missingExternalFields.push('verificação humana');
+      }
+      if (missingExternalFields.length > 0) {
+        itemWarnings.push(
+          `Regra de ${isStock ? `stock (${origin})` : origin} incompleta: exige ${missingExternalFields.join(', ')}.`
+        );
+      }
+    }
+
+    return {
+      assetId,
+      relativePath,
+      sha256,
+      kind,
+      kindLabel: ASSET_KIND_LABELS[kind] ?? kind,
+      origin,
+      originLabel: ASSET_ORIGIN_LABELS[origin] ?? origin,
+      isStock,
+      isExternalOrigin,
+      sourceUrl,
+      author,
+      licenseId,
+      licenseName,
+      licenseUrl,
+      commercialUse,
+      commercialUseLabel: COMMERCIAL_USE_LABELS[commercialUse] ?? commercialUse,
+      commercialUsePermitted,
+      attributionRequired,
+      attributionLabel,
+      verifiedBy,
+      verifiedAt,
+      verificationLabel,
+      status,
+      statusLabel: ASSET_STATUS_LABELS[status] ?? status,
+      notes,
+      warnings: itemWarnings,
+    };
+  });
+
+  const unverifiedCount = assets.filter(a => a.status === 'unverified').length;
+  const rejectedCount = assets.filter(a => a.status === 'rejected').length;
+  const unknownCommercialCount = assets.filter(a => a.commercialUse === 'unknown').length;
+  const restrictedCommercialCount = assets.filter(a => a.commercialUse === 'restricted').length;
+  const unverifiedByHumanCount = assets.filter(a => a.verifiedBy !== 'human').length;
+  const hasStockPexels = assets.some(a => a.origin === 'stock_pexels');
+  const hasStockPixabay = assets.some(a => a.origin === 'stock_pixabay');
+
+  const hasUnverifiedOrUnknown =
+    !hasContractReport ||
+    assets.length === 0 ||
+    unverifiedCount > 0 ||
+    rejectedCount > 0 ||
+    unknownCommercialCount > 0 ||
+    restrictedCommercialCount > 0 ||
+    unverifiedByHumanCount > 0;
+
+  const summaryWarnings: string[] = [];
+  if (!hasContractReport) {
+    summaryWarnings.push(
+      'Relatório asset-provenance.json ausente: licenças e uso comercial permanecem não verificados.'
+    );
+  }
+  if (rejectedCount > 0) {
+    summaryWarnings.push(`${rejectedCount} asset(s) com status rejected.`);
+  }
+  if (unverifiedCount > 0) {
+    summaryWarnings.push(`${unverifiedCount} asset(s) com status unverified.`);
+  }
+  if (unknownCommercialCount > 0) {
+    summaryWarnings.push(
+      `${unknownCommercialCount} asset(s) com commercial_use=unknown (nunca equivale a permitido).`
+    );
+  }
+  if (restrictedCommercialCount > 0) {
+    summaryWarnings.push(`${restrictedCommercialCount} asset(s) com commercial_use=restricted.`);
+  }
+  if (unverifiedByHumanCount > 0) {
+    summaryWarnings.push(`${unverifiedByHumanCount} asset(s) sem verificação humana (verified_by=null).`);
+  }
+
+  return {
+    hasContractReport,
+    hasLegacyFallback,
+    assets,
+    hasUnverifiedOrUnknown,
+    hasStockPexels,
+    hasStockPixabay,
+    unverifiedCount,
+    rejectedCount,
+    unknownCommercialCount,
+    restrictedCommercialCount,
+    unverifiedByHumanCount,
+    summaryWarnings,
+  };
+}
+
+export function normalizeWordTimings(
+  record: ProductionRecord,
+  wordTimingsData?: Record<string, unknown> | null,
+  pilotEvidence?: Record<string, unknown> | null,
+  scriptSections?: ScriptSection[] | null
+): NormalizedWordTimings {
+  const raw = record.word_timings ?? wordTimingsData ?? null;
+  if (!isRecord(raw) || !Array.isArray(raw.words)) {
+    return {
+      available: false,
+      narrationSha256: null,
+      durationSeconds: null,
+      source: null,
+      sourceLabel: 'Indisponível (word-timings.json ausente)',
+      isEstimated: false,
+      engineName: null,
+      engineVoice: null,
+      words: [],
+      speechAligned: false,
+      validationReason:
+        'word-timings.json ausente — alinhamento por palavra não disponível (speech_aligned: false).',
+    };
+  }
+
+  const narrationSha256 = readSha256(raw.narration_sha256);
+  const durationSeconds = readFiniteNumber(raw.duration_seconds);
+  const source = readString(raw.source) ?? 'estimated';
+  const engineObj = isRecord(raw.engine) ? raw.engine : null;
+  const engineName = readString(engineObj?.name);
+  const engineVoice = readString(engineObj?.voice);
+  const isEstimated = source === 'estimated';
+
+  const words: WordTimingItem[] = [];
+  for (const item of raw.words) {
+    if (!isRecord(item)) continue;
+    const index = readFiniteNumber(item.index);
+    const text = typeof item.text === 'string' ? item.text : null;
+    const section =
+      typeof item.section === 'number' && Number.isInteger(item.section)
+        ? item.section
+        : readString(item.section);
+    const start = readFiniteNumber(item.start);
+    const end = readFiniteNumber(item.end);
+    const charOffset = readFiniteNumber(item.char_offset);
+    const charLength = readFiniteNumber(item.char_length);
+    if (
+      index === null ||
+      !text ||
+      section === null ||
+      start === null ||
+      end === null ||
+      charOffset === null ||
+      charLength === null
+    ) {
+      continue;
+    }
+    words.push({
+      index,
+      text,
+      section,
+      start,
+      end,
+      char_offset: charOffset,
+      char_length: charLength,
+    });
+  }
+
+  const sourceLabel =
+    source === 'tts_engine_events'
+      ? 'Eventos do motor TTS (tts_engine_events — medido na síntese)'
+      : source === 'forced_alignment'
+      ? 'Alinhamento acústico forçado (forced_alignment — medido)'
+      : 'Estimado / heurístico (estimated — NÃO é medição real)';
+
+  // Regras Contrato 1 (docs/contratos-midia.md):
+  // - word.text sem espaços e char_length == len(text)
+  // - index = 0..N-1, end > start, monotônicos sem sobreposição (tolerância 1 ms), end <= duration_seconds
+  // - char_offset crescente sem sobrepor; section não regride
+  // - speech_aligned=true somente se documento válido, source != estimated e hash, duração, roteiro e seções conferem
+  const reasons: string[] = [];
+  if (isEstimated || (source !== 'tts_engine_events' && source !== 'forced_alignment')) {
+    reasons.push('source=estimated (heurística nunca habilita speech_aligned=true)');
+  }
+  if (words.length === 0 || words.length !== raw.words.length) {
+    reasons.push('lista de palavras vazia ou com itens inválidos');
+  }
+
+  let isMonotonic = true;
+  let validWordTextAndLength = true;
+  let withinDuration = durationSeconds !== null && durationSeconds > 0;
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    if (/\s/.test(w.text) || w.char_length !== w.text.length || w.char_offset < 0) {
+      validWordTextAndLength = false;
+    }
+    if (w.index !== i || w.start < 0 || w.end <= w.start) {
+      isMonotonic = false;
+    }
+    if (i > 0) {
+      const prev = words[i - 1];
+      if (w.start < prev.end - 0.001) {
+        isMonotonic = false;
+      }
+      if (
+        typeof w.section === 'number' &&
+        typeof prev.section === 'number' &&
+        w.section < prev.section
+      ) {
+        isMonotonic = false;
+      }
+    }
+    if (durationSeconds !== null && w.end > durationSeconds + 0.001) {
+      withinDuration = false;
+    }
+  }
+  if (!validWordTextAndLength) {
+    reasons.push('word.text contém espaços ou char_length difere de len(text)');
+  }
+  if (!isMonotonic) {
+    reasons.push('tempos/seções de palavras não monotônicos ou índices fora de ordem');
+  }
+  if (!withinDuration) {
+    reasons.push('tempos de palavras excedem duration_seconds');
+  }
+
+  // Validação cruzada de hash e duração com pilot-evidence.json
+  const evNarration =
+    isRecord(pilotEvidence) && isRecord(pilotEvidence.narration) ? pilotEvidence.narration : null;
+  const evSha = readSha256(evNarration?.sha256);
+  const evDur = readFiniteNumber(evNarration?.duration_seconds);
+  if (evSha && narrationSha256 !== evSha) {
+    reasons.push('narration_sha256 diverge do áudio registrado');
+  }
+  if (evDur !== null && durationSeconds !== null && Math.abs(durationSeconds - evDur) > 0.05) {
+    reasons.push('duration_seconds diverge da duração medida da narração');
+  }
+
+  // Verificar limites das seções medidas quando disponíveis em pilot-evidence.json
+  const scenesArray =
+    isRecord(pilotEvidence) && Array.isArray(pilotEvidence.scenes)
+      ? pilotEvidence.scenes.filter(isRecord)
+      : [];
+  if (scenesArray.length > 0) {
+    const sceneBoundsById = new Map<string, { start: number; end: number }>();
+    const sceneBoundsByIndex = new Map<number, { start: number; end: number }>();
+    scenesArray.forEach((s, idx) => {
+      const sid = readString(s.id);
+      const sStart = readFiniteNumber(s.start);
+      const sEnd = readFiniteNumber(s.end);
+      if (sStart !== null && sEnd !== null) {
+        sceneBoundsByIndex.set(idx + 1, { start: sStart, end: sEnd });
+        if (sid) {
+          sceneBoundsById.set(sid, { start: sStart, end: sEnd });
+          sceneBoundsById.set(`sec_${sid}`, { start: sStart, end: sEnd });
+        }
+      }
+    });
+    const outsideSection = words.some(w => {
+      const b =
+        typeof w.section === 'number'
+          ? sceneBoundsByIndex.get(w.section)
+          : sceneBoundsById.get(w.section) ??
+            sceneBoundsById.get(w.section.replace(/^sec_/, '')) ??
+            sceneBoundsByIndex.get(Number.parseInt(w.section, 10));
+      if (!b) return true;
+      return w.start < b.start - 0.05 || w.end > b.end + 0.05;
+    });
+    if (outsideSection) {
+      reasons.push('palavras fora dos limites das seções medidas');
+    }
+  }
+
+  // Verificar cobertura das palavras do roteiro na ordem quando seções do roteiro estão disponíveis
+  if (scriptSections && scriptSections.length > 0) {
+    const expectedTokens: string[] = [];
+    for (const sec of scriptSections) {
+      const rawTokens = sec.narration.trim().split(/\s+/).filter(Boolean);
+      expectedTokens.push(...rawTokens);
+    }
+    const actualTokens = words.map(w => w.text);
+    if (
+      expectedTokens.length > 0 &&
+      (actualTokens.length !== expectedTokens.length ||
+        actualTokens.some((tok, idx) => tok !== expectedTokens[idx]))
+    ) {
+      reasons.push('palavras não cobrem integralmente o roteiro aprovado na ordem exata');
+    }
+  }
+
+  if (record.speech_aligned === false && reasons.length === 0) {
+    reasons.push('speech_aligned=false declarado pelo registro da produção');
+  }
+
+  const speechAligned = reasons.length === 0;
+  const validationReason = speechAligned
+    ? `Alinhamento por palavra validado (${source} · ${words.length} palavras monotônicas dentro da duração e das seções · speech_aligned: true).`
+    : `speech_aligned: false (${reasons.join('; ')}).`;
+
+  return {
+    available: true,
+    narrationSha256,
+    durationSeconds,
+    source,
+    sourceLabel,
+    isEstimated,
+    engineName,
+    engineVoice,
+    words,
+    speechAligned,
+    validationReason,
+  };
+}
+
+export function doesProductionRequireQualityAcknowledgement(
+  record: ProductionRecord,
+  quality: NormalizedQualityReport,
+  assetProvenance: NormalizedAssetProvenance
+): boolean {
+  if (
+    record.quality_acknowledgement_required === true ||
+    record.requires_quality_acknowledgement === true
+  ) {
+    return true;
+  }
+  if (quality.overallStatus === 'fail' || quality.blockingErrors.length > 0) {
+    return true;
+  }
+  if (assetProvenance.hasContractReport && assetProvenance.hasUnverifiedOrUnknown) {
+    return true;
+  }
+  if (
+    record.mode === 'local_pilot' &&
+    (!quality.executed ||
+      quality.overallStatus === 'not_run' ||
+      assetProvenance.hasUnverifiedOrUnknown)
+  ) {
+    return true;
+  }
+  return false;
 }
 
 export function deriveProductionProvenance(
@@ -291,8 +1449,6 @@ export function deriveProductionProvenance(
     readBoolean(evidence?.speech_aligned) ??
     undefined;
 
-  // 1. Narração: diferenciar fixture_tone vs local_tts (TTS local sintético) vs não verificado.
-  // Nunca derivar verdade apenas de record.mode, da ordem dos artefatos ou do nome do arquivo.
   const rawAudioKind =
     readString(record.narration_kind) ??
     readString(record.audio_kind) ??
@@ -377,15 +1533,11 @@ export function deriveProductionProvenance(
       'Não verificado (sem evidência de áudio/TTS no resultado; nunca inferir do modo pedido)';
   }
 
-  // Resolução do artefato de narração completa:
-  // Seleciona exclusivamente pelo SHA-256 confirmado em pilot-evidence.json (narration.sha256)
-  // e sua correspondência exata em record.artifacts (kind === 'audio'), sem confiar em ordem/nome/modo.
   const matchedNarrationBySha256 =
     narrationSha256 !== null
       ? audioArtifacts.find(a => a.sha256.toLowerCase() === narrationSha256) ?? null
       : null;
 
-  // Compatibilidade simulated/local_demo (single audio de tom de fixture quando não há pilot-evidence.json)
   const fixtureAudioArtifact =
     matchedNarrationBySha256 === null &&
     pilotEvidenceArtifact === null &&
@@ -410,7 +1562,6 @@ export function deriveProductionProvenance(
     narrationAudioStatus = 'evidence_missing_or_unverified';
   }
 
-  // 2. Legendas e alinhamento: diferenciar SRT sintético, legenda segmentada (measured_sections) e alinhamento não verificado.
   const alignmentMethod =
     readString(record.alignment_method) ??
     readString(evidence?.alignment_method) ??
@@ -463,8 +1614,9 @@ export function deriveProductionProvenance(
   let subtitleLabel: string;
   let alignmentLabel: string;
   if (speechAligned === true) {
-    subtitleLabel = 'Não verificado para publicação (demonstrativo)';
-    alignmentLabel = 'Não verificado para publicação (demonstrativo)';
+    const methodTag = alignmentMethod ?? 'word-timings';
+    subtitleLabel = `Alinhamento por palavra validado (${methodTag} · speech_aligned: true · demonstrativo não publicável)`;
+    alignmentLabel = `Alinhamento por palavra validado (${methodTag} · speech_aligned: true)`;
   } else if (subtitleKind === 'segmented_srt') {
     const methodTag = alignmentMethod ?? 'measured_sections';
     subtitleLabel = `Legenda segmentada local (.srt · ${methodTag}) · Alinhamento de fala não verificado (speech_aligned: false · sem alinhamento fino por palavra)`;
@@ -481,7 +1633,6 @@ export function deriveProductionProvenance(
     alignmentLabel = 'Não verificado (sem legenda ou alinhamento verificado)';
   }
 
-  // 3. Cenas demonstrativas vs não verificado
   const rawSceneKind =
     readString(record.scenes_kind) ??
     readString(record.visual_origin) ??
@@ -518,7 +1669,6 @@ export function deriveProductionProvenance(
         }sem assets externos)`
       : 'Não verificado (sem cenas registradas nos artefatos)';
 
-  // 4. Licenças de assets no manifesto pilot-evidence.json
   const unverifiedAssets = evAssets.filter(
     item => isRecord(item) && readString(item.license) === 'unverified'
   );
@@ -530,7 +1680,6 @@ export function deriveProductionProvenance(
       ? `${originalAssets.length} asset(s) original_local (license: original) · ${unverifiedAssets.length} asset(s) system_voice (license: unverified — voz SAPI não comprova licença comercial nem publicabilidade)`
       : 'Não publicável (publishable: false · licença de voz/publicação não verificada)';
 
-  // 5. Relatório de qualidade (Sonnet QC schema v1: checks pass/fail/not_checked, blocking_errors, warnings, publishable=false)
   const rawQuality =
     record.quality_report ??
     evidence?.quality_report ??
@@ -548,8 +1697,10 @@ export function deriveProductionProvenance(
     const checks = rawQuality.checks.filter(isRecord);
     const passCount = checks.filter(c => c.status === 'pass').length;
     const failCount = checks.filter(c => c.status === 'fail').length;
-    const notCheckedItems = checks.filter(c => c.status === 'not_checked');
-    const notCheckedCount = notCheckedItems.length;
+    const notCheckedItems = checks.filter(
+      c => c.status === 'not_checked' || c.status === 'skipped' || c.status === 'warn'
+    );
+    const notCheckedCount = checks.filter(c => c.status === 'not_checked').length;
     const notCheckedIds = notCheckedItems
       .map(c => readString(c.id))
       .filter((id): id is string => Boolean(id));
@@ -569,17 +1720,25 @@ export function deriveProductionProvenance(
       warnings,
     };
 
-    if (failCount > 0 || blockingErrors.length > 0) {
+    const rawOverallStatus = readString(rawQuality.status)?.toLowerCase();
+
+    if (rawOverallStatus === 'not_run') {
+      qualityStatus = 'unverified';
+      qualityLabel = 'QC não executado · Não verificado (relatório de qualidade indisponível)';
+    } else if (rawOverallStatus === 'fail' || failCount > 0 || blockingErrors.length > 0) {
       qualityStatus = 'failed';
       qualitySummary = blockingErrors[0] ?? `${failCount} verificação(ões) reprovada(s)`;
       qualityLabel = `QC com falhas (${failCount} fail, ${passCount} pass, ${notCheckedCount} not_checked) · ${blockingErrors.length} erro(s) bloqueante(s) · publishable: false`;
     } else if (notCheckedCount > 0) {
-      // Nunca apresentar todos os checks como aprovados quando há itens not_checked (ex.: acústica, alinhamento por palavra, loudness, licença)
       qualityStatus = 'partial_not_checked';
       qualitySummary = `Itens não medidos/verificados: ${notCheckedIds.join(', ')}`;
       qualityLabel = `QC parcial (${passCount} pass, 0 fail, ${notCheckedCount} not_checked: ${notCheckedIds.join(
         ', '
       )}) · ${warnings.length} aviso(s) · publishable: false (não equivale a aprovação total)`;
+    } else if (rawOverallStatus === 'warn' || warnings.length > 0 || notCheckedItems.length > 0) {
+      qualityStatus = 'partial_not_checked';
+      qualitySummary = warnings[0] ?? 'Avisos técnicos registrados';
+      qualityLabel = `QC com avisos (${passCount} pass, ${warnings.length} aviso(s)) · publishable: false`;
     } else {
       qualityStatus = 'passed';
       qualityLabel = `Checks técnicos aprovados (${passCount} pass) · publishable: false (exige revisão humana e licença não verificada)`;
@@ -598,7 +1757,7 @@ export function deriveProductionProvenance(
 
     if (
       rawQualityPassed === false ||
-      (rawQualityStatus !== null && /^(failed|rejected|invalid|error)$/i.test(rawQualityStatus))
+      (rawQualityStatus !== null && /^(failed|fail|rejected|invalid|error)$/i.test(rawQualityStatus))
     ) {
       qualityStatus = 'failed';
       qualityLabel = qualitySummary
@@ -607,7 +1766,7 @@ export function deriveProductionProvenance(
     } else if (
       rawQualityPassed === true ||
       (rawQualityStatus !== null &&
-        /^(passed|approved|valid|ok|succeeded|verified)$/i.test(rawQualityStatus))
+        /^(passed|pass|approved|valid|ok|succeeded|verified)$/i.test(rawQualityStatus))
     ) {
       qualityStatus = 'passed';
       qualityLabel = qualitySummary
@@ -650,6 +1809,81 @@ export function deriveProductionProvenance(
   };
 }
 
+export function extractSceneNavItems(
+  pilotEvidence?: Record<string, unknown> | null,
+  planData?: Record<string, unknown> | null
+): TimecodeSceneNavItem[] {
+  const items: TimecodeSceneNavItem[] = [];
+  const evScenes =
+    isRecord(pilotEvidence) && Array.isArray(pilotEvidence.scenes)
+      ? pilotEvidence.scenes.filter(isRecord)
+      : [];
+  if (evScenes.length > 0) {
+    evScenes.forEach((scene, idx) => {
+      const id = readString(scene.id) ?? `scene_${idx + 1}`;
+      const start = readFiniteNumber(scene.start) ?? 0;
+      const end = readFiniteNumber(scene.end) ?? start;
+      const assetId = readString(scene.asset_id);
+      items.push({
+        id,
+        label: `Cena ${idx + 1} (${id})${assetId ? ` · ${assetId}` : ''}`,
+        start,
+        end,
+        assetId,
+      });
+    });
+    return items;
+  }
+
+  const planScenes =
+    isRecord(planData) && Array.isArray(planData.scenes)
+      ? planData.scenes.filter(isRecord)
+      : [];
+  planScenes.forEach((scene, idx) => {
+    const id = readString(scene.id) ?? `scene_${idx + 1}`;
+    const heading = readString(scene.heading);
+    const start = readFiniteNumber(scene.start) ?? 0;
+    const end = readFiniteNumber(scene.end) ?? start;
+    items.push({
+      id,
+      label: `Cena ${idx + 1} (${id})${heading ? ` · ${heading}` : ''}`,
+      start,
+      end,
+    });
+  });
+  return items;
+}
+
+export function extractSubtitleNavItems(
+  pilotEvidence?: Record<string, unknown> | null,
+  srtSegments?: SrtSegment[] | null
+): TimecodeSubtitleNavItem[] {
+  if (srtSegments && srtSegments.length > 0) {
+    return srtSegments.map(seg => ({
+      index: seg.index,
+      start: seg.startSeconds ?? 0,
+      end: seg.endSeconds ?? seg.startSeconds ?? 0,
+      text: seg.text,
+    }));
+  }
+
+  const evSubtitles =
+    isRecord(pilotEvidence) && Array.isArray(pilotEvidence.subtitles)
+      ? pilotEvidence.subtitles.filter(isRecord)
+      : [];
+  return evSubtitles.map((sub, idx) => {
+    const start = readFiniteNumber(sub.start) ?? 0;
+    const end = readFiniteNumber(sub.end) ?? start;
+    const text = readString(sub.text) ?? '';
+    return {
+      index: idx + 1,
+      start,
+      end,
+      text,
+    };
+  });
+}
+
 export function parseSrtSegments(rawSrt: string): SrtSegment[] {
   const normalized = rawSrt.replace(/\r\n/g, '\n').trim();
   if (!normalized) return [];
@@ -667,10 +1901,14 @@ export function parseSrtSegments(rawSrt: string): SrtSegment[] {
     const parsedIndex = Number.parseInt(lines[0], 10);
     const index = Number.isFinite(parsedIndex) ? parsedIndex : segments.length + 1;
     const text = lines.slice(timeLineIndex + 1).join(' ');
+    const startTrimmed = (startRaw ?? '').trim();
+    const endTrimmed = (endRaw ?? '').trim();
     segments.push({
       index,
-      start: (startRaw ?? '').trim(),
-      end: (endRaw ?? '').trim(),
+      start: startTrimmed,
+      end: endTrimmed,
+      startSeconds: parseSrtTimestampToSeconds(startTrimmed),
+      endSeconds: parseSrtTimestampToSeconds(endTrimmed),
       text,
     });
   }
@@ -829,6 +2067,50 @@ export function summarizeJsonArtifact(
     return summary;
   }
 
+  if (lower.endsWith('word-timings.json')) {
+    const source = readString(data.source) ?? 'não informado';
+    const dur =
+      typeof data.duration_seconds === 'number' ? `${data.duration_seconds.toFixed(2)}s` : '—';
+    const wordsCount = Array.isArray(data.words) ? data.words.length : 0;
+    const engineObj = isRecord(data.engine) ? data.engine : null;
+    summary.push({
+      label: 'Fonte dos tempos',
+      value:
+        source === 'estimated'
+          ? 'estimated (heurística · speech_aligned: false)'
+          : `${source} (${readString(engineObj?.name) ?? 'motor'})`,
+    });
+    summary.push({ label: 'Duração da narração', value: dur });
+    summary.push({ label: 'Palavras registradas', value: `${wordsCount} palavra(s)` });
+    return summary;
+  }
+
+  if (lower.endsWith('quality-report.json')) {
+    const status = readString(data.status) ?? 'not_run';
+    const checksCount = Array.isArray(data.checks) ? data.checks.length : 0;
+    const toolObj = isRecord(data.tool) ? data.tool : null;
+    summary.push({ label: 'Status do QC', value: status });
+    summary.push({ label: 'Checks avaliados', value: `${checksCount} check(s)` });
+    if (toolObj) {
+      summary.push({
+        label: 'Ferramenta QC',
+        value: `${readString(toolObj.name) ?? 'qc'} v${readString(toolObj.version) ?? '1'}`,
+      });
+    }
+    return summary;
+  }
+
+  if (lower.endsWith('asset-provenance.json')) {
+    const assets = Array.isArray(data.assets) ? data.assets.filter(isRecord) : [];
+    const verified = assets.filter(a => readString(a.status) === 'verified').length;
+    const unverified = assets.filter(a => readString(a.status) !== 'verified').length;
+    summary.push({
+      label: 'Assets registrados',
+      value: `${assets.length} (${verified} verified · ${unverified} unverified/rejected)`,
+    });
+    return summary;
+  }
+
   if (lower.endsWith('validation.json')) {
     const stream = isRecord(data.stream) ? data.stream : null;
     if (stream) {
@@ -953,16 +2235,26 @@ export async function reviewProduction(
   idempotencyKey: string = crypto.randomUUID(),
   signal?: AbortSignal
 ): Promise<ProductionRecord> {
+  const bodyPayload: Record<string, unknown> = {
+    decision: payload.decision,
+    artifact_sha256: payload.artifact_sha256,
+  };
+  if (payload.notes && payload.notes.length > 0) {
+    bodyPayload.notes = payload.notes.map(note => ({
+      at_seconds: Math.round(Number(note.at_seconds) * 1000) / 1000,
+      text: note.text.trim(),
+    }));
+  }
+  if (payload.acknowledge_quality_errors === true) {
+    bodyPayload.acknowledge_quality_errors = true;
+  }
   const record = await api<ProductionRecord>(
     connection,
     `/v1/productions/${encodeURIComponent(productionId)}/review`,
     {
       method: 'POST',
       headers: { 'Idempotency-Key': idempotencyKey },
-      body: JSON.stringify({
-        decision: payload.decision,
-        artifact_sha256: payload.artifact_sha256,
-      }),
+      body: JSON.stringify(bodyPayload),
       signal,
     }
   );

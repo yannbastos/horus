@@ -8,6 +8,7 @@ import type {
   ProductionMode,
   ProductionRecord,
   ProductionReviewDecision,
+  ProductionReviewNote,
   ProductionStage,
   SrtSegment,
 } from '../services/production';
@@ -15,16 +16,26 @@ import {
   cancelProductionJob,
   createScriptProduction,
   deriveProductionProvenance,
+  doesProductionRequireQualityAcknowledgement,
+  extractSceneNavItems,
+  extractSubtitleNavItems,
   fetchProductionArtifactBlob,
   formatProductionError,
+  formatTimecode,
   getProduction,
   getScriptProductions,
+  normalizeAssetProvenance,
+  normalizeQualityReport,
+  normalizeWordTimings,
   parsePilotEvidencePayload,
   parseSrtSegments,
   reviewProduction,
   sortProductionsDesc,
   summarizeJsonArtifact,
 } from '../services/production';
+import AssetProvenancePanel from './production/AssetProvenancePanel';
+import QualityReportPanel from './production/QualityReportPanel';
+import TimecodeReviewWorkspace from './production/TimecodeReviewWorkspace';
 
 const PRODUCTION_STAGES: ProductionStage[] = [
   'prepare',
@@ -32,6 +43,7 @@ const PRODUCTION_STAGES: ProductionStage[] = [
   'scenes',
   'subtitles',
   'render',
+  'quality',
   'review',
 ];
 
@@ -41,6 +53,7 @@ const STAGE_LABELS: Record<ProductionStage, string> = {
   scenes: 'Cenas',
   subtitles: 'Legendas',
   render: 'Render',
+  quality: 'Qualidade (QC)',
   review: 'Revisão',
 };
 
@@ -126,10 +139,22 @@ export default function ProductionRun({
   const [trackingError, setTrackingError] = useState('');
   const [reconciled, setReconciled] = useState(false);
 
-  // Pilot evidence manifest state (loaded from generic manifest artifact pilot-evidence.json when present)
+  // Pilot evidence & contract artifacts state
   const [pilotEvidenceData, setPilotEvidenceData] = useState<Record<string, unknown> | null>(null);
   const [pilotEvidenceError, setPilotEvidenceError] = useState('');
   const [pilotEvidenceReloadCount, setPilotEvidenceReloadCount] = useState(0);
+  const [wordTimingsData, setWordTimingsData] = useState<Record<string, unknown> | null>(null);
+  const [qualityArtifactData, setQualityArtifactData] = useState<Record<string, unknown> | null>(
+    null
+  );
+  const [assetProvenanceData, setAssetProvenanceData] = useState<Record<string, unknown> | null>(
+    null
+  );
+
+  // Timecode review & navigation state
+  const [currentTimeSeconds, setCurrentTimeSeconds] = useState(0);
+  const [reviewNotes, setReviewNotes] = useState<ProductionReviewNote[]>([]);
+  const [approvalConfirmationChecked, setApprovalConfirmationChecked] = useState(false);
 
   // Preview state (authenticated blob URL or text content)
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -151,6 +176,8 @@ export default function ProductionRun({
   const previewControllerRef = useRef<AbortController | null>(null);
   const activeBlobUrlRef = useRef<string | null>(null);
   const logsRef = useRef<HTMLPreElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const pendingSeekSecondsRef = useRef<number | null>(null);
 
   function revokeActiveBlobUrl() {
     if (activeBlobUrlRef.current) {
@@ -218,6 +245,12 @@ export default function ProductionRun({
     setJobError('');
     setPilotEvidenceData(null);
     setPilotEvidenceError('');
+    setWordTimingsData(null);
+    setQualityArtifactData(null);
+    setAssetProvenanceData(null);
+    setCurrentTimeSeconds(0);
+    setReviewNotes([]);
+    setApprovalConfirmationChecked(false);
     idempotencyCacheRef.current = null;
   }, [latestScript?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -264,13 +297,19 @@ export default function ProductionRun({
   const activeProduction =
     productions.find(item => item.id === selectedId) ?? productions[0] ?? null;
 
-  // Clear preview if user switches selected production
+  // Clear preview and per-production review state if user switches selected production
   useEffect(() => {
     clearPreview();
     setTrackingError('');
     setReconciled(false);
     setPilotEvidenceData(null);
     setPilotEvidenceError('');
+    setWordTimingsData(null);
+    setQualityArtifactData(null);
+    setAssetProvenanceData(null);
+    setCurrentTimeSeconds(0);
+    setReviewNotes([]);
+    setApprovalConfirmationChecked(false);
   }, [activeProduction?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pilotEvidenceArtifact =
@@ -279,6 +318,27 @@ export default function ProductionRun({
         a.kind === 'manifest' &&
         (a.relative_path === 'pilot-evidence.json' ||
           a.relative_path.endsWith('/pilot-evidence.json'))
+    ) ?? null;
+
+  const wordTimingsArtifact =
+    activeProduction?.artifacts.find(
+      a =>
+        a.relative_path === 'word-timings.json' ||
+        a.relative_path.endsWith('/word-timings.json')
+    ) ?? null;
+
+  const qualityReportArtifact =
+    activeProduction?.artifacts.find(
+      a =>
+        a.relative_path === 'quality-report.json' ||
+        a.relative_path.endsWith('/quality-report.json')
+    ) ?? null;
+
+  const assetProvenanceArtifact =
+    activeProduction?.artifacts.find(
+      a =>
+        a.relative_path === 'asset-provenance.json' ||
+        a.relative_path.endsWith('/asset-provenance.json')
     ) ?? null;
 
   // Automatically fetch pilot-evidence.json when registered in activeProduction.artifacts
@@ -332,6 +392,138 @@ export default function ProductionRun({
     pilotEvidenceReloadCount,
   ]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Automatically fetch word-timings.json when registered in activeProduction.artifacts
+  useEffect(() => {
+    const conn = connection;
+    const prod = activeProduction;
+    const artifact = wordTimingsArtifact;
+    if (!conn || !prod || !artifact || prod.word_timings) {
+      setWordTimingsData(null);
+      return;
+    }
+
+    let active = true;
+    const controller = new AbortController();
+    const targetScriptId = prod.script_id;
+
+    void fetchProductionArtifactBlob(conn, prod.id, artifact.id, controller.signal)
+      .then(async ({ blob }) => {
+        const rawText = await blob.text();
+        if (!active || controller.signal.aborted || mountedScriptIdRef.current !== targetScriptId) {
+          return;
+        }
+        const parsed = parsePilotEvidencePayload(rawText);
+        setWordTimingsData(parsed);
+      })
+      .catch(() => {
+        if (!active || controller.signal.aborted || mountedScriptIdRef.current !== targetScriptId) {
+          return;
+        }
+        setWordTimingsData(null);
+      });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [
+    connection,
+    activeProduction?.id,
+    activeProduction?.script_id,
+    activeProduction?.word_timings,
+    wordTimingsArtifact?.id,
+    wordTimingsArtifact?.sha256,
+    pilotEvidenceReloadCount,
+  ]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Automatically fetch quality-report.json if not already embedded on activeProduction.quality_report
+  useEffect(() => {
+    const conn = connection;
+    const prod = activeProduction;
+    const artifact = qualityReportArtifact;
+    if (!conn || !prod || !artifact || prod.quality_report) {
+      setQualityArtifactData(null);
+      return;
+    }
+
+    let active = true;
+    const controller = new AbortController();
+    const targetScriptId = prod.script_id;
+
+    void fetchProductionArtifactBlob(conn, prod.id, artifact.id, controller.signal)
+      .then(async ({ blob }) => {
+        const rawText = await blob.text();
+        if (!active || controller.signal.aborted || mountedScriptIdRef.current !== targetScriptId) {
+          return;
+        }
+        const parsed = parsePilotEvidencePayload(rawText);
+        setQualityArtifactData(parsed);
+      })
+      .catch(() => {
+        if (!active || controller.signal.aborted || mountedScriptIdRef.current !== targetScriptId) {
+          return;
+        }
+        setQualityArtifactData(null);
+      });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [
+    connection,
+    activeProduction?.id,
+    activeProduction?.script_id,
+    activeProduction?.quality_report,
+    qualityReportArtifact?.id,
+    qualityReportArtifact?.sha256,
+    pilotEvidenceReloadCount,
+  ]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Automatically fetch asset-provenance.json if not already embedded on activeProduction.asset_provenance
+  useEffect(() => {
+    const conn = connection;
+    const prod = activeProduction;
+    const artifact = assetProvenanceArtifact;
+    if (!conn || !prod || !artifact || prod.asset_provenance) {
+      setAssetProvenanceData(null);
+      return;
+    }
+
+    let active = true;
+    const controller = new AbortController();
+    const targetScriptId = prod.script_id;
+
+    void fetchProductionArtifactBlob(conn, prod.id, artifact.id, controller.signal)
+      .then(async ({ blob }) => {
+        const rawText = await blob.text();
+        if (!active || controller.signal.aborted || mountedScriptIdRef.current !== targetScriptId) {
+          return;
+        }
+        const parsed = parsePilotEvidencePayload(rawText);
+        setAssetProvenanceData(parsed);
+      })
+      .catch(() => {
+        if (!active || controller.signal.aborted || mountedScriptIdRef.current !== targetScriptId) {
+          return;
+        }
+        setAssetProvenanceData(null);
+      });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [
+    connection,
+    activeProduction?.id,
+    activeProduction?.script_id,
+    activeProduction?.asset_provenance,
+    assetProvenanceArtifact?.id,
+    assetProvenanceArtifact?.sha256,
+    pilotEvidenceReloadCount,
+  ]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Auto-scroll job logs
   useEffect(() => {
     if (logsRef.current) {
@@ -356,7 +548,6 @@ export default function ProductionRun({
 
     void observeJob(conn, prod.job_id, controller.signal, event => {
       if (controller.signal.aborted || mountedScriptIdRef.current !== targetScriptId) return;
-      // A single polling request owns status updates; SSE only supplies logs.
       if (event.kind === 'complete') return;
       setJobEvents(prev => [...prev, event].slice(-500));
     }).catch(reason => {
@@ -606,6 +797,21 @@ export default function ProductionRun({
               ) {
                 setPilotEvidenceData(recordData);
                 setPilotEvidenceError('');
+              } else if (
+                artifact.relative_path === 'word-timings.json' ||
+                artifact.relative_path.endsWith('/word-timings.json')
+              ) {
+                setWordTimingsData(recordData);
+              } else if (
+                artifact.relative_path === 'quality-report.json' ||
+                artifact.relative_path.endsWith('/quality-report.json')
+              ) {
+                setQualityArtifactData(recordData);
+              } else if (
+                artifact.relative_path === 'asset-provenance.json' ||
+                artifact.relative_path.endsWith('/asset-provenance.json')
+              ) {
+                setAssetProvenanceData(recordData);
               }
             }
           } catch {
@@ -636,15 +842,107 @@ export default function ProductionRun({
     }
   }
 
+  function handleSeekTimecode(seconds: number) {
+    const safeSeconds = Math.max(0, Math.round(seconds * 1000) / 1000);
+    setCurrentTimeSeconds(safeSeconds);
+    if (videoRef.current) {
+      const dur = videoRef.current.duration;
+      if (!Number.isFinite(dur) || (dur > 0 && safeSeconds <= dur)) {
+        try {
+          videoRef.current.currentTime = safeSeconds;
+        } catch {
+          // Ignore browser media seek error on synthetic test buffers
+        }
+      }
+      return;
+    }
+    const vidArt = activeProduction?.artifacts.find(a => a.kind === 'video') ?? null;
+    if (vidArt && previewTarget?.artifact.id !== vidArt.id && !previewLoading) {
+      pendingSeekSecondsRef.current = safeSeconds;
+      void handlePreviewArtifact(vidArt);
+    }
+  }
+
+  function handleCaptureCurrentVideoTime(): number {
+    if (
+      videoRef.current &&
+      Number.isFinite(videoRef.current.currentTime) &&
+      videoRef.current.currentTime > 0 &&
+      (!Number.isFinite(videoRef.current.duration) ||
+        currentTimeSeconds <= videoRef.current.duration)
+    ) {
+      const t = Math.round(videoRef.current.currentTime * 1000) / 1000;
+      setCurrentTimeSeconds(t);
+      return t;
+    }
+    return currentTimeSeconds;
+  }
+
+  const provenance = activeProduction
+    ? deriveProductionProvenance(activeProduction, pilotEvidenceData)
+    : null;
+
+  const normalizedQuality = activeProduction
+    ? normalizeQualityReport(activeProduction, qualityArtifactData, pilotEvidenceData)
+    : null;
+
+  const normalizedAssetProvenance = activeProduction
+    ? normalizeAssetProvenance(activeProduction, assetProvenanceData, pilotEvidenceData)
+    : null;
+
+  const normalizedWordTimings = activeProduction
+    ? normalizeWordTimings(
+        activeProduction,
+        wordTimingsData,
+        pilotEvidenceData,
+        latestScript?.document?.sections ?? null
+      )
+    : null;
+
+  const hasQcFail = normalizedQuality?.overallStatus === 'fail';
+  const hasQcNotRunInPilot =
+    activeProduction?.mode === 'local_pilot' &&
+    (!normalizedQuality?.executed || normalizedQuality?.overallStatus === 'not_run');
+  const hasUnverifiedLicense = Boolean(normalizedAssetProvenance?.hasUnverifiedOrUnknown);
+  const requiresQualityAcknowledgement =
+    activeProduction && normalizedQuality && normalizedAssetProvenance
+      ? doesProductionRequireQualityAcknowledgement(
+          activeProduction,
+          normalizedQuality,
+          normalizedAssetProvenance
+        )
+      : false;
+  const requiresApprovalConfirmation =
+    requiresQualityAcknowledgement || hasQcFail || hasUnverifiedLicense;
+
   async function handleReviewProduction(
     decision: ProductionReviewDecision,
     videoArtifact: ProductionArtifact
   ) {
     if (!connection || !activeProduction || inFlightRef.current || submitting) return;
 
+    const validNotes = reviewNotes.map(n => ({
+      at_seconds: Math.round(Math.max(0, Number(n.at_seconds)) * 1000) / 1000,
+      text: n.text.trim(),
+    }));
+    const hasInvalidNote = validNotes.some(
+      n => !Number.isFinite(n.at_seconds) || n.at_seconds < 0 || n.text.length < 1 || n.text.length > 2000
+    );
+    if (hasInvalidNote || validNotes.length > 200) {
+      setError(
+        'Verifique as notas por timecode: cada nota deve ter at_seconds >= 0 e texto entre 1 e 2000 caracteres (máx. 200 notas).'
+      );
+      return;
+    }
+
+    const sendQualityAck =
+      decision === 'approve' && requiresQualityAcknowledgement && approvalConfirmationChecked;
+
     const targetScriptId = activeProduction.script_id;
     const targetProductionId = activeProduction.id;
-    const signature = `review:${targetProductionId}:${videoArtifact.sha256}:${decision}`;
+    const notesKeyPart = validNotes.length > 0 ? `:${JSON.stringify(validNotes)}` : '';
+    const ackKeyPart = sendQualityAck ? ':ack_qc' : '';
+    const signature = `review:${targetProductionId}:${videoArtifact.sha256}:${decision}${notesKeyPart}${ackKeyPart}`;
     const idempotencyKey = getOrCreateIdempotencyKey(signature);
 
     inFlightRef.current = true;
@@ -658,6 +956,8 @@ export default function ProductionRun({
         {
           decision,
           artifact_sha256: videoArtifact.sha256,
+          notes: validNotes.length > 0 ? validNotes : undefined,
+          acknowledge_quality_errors: sendQualityAck ? true : undefined,
         },
         idempotencyKey
       );
@@ -678,9 +978,13 @@ export default function ProductionRun({
     }
   }
 
-  const provenance = activeProduction
-    ? deriveProductionProvenance(activeProduction, pilotEvidenceData)
-    : null;
+  const sceneNavItems = extractSceneNavItems(pilotEvidenceData, null);
+  const subtitleNavItems = extractSubtitleNavItems(
+    pilotEvidenceData,
+    previewTarget?.srtSegments ?? null
+  );
+  const qualityChecksWithTimecode =
+    normalizedQuality?.checks.filter(c => c.timecode !== null) ?? [];
 
   const videoArtifact = activeProduction?.artifacts.find(a => a.kind === 'video') ?? null;
   const subtitlesArtifact = activeProduction?.artifacts.find(a => a.kind === 'subtitles') ?? null;
@@ -709,6 +1013,16 @@ export default function ProductionRun({
     activeProduction?.mode !== 'simulated' &&
     Boolean(videoArtifact?.sha256) &&
     activeProduction?.review === null;
+
+  const hasInvalidDraftNotes =
+    reviewNotes.length > 200 ||
+    reviewNotes.some(
+      n =>
+        !Number.isFinite(n.at_seconds) ||
+        n.at_seconds < 0 ||
+        n.text.trim().length < 1 ||
+        n.text.trim().length > 2000
+    );
 
   const currentStageIndex = activeProduction
     ? PRODUCTION_STAGES.indexOf(activeProduction.stage)
@@ -1405,15 +1719,53 @@ export default function ProductionRun({
                 {previewTarget.kind === 'video' && previewTarget.blobUrl && (
                   <div className="player">
                     <video
+                      ref={videoRef}
                       key={previewTarget.blobUrl}
                       controls
                       preload="metadata"
                       src={previewTarget.blobUrl}
                       aria-label={`Player de vídeo ${previewTarget.artifact.relative_path}`}
+                      onLoadedMetadata={e => {
+                        if (pendingSeekSecondsRef.current !== null) {
+                          const targetSec = pendingSeekSecondsRef.current;
+                          pendingSeekSecondsRef.current = null;
+                          const dur = e.currentTarget.duration;
+                          if (!Number.isFinite(dur) || (dur > 0 && targetSec <= dur)) {
+                            try {
+                              e.currentTarget.currentTime = targetSec;
+                            } catch {
+                              // ignore
+                            }
+                          }
+                        }
+                      }}
+                      onTimeUpdate={e => {
+                        if (
+                          Number.isFinite(e.currentTarget.duration) &&
+                          e.currentTarget.duration > 0 &&
+                          Number.isFinite(e.currentTarget.currentTime)
+                        ) {
+                          setCurrentTimeSeconds(
+                            Math.round(e.currentTarget.currentTime * 1000) / 1000
+                          );
+                        }
+                      }}
+                      onSeeked={e => {
+                        if (
+                          Number.isFinite(e.currentTarget.duration) &&
+                          e.currentTarget.duration > 0 &&
+                          Number.isFinite(e.currentTarget.currentTime)
+                        ) {
+                          setCurrentTimeSeconds(
+                            Math.round(e.currentTarget.currentTime * 1000) / 1000
+                          );
+                        }
+                      }}
                     />
                     <small className="muted">
                       Prévia local via Blob autenticado — Narração: {provenance.narrationLabel} ·
-                      Legendas: {provenance.subtitleLabel}.
+                      Legendas: {provenance.subtitleLabel} · Timecode:{' '}
+                      {formatTimecode(currentTimeSeconds)}.
                     </small>
                   </div>
                 )}
@@ -1488,9 +1840,25 @@ export default function ProductionRun({
                                 border: '1px solid var(--Line)',
                               }}
                             >
-                              <small className="eyebrow accent">
-                                #{seg.index} · {seg.start} → {seg.end}
-                              </small>
+                              <div className="row spread">
+                                <small className="eyebrow accent">
+                                  #{seg.index} · {seg.start} → {seg.end}
+                                </small>
+                                {seg.startSeconds !== null && (
+                                  <button
+                                    className="button"
+                                    type="button"
+                                    style={{
+                                      padding: '2px 8px',
+                                      minHeight: '24px',
+                                      fontSize: '9px',
+                                    }}
+                                    onClick={() => handleSeekTimecode(seg.startSeconds!)}
+                                  >
+                                    Ir para {formatTimecode(seg.startSeconds)}
+                                  </button>
+                                )}
+                              </div>
                               <p style={{ marginTop: '2px', fontSize: '13px' }}>{seg.text}</p>
                             </div>
                           ))}
@@ -1528,6 +1896,38 @@ export default function ProductionRun({
             )}
           </div>
 
+          {normalizedQuality && (
+            <QualityReportPanel
+              quality={normalizedQuality}
+              onSeekTimecode={seconds => handleSeekTimecode(seconds)}
+            />
+          )}
+
+          {normalizedAssetProvenance && (
+            <AssetProvenancePanel assetProvenance={normalizedAssetProvenance} />
+          )}
+
+          {videoArtifact && normalizedWordTimings && (
+            <TimecodeReviewWorkspace
+              currentTimeSeconds={currentTimeSeconds}
+              scenes={sceneNavItems}
+              subtitles={subtitleNavItems}
+              wordTimings={normalizedWordTimings}
+              qualityChecksWithTimecode={qualityChecksWithTimecode}
+              notes={reviewNotes}
+              canEditNotes={canReviewFinal}
+              onSeekTimecode={seconds => handleSeekTimecode(seconds)}
+              onCaptureCurrentVideoTime={handleCaptureCurrentVideoTime}
+              onAddNote={note => setReviewNotes(prev => [...prev, note])}
+              onUpdateNote={(index, updated) =>
+                setReviewNotes(prev => prev.map((item, idx) => (idx === index ? updated : item)))
+              }
+              onRemoveNote={index =>
+                setReviewNotes(prev => prev.filter((_, idx) => idx !== index))
+              }
+            />
+          )}
+
           {activeProduction.mode === 'simulated' && activeProduction.status === 'succeeded' && (
             <div
               className="fact-item"
@@ -1560,8 +1960,12 @@ export default function ProductionRun({
                   <>
                     Este piloto utiliza <strong>TTS local sintético (não é voz humana nem clone)</strong>,{' '}
                     <strong>cenas demonstrativas locais</strong> e{' '}
-                    <strong>legenda segmentada com alinhamento não verificado</strong> (
-                    <code>publishable: false</code>).
+                    <strong>
+                      {normalizedWordTimings?.speechAligned
+                        ? 'alinhamento por palavra validado'
+                        : 'legenda segmentada com alinhamento não verificado'}
+                    </strong>{' '}
+                    (<code>publishable: false</code>).
                   </>
                 ) : (
                   <>
@@ -1583,14 +1987,78 @@ export default function ProductionRun({
                   SHA-256: <strong>{videoArtifact.sha256}</strong>
                 </small>
                 <small className="muted">
-                  Qualidade: {provenance.qualityLabel} · Narração: {provenance.narrationLabel}
+                  Qualidade: {provenance.qualityLabel} · Narração: {provenance.narrationLabel} · Notas
+                  marcadas para envio: <strong>{reviewNotes.length}</strong>
                 </small>
               </div>
+
+              {requiresApprovalConfirmation && (
+                <div
+                  className={`blocker-item ${hasQcFail ? 'critical' : 'warning'}`}
+                  role="note"
+                  aria-label="Aviso explícito para aprovação com ressalvas"
+                >
+                  <span className="eyebrow warn">
+                    AVISO EXPLÍCITO: QC REPROVADO OU LICENÇA NÃO VERIFICADA
+                  </span>
+                  <p className="muted">
+                    {hasQcFail && (
+                      <>
+                        <strong>Relatório de qualidade reprovado (status: fail)</strong> com erros
+                        bloqueantes ou falhas técnicas.{' '}
+                      </>
+                    )}
+                    {!hasQcFail && hasQcNotRunInPilot && (
+                      <>
+                        <strong>Relatório de qualidade ausente ou não executado (not_run)</strong>{' '}
+                        neste piloto local (<code>quality_acknowledgement_required: true</code>).{' '}
+                      </>
+                    )}
+                    {hasUnverifiedLicense && (
+                      <>
+                        <strong>Licença ou proveniência não verificada</strong> (status{' '}
+                        <code>unverified</code>/<code>rejected</code>,{' '}
+                        <code>commercial_use: unknown</code> ou ausência de verificação humana).{' '}
+                      </>
+                    )}
+                    Para aprovar esta revisão técnica por hash, confirme ciência explícita abaixo (
+                    <code>acknowledge_quality_errors: true</code>). Rejeitar continua sempre
+                    disponível. Publicação permanece bloqueada (<code>publishable: false</code>).
+                  </p>
+                  <label
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: '8px',
+                      color: 'var(--Ink)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      style={{ width: '16px', height: '16px', flexShrink: 0 }}
+                      aria-label="Confirmo ciência das pendências de QC e/ou licenças não verificadas (publishable: false)"
+                      checked={approvalConfirmationChecked}
+                      onChange={e => setApprovalConfirmationChecked(e.target.checked)}
+                    />
+                    <span>
+                      Confirmo ciência das pendências de QC e/ou licenças não verificadas; a decisão
+                      mantém <code>publishable: false</code> e não autoriza publicação
+                    </span>
+                  </label>
+                </div>
+              )}
+
               <div className="actions">
                 <button
                   className="button primary"
                   type="button"
-                  disabled={submitting}
+                  disabled={
+                    submitting ||
+                    hasInvalidDraftNotes ||
+                    (requiresApprovalConfirmation && !approvalConfirmationChecked)
+                  }
                   onClick={() => void handleReviewProduction('approve', videoArtifact)}
                 >
                   Aprovar produção (hash verificado)
@@ -1598,7 +2066,7 @@ export default function ProductionRun({
                 <button
                   className="button"
                   type="button"
-                  disabled={submitting}
+                  disabled={submitting || hasInvalidDraftNotes}
                   onClick={() => void handleReviewProduction('reject', videoArtifact)}
                 >
                   Rejeitar produção
@@ -1636,6 +2104,51 @@ export default function ProductionRun({
                 hash não implica licença/publicabilidade, não realiza upload/publicação e não forja
                 marcador da fábrica (<code>publishable: false</code>).
               </small>
+              {(activeProduction.review.acknowledge_quality_errors === true ||
+                activeProduction.review.acknowledged_quality_errors === true) && (
+                <div className="row" style={{ marginTop: '4px' }}>
+                  <span className="tag warn">
+                    Reconhecimento explícito de pendências de QC / licença registrado
+                    (acknowledge_quality_errors: true)
+                  </span>
+                </div>
+              )}
+
+              <div
+                className="fact-item"
+                role="region"
+                aria-label="Notas registradas na revisão"
+                style={{ marginTop: '6px' }}
+              >
+                <span className="eyebrow">
+                  NOTAS DE REVISÃO POR TIMECODE REGISTRADAS (
+                  {activeProduction.review.notes?.length ?? 0})
+                </span>
+                {activeProduction.review.notes && activeProduction.review.notes.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {activeProduction.review.notes.map((note, idx) => (
+                      <div key={idx} className="row" style={{ flexWrap: 'wrap' }}>
+                        <button
+                          className="button"
+                          type="button"
+                          style={{ padding: '3px 8px', minHeight: '24px', fontSize: '10px' }}
+                          aria-label={`Ir para nota registrada ${idx + 1} em ${formatTimecode(
+                            note.at_seconds
+                          )}`}
+                          onClick={() => handleSeekTimecode(note.at_seconds)}
+                        >
+                          {formatTimecode(note.at_seconds)} ({note.at_seconds}s)
+                        </button>
+                        <span style={{ fontSize: '13px' }}>{note.text}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <small className="muted">
+                    Nenhuma nota por timecode registrada nesta decisão.
+                  </small>
+                )}
+              </div>
             </div>
           )}
         </div>

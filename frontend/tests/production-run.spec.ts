@@ -968,13 +968,20 @@ test.describe('M4 — Interface de Produção Técnica Local e Revisão Final (H
     await expect(reviewRegion.getByText('APENAS DEMO / TESTE · NÃO PUBLICÁVEL')).toBeVisible();
     await expect(reviewRegion.getByText(VIDEO_SHA256)).toBeVisible();
 
-    await reviewRegion.getByRole('button', { name: 'Aprovar produção (hash verificado)', exact: true }).click();
+    const approveBtn = reviewRegion.getByRole('button', { name: 'Aprovar produção (hash verificado)', exact: true });
+    await expect(approveBtn).toBeDisabled();
+    await reviewRegion
+      .getByLabel('Confirmo ciência das pendências de QC e/ou licenças não verificadas (publishable: false)')
+      .check();
+    await expect(approveBtn).toBeEnabled();
+
+    await approveBtn.click();
     await expect(prodRegion.getByRole('alert')).toContainText(
       'Conflito de versão, hash ou estado (409): Hash não corresponde ao vídeo registrado.'
     );
     await expect(detailRegion.getByRole('region', { name: 'Decisão de revisão final registrada' })).toHaveCount(0);
 
-    await reviewRegion.getByRole('button', { name: 'Aprovar produção (hash verificado)', exact: true }).click();
+    await approveBtn.click();
 
     const recordedReview = detailRegion.getByRole('region', { name: 'Decisão de revisão final registrada' });
     await expect(recordedReview).toBeVisible();
