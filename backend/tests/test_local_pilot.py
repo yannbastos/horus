@@ -271,7 +271,7 @@ def test_migration_v7_preserves_v6_productions_receipts_ids_and_fks(settings,mon
         migrate(path)
         with sqlite3.connect(path) as db:
             db.execute('PRAGMA foreign_keys=ON')
-            assert db.execute('PRAGMA user_version').fetchone()[0] == 8
+            assert db.execute('PRAGMA user_version').fetchone()[0] == 9
             assert db.execute('SELECT * FROM productions').fetchall() == productions
             assert db.execute('SELECT * FROM production_receipts ORDER BY scope').fetchall() == receipts
             assert db.execute('PRAGMA foreign_key_check').fetchall() == []

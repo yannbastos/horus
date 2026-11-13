@@ -117,9 +117,12 @@ def test_script_must_be_a_validated_model_and_is_revalidated():
     with pytest.raises(ValueError):
         build(document)
     document = script()
-    document.simulated = False
+    document.simulated = 'false'  # mutação para não booleano; False é válido (roteiro humano, HOR-133)
     with pytest.raises(ValueError):
         build(document)
+    document = script()
+    document.simulated = False
+    assert build(document)
 
 
 def test_input_not_mutated():
