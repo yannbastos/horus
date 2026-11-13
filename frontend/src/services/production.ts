@@ -123,6 +123,14 @@ export type QualityReportStatus =
   | 'failed'
   | 'unverified';
 
+export type NarrationAudioStatus =
+  | 'confirmed_by_sha256'
+  | 'fixture_single_tone'
+  | 'loading_evidence'
+  | 'hash_mismatch_or_missing'
+  | 'evidence_missing_or_unverified'
+  | 'no_audio';
+
 export type NormalizedProductionProvenance = {
   demoOnly: boolean | undefined;
   realVoice: boolean | undefined;
@@ -133,6 +141,11 @@ export type NormalizedProductionProvenance = {
   narrationVoice: string | null;
   narrationDisclosure: string | null;
   narrationLabel: string;
+  narrationSha256: string | null;
+  narrationDurationSeconds: number | null;
+  narrationAudioArtifact: ProductionArtifact | null;
+  fixtureAudioArtifact: ProductionArtifact | null;
+  narrationAudioStatus: NarrationAudioStatus;
   alignmentMethod: string | null;
   subtitleKind: SubtitleProvenanceKind;
   subtitleDisclosure: string | null;
@@ -175,6 +188,11 @@ function readString(value: unknown): string | null {
 
 function readBoolean(value: unknown): boolean | undefined {
   return typeof value === 'boolean' ? value : undefined;
+}
+
+function readSha256(value: unknown): string | null {
+  const s = readString(value);
+  return s && /^[a-f0-9]{64}$/i.test(s) ? s.toLowerCase() : null;
 }
 
 export function adaptProductionRecord(raw: ProductionRecord): ProductionRecord {
@@ -274,7 +292,7 @@ export function deriveProductionProvenance(
     undefined;
 
   // 1. Narração: diferenciar fixture_tone vs local_tts (TTS local sintético) vs não verificado.
-  // Nunca derivar verdade apenas de record.mode === 'local_pilot'.
+  // Nunca derivar verdade apenas de record.mode, da ordem dos artefatos ou do nome do arquivo.
   const rawAudioKind =
     readString(record.narration_kind) ??
     readString(record.audio_kind) ??
@@ -294,6 +312,11 @@ export function deriveProductionProvenance(
     readString(evidence?.voice_engine);
 
   const narrationVoice = readString(evAudio?.voice) ?? null;
+  const narrationSha256 = readSha256(evAudio?.sha256);
+  const narrationDurationSeconds =
+    typeof evAudio?.duration_seconds === 'number' && Number.isFinite(evAudio.duration_seconds)
+      ? evAudio.duration_seconds
+      : null;
 
   const systemVoiceAsset = evAssets.find(
     item => isRecord(item) && readString(item.origin) === 'system_voice'
@@ -316,13 +339,6 @@ export function deriveProductionProvenance(
     readBoolean(evidence?.local_tts) === true ||
     Boolean(systemVoiceAsset);
 
-  const hasFixtureWav = audioArtifacts.some(a =>
-    a.relative_path.toLowerCase().endsWith('fixture.wav')
-  );
-  const hasNonFixtureAudio = audioArtifacts.some(
-    a => !a.relative_path.toLowerCase().endsWith('fixture.wav')
-  );
-
   let narrationKind: NarrationProvenanceKind = 'unverified';
   if (
     explicitSyntheticTts ||
@@ -331,13 +347,14 @@ export function deriveProductionProvenance(
         rawAudioKind
       )) ||
     (narrationEngine &&
-      !/fixture_tone|synthetic_fixture_tone/i.test(narrationEngine)) ||
-    (hasNonFixtureAudio && realVoice !== true)
+      !/fixture_tone|synthetic_fixture_tone/i.test(narrationEngine))
   ) {
     narrationKind = 'synthetic_local_tts';
   } else if (
     (rawAudioKind && /fixture_tone|tone|tom|sine|fixture/i.test(rawAudioKind)) ||
-    (record.mode !== 'local_pilot' && (hasFixtureWav || realVoice === false))
+    (record.narration_kind === undefined &&
+      record.mode !== 'local_pilot' &&
+      realVoice === false)
   ) {
     narrationKind = 'fixture_tone';
   } else {
@@ -358,6 +375,39 @@ export function deriveProductionProvenance(
   } else {
     narrationLabel =
       'Não verificado (sem evidência de áudio/TTS no resultado; nunca inferir do modo pedido)';
+  }
+
+  // Resolução do artefato de narração completa:
+  // Seleciona exclusivamente pelo SHA-256 confirmado em pilot-evidence.json (narration.sha256)
+  // e sua correspondência exata em record.artifacts (kind === 'audio'), sem confiar em ordem/nome/modo.
+  const matchedNarrationBySha256 =
+    narrationSha256 !== null
+      ? audioArtifacts.find(a => a.sha256.toLowerCase() === narrationSha256) ?? null
+      : null;
+
+  // Compatibilidade simulated/local_demo (single audio de tom de fixture quando não há pilot-evidence.json)
+  const fixtureAudioArtifact =
+    matchedNarrationBySha256 === null &&
+    pilotEvidenceArtifact === null &&
+    audioArtifacts.length === 1 &&
+    narrationKind === 'fixture_tone' &&
+    record.mode !== 'local_pilot'
+      ? audioArtifacts[0]
+      : null;
+
+  let narrationAudioStatus: NarrationAudioStatus;
+  if (audioArtifacts.length === 0) {
+    narrationAudioStatus = 'no_audio';
+  } else if (matchedNarrationBySha256 !== null) {
+    narrationAudioStatus = 'confirmed_by_sha256';
+  } else if (fixtureAudioArtifact !== null) {
+    narrationAudioStatus = 'fixture_single_tone';
+  } else if (pilotEvidenceArtifact !== null && !evidence) {
+    narrationAudioStatus = 'loading_evidence';
+  } else if (evidence) {
+    narrationAudioStatus = 'hash_mismatch_or_missing';
+  } else {
+    narrationAudioStatus = 'evidence_missing_or_unverified';
   }
 
   // 2. Legendas e alinhamento: diferenciar SRT sintético, legenda segmentada (measured_sections) e alinhamento não verificado.
@@ -398,13 +448,13 @@ export function deriveProductionProvenance(
     subtitleKind = 'segmented_srt';
   } else if (explicitSyntheticSrt) {
     subtitleKind = 'synthetic_srt';
-  } else if (subtitleArtifacts.length > 0) {
-    if (record.mode === 'local_pilot') {
-      subtitleKind = 'segmented_srt';
-    } else {
-      subtitleKind = 'synthetic_srt';
-    }
-  } else if (speechAligned === false && record.mode !== 'local_pilot') {
+  } else if (subtitleArtifacts.length > 0 && record.mode !== 'local_pilot') {
+    subtitleKind = 'synthetic_srt';
+  } else if (
+    record.alignment_method === undefined &&
+    speechAligned === false &&
+    record.mode !== 'local_pilot'
+  ) {
     subtitleKind = 'synthetic_srt';
   } else {
     subtitleKind = 'unverified';
@@ -576,6 +626,11 @@ export function deriveProductionProvenance(
     narrationVoice,
     narrationDisclosure,
     narrationLabel,
+    narrationSha256,
+    narrationDurationSeconds,
+    narrationAudioArtifact: matchedNarrationBySha256,
+    fixtureAudioArtifact,
+    narrationAudioStatus,
     alignmentMethod,
     subtitleKind,
     subtitleDisclosure,
@@ -686,13 +741,14 @@ export function summarizeJsonArtifact(
       typeof narrationObj?.duration_seconds === 'number'
         ? `${narrationObj.duration_seconds.toFixed(2)}s`
         : null;
+    const audioSha = readSha256(narrationObj?.sha256);
 
     summary.push({
       label: 'Narração / Voz',
       value: audioKind
         ? `${audioKind}${engine ? ` (${engine})` : ''}${voice ? ` · ${voice}` : ''}${
             audioDur ? ` · ${audioDur}` : ''
-          } · real_voice: false`
+          }${audioSha ? ` · sha256: ${audioSha}` : ''} · real_voice: false`
         : 'Não verificado',
     });
 

@@ -1178,10 +1178,15 @@ test.describe('M4 — Interface de Produção Técnica Local e Revisão Final (H
     const JOB_PILOT_BLOCKED_ID = 'job_pilot_blocked_01';
     const JOB_PILOT_OK_ID = 'job_pilot_ok_02';
     const PILOT_EVIDENCE_ID = 'e1e2e3e4f1f2f3f4a1a2a3a4b1b2b3b4';
+    const PILOT_SECTION_1_AUDIO_ID = '10101010202020203030303040404041';
+    const PILOT_SECTION_2_AUDIO_ID = '10101010202020203030303040404042';
+    const PILOT_SECTION_3_AUDIO_ID = '10101010202020203030303040404043';
     const PILOT_AUDIO_ID = 'a1a2a3a4b1b2b3b4c1c2c3c4d1d2d3d4';
+    const PILOT_AUDIO_REVIEW_ID = '10101010202020203030303040404049';
 
     let postStage: 'old_backend_422' | 'blocked_missing_tts' | 'succeeded_pilot' = 'old_backend_422';
-    let evidenceFetchMode: '401' | 'ok' = '401';
+    let evidenceFetchMode: '401' | 'unknown_hash' | 'ok' = '401';
+    let omitEvidenceArtifact = false;
     let productionsList: Record<string, unknown>[] = [];
 
     const mockPilotEvidence = {
@@ -1243,11 +1248,39 @@ test.describe('M4 — Interface de Produção Técnica Local e Revisão Final (H
         sha256: 'aaaa1111222233334444555566667777888899990000aaaabbbbccccddddeeee',
       },
       {
+        id: PILOT_SECTION_1_AUDIO_ID,
+        kind: 'audio' as const,
+        relative_path: 'canais/demo/videos/fixture/section-1.wav',
+        size_bytes: 10240,
+        sha256: 'a242cb549dbb7f35a2643c94c1d7be59225bc33aba513754da3af2fec5a3bd1b',
+      },
+      {
+        id: PILOT_SECTION_2_AUDIO_ID,
+        kind: 'audio' as const,
+        relative_path: 'canais/demo/videos/fixture/section-2.wav',
+        size_bytes: 11240,
+        sha256: '5d0361f1049795aa78ebb84c8630577ffa6f7ad6172b9e1b67b0941aa81be023',
+      },
+      {
+        id: PILOT_SECTION_3_AUDIO_ID,
+        kind: 'audio' as const,
+        relative_path: 'canais/demo/videos/fixture/section-3.wav',
+        size_bytes: 10564,
+        sha256: '70176a894ce4fd841a25ef1d985fae982ddac135ba5e625b1e881cadc9038c42',
+      },
+      {
         id: PILOT_AUDIO_ID,
         kind: 'audio' as const,
         relative_path: 'canais/demo/videos/fixture/fixture.wav',
         size_bytes: 32044,
         sha256: '2fc4667c7fb878d946f116b688ea7c94c90077d778e55affb27150c3e57bfa4a',
+      },
+      {
+        id: PILOT_AUDIO_REVIEW_ID,
+        kind: 'audio' as const,
+        relative_path: 'canais/demo/videos/fixture/render/audio-review.wav',
+        size_bytes: 33120,
+        sha256: '9999888877776666555544443333222211110000aaaabbbbccccddddeeeeffff',
       },
       {
         id: 'art_scene_pilot_1',
@@ -1396,10 +1429,19 @@ test.describe('M4 — Interface de Produção Técnica Local e Revisão Final (H
         return;
       }
       if (pathUrl === `/v1/productions/${PROD_PILOT_OK_ID}` && request.method() === 'GET') {
+        const baseProd = productionsList.find(p => p.id === PROD_PILOT_OK_ID) as
+          | Record<string, unknown>
+          | undefined;
         await route.fulfill({
           status: 200,
           headers: corsHeaders,
-          json: productionsList.find(p => p.id === PROD_PILOT_OK_ID),
+          json:
+            baseProd && omitEvidenceArtifact
+              ? {
+                  ...baseProd,
+                  artifacts: pilotArtifacts.filter(a => a.id !== PILOT_EVIDENCE_ID),
+                }
+              : baseProd,
         });
         return;
       }
@@ -1434,6 +1476,21 @@ test.describe('M4 — Interface de Produção Técnica Local e Revisão Final (H
           });
           return;
         }
+        if (evidenceFetchMode === 'unknown_hash') {
+          await route.fulfill({
+            status: 200,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ...mockPilotEvidence,
+              narration: {
+                ...mockPilotEvidence.narration,
+                sha256: 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef',
+              },
+            }),
+          });
+          return;
+        }
+        await new Promise(resolve => setTimeout(resolve, 200));
         await route.fulfill({
           status: 200,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -1521,19 +1578,62 @@ test.describe('M4 — Interface de Produção Técnica Local e Revisão Final (H
     await expect(okDetail).toBeVisible();
 
     // First, pilot-evidence.json returns 401 -> surfaces explicit 401 alert while preserving known production state
+    // and does NOT expose the complete narration shortcut button (avoiding picking section-1.wav)
     const evidenceErrorAlert = okDetail.getByRole('alert', {
       name: 'Erro ao carregar evidência do piloto',
     });
     await expect(evidenceErrorAlert).toContainText(
       'Sessão não autorizada (401): Token expirado ao ler pilot-evidence.json.'
     );
+    const okQuickBar = okDetail.getByRole('region', {
+      name: 'Acesso rápido de insumos para revisão',
+    });
+    await expect(
+      okQuickBar.getByRole('button', { name: 'Áudio / narração WAV', exact: true })
+    ).toHaveCount(0);
+    await expect(
+      okQuickBar.getByText(
+        'Narração completa não verificada (falha ao ler pilot-evidence.json · use a tabela para faixas individuais)'
+      )
+    ).toBeVisible();
 
-    // Reload pilot-evidence.json -> succeeds and populates full provenance (local_tts + measured_sections + unverified license) while keeping quality_report as unverified
-    evidenceFetchMode = 'ok';
+    // Negative case: pilot-evidence.json loads with an unknown/unmatched narration.sha256 -> shortcut stays disabled/hidden with explicit hash mismatch badge
+    evidenceFetchMode = 'unknown_hash';
     await evidenceErrorAlert
       .getByRole('button', { name: 'Recarregar evidência do piloto', exact: true })
       .click();
     await expect(evidenceErrorAlert).toHaveCount(0);
+    await expect(
+      okQuickBar.getByRole('button', { name: 'Áudio / narração WAV', exact: true })
+    ).toHaveCount(0);
+    await expect(
+      okQuickBar.getByText(
+        'Narração completa não verificada (narration.sha256 ausente ou sem correspondência nos artefatos · use a tabela para faixas individuais)'
+      )
+    ).toBeVisible();
+
+    // Negative case: pilot-evidence.json absent from artifacts -> shortcut stays hidden with explicit missing-evidence badge
+    omitEvidenceArtifact = true;
+    await prodRegion.getByRole('button', { name: 'Recarregar produção atual', exact: true }).click();
+    await expect(
+      okQuickBar.getByRole('button', { name: 'Áudio / narração WAV', exact: true })
+    ).toHaveCount(0);
+    await expect(
+      okQuickBar.getByText(
+        'Narração completa não verificada (pilot-evidence.json ausente · use a tabela para faixas individuais)'
+      )
+    ).toBeVisible();
+
+    // Reload pilot-evidence.json with matching narration.sha256 -> shows loading badge while in-flight, then enables shortcut and populates full provenance while keeping quality_report as unverified
+    omitEvidenceArtifact = false;
+    evidenceFetchMode = 'ok';
+    await prodRegion.getByRole('button', { name: 'Recarregar produção atual', exact: true }).click();
+    await expect(
+      okQuickBar.getByText('Verificando narração completa em pilot-evidence.json…')
+    ).toBeVisible();
+    await expect(
+      okQuickBar.getByRole('button', { name: 'Áudio / narração WAV', exact: true })
+    ).toBeVisible();
 
     const provRegion = okDetail.getByLabel('Avisos de proveniência e escopo de demonstração');
     await expect(
@@ -1568,11 +1668,16 @@ test.describe('M4 — Interface de Produção Técnica Local e Revisão Final (H
     const PROD_PILOT_ID = 'eeeeffff000011112222333344445555';
     const JOB_PILOT_ID = 'job_pilot_review_01';
     const PILOT_EVIDENCE_ID = 'e1e2e3e4f1f2f3f4a1a2a3a4b1b2b3b4';
+    const PILOT_SECTION_1_AUDIO_ID = '20202020303030304040404050505051';
+    const PILOT_SECTION_2_AUDIO_ID = '20202020303030304040404050505052';
+    const PILOT_SECTION_3_AUDIO_ID = '20202020303030304040404050505053';
     const PILOT_AUDIO_ID = 'a1a2a3a4b1b2b3b4c1c2c3c4d1d2d3d4';
+    const PILOT_AUDIO_REVIEW_ID = '20202020303030304040404050505059';
     const PILOT_SUBS_ID = 'b1b2b3b4c1c2c3c4d1d2d3c4e1e2e3e4';
 
     let srtFetchFailure: 'none' | '401' | 'network' = 'none';
     const externalRequests: string[] = [];
+    const requestedAudioArtifactIds: string[] = [];
 
     const mockPilotEvidence = {
       schema_version: 1,
@@ -1660,11 +1765,39 @@ test.describe('M4 — Interface de Produção Técnica Local e Revisão Final (H
           sha256: 'aaaa1111222233334444555566667777888899990000aaaabbbbccccddddeeee',
         },
         {
+          id: PILOT_SECTION_1_AUDIO_ID,
+          kind: 'audio' as const,
+          relative_path: 'canais/demo/videos/fixture/section-1.wav',
+          size_bytes: 10240,
+          sha256: 'a242cb549dbb7f35a2643c94c1d7be59225bc33aba513754da3af2fec5a3bd1b',
+        },
+        {
+          id: PILOT_SECTION_2_AUDIO_ID,
+          kind: 'audio' as const,
+          relative_path: 'canais/demo/videos/fixture/section-2.wav',
+          size_bytes: 11240,
+          sha256: '5d0361f1049795aa78ebb84c8630577ffa6f7ad6172b9e1b67b0941aa81be023',
+        },
+        {
+          id: PILOT_SECTION_3_AUDIO_ID,
+          kind: 'audio' as const,
+          relative_path: 'canais/demo/videos/fixture/section-3.wav',
+          size_bytes: 10564,
+          sha256: '70176a894ce4fd841a25ef1d985fae982ddac135ba5e625b1e881cadc9038c42',
+        },
+        {
           id: PILOT_AUDIO_ID,
           kind: 'audio' as const,
           relative_path: 'canais/demo/videos/fixture/fixture.wav',
           size_bytes: 32044,
           sha256: '2fc4667c7fb878d946f116b688ea7c94c90077d778e55affb27150c3e57bfa4a',
+        },
+        {
+          id: PILOT_AUDIO_REVIEW_ID,
+          kind: 'audio' as const,
+          relative_path: 'canais/demo/videos/fixture/render/audio-review.wav',
+          size_bytes: 33120,
+          sha256: '9999888877776666555544443333222211110000aaaabbbbccccddddeeeeffff',
         },
         {
           id: PILOT_SUBS_ID,
@@ -1775,8 +1908,17 @@ test.describe('M4 — Interface de Produção Técnica Local e Revisão Final (H
         });
         return;
       }
-      if (pathUrl.endsWith(`/artifacts/${PILOT_AUDIO_ID}`) && request.method() === 'GET') {
+      if (
+        (pathUrl.endsWith(`/artifacts/${PILOT_AUDIO_ID}`) ||
+          pathUrl.endsWith(`/artifacts/${PILOT_SECTION_1_AUDIO_ID}`) ||
+          pathUrl.endsWith(`/artifacts/${PILOT_SECTION_2_AUDIO_ID}`) ||
+          pathUrl.endsWith(`/artifacts/${PILOT_SECTION_3_AUDIO_ID}`) ||
+          pathUrl.endsWith(`/artifacts/${PILOT_AUDIO_REVIEW_ID}`)) &&
+        request.method() === 'GET'
+      ) {
         expect(request.headers()['authorization']).toBe(`Bearer ${SESSION_TOKEN}`);
+        const requestedId = pathUrl.split('/').pop()!;
+        requestedAudioArtifactIds.push(requestedId);
         await route.fulfill({
           status: 200,
           headers: { ...corsHeaders, 'Content-Type': 'audio/wav' },
@@ -1914,10 +2056,11 @@ test.describe('M4 — Interface de Produção Técnica Local e Revisão Final (H
     await page.evaluate(() => document.fonts.ready);
     await page.screenshot({ path: path.join(artifactDir, 'production-pilot-srt-preview-dark.png') });
 
-    // 4. Switch to audio preview -> creates audio blob URL; then switch to pilot-evidence.json -> revokes audio blob URL
+    // 4. Switch to audio preview via quick-access bar -> must select ONLY the complete narration WAV matching narration.sha256 (PILOT_AUDIO_ID), never section-1/2/3.wav or render/audio-review.wav
     await quickReviewBar
       .getByRole('button', { name: 'Áudio / narração WAV', exact: true })
       .click();
+    expect(requestedAudioArtifactIds).toEqual([PILOT_AUDIO_ID]);
     const audioPlayer = detailRegion.getByLabel(
       'Player de áudio canais/demo/videos/fixture/fixture.wav'
     );
@@ -1925,7 +2068,31 @@ test.describe('M4 — Interface de Produção Técnica Local e Revisão Final (H
     const audioBlobUrl = await audioPlayer.getAttribute('src');
     expect(audioBlobUrl).toMatch(/^blob:/);
     await expect(
-      detailRegion.getByText('Áudio de TTS local sintético — não é voz humana nem clone de voz.')
+      detailRegion.getByText('Áudio de TTS local sintético — não é voz humana nem clone de voz')
+    ).toBeVisible();
+    await expect(
+      detailRegion.getByText('SHA-256: 2fc4667c7fb878d946f116b688ea7c94c90077d778e55affb27150c3e57bfa4a')
+    ).toBeVisible();
+
+    // Individual section audio remains accessible in the artifacts table with an honest non-complete caption
+    const artifactsTable = detailRegion.getByRole('table', {
+      name: 'Tabela de artefatos da produção',
+    });
+    const section1Row = artifactsTable.locator('tr', {
+      hasText: 'canais/demo/videos/fixture/section-1.wav',
+    });
+    await section1Row.getByRole('button', { name: 'Ouvir áudio', exact: true }).click();
+    expect(requestedAudioArtifactIds).toEqual([PILOT_AUDIO_ID, PILOT_SECTION_1_AUDIO_ID]);
+    const section1Player = detailRegion.getByLabel(
+      'Player de áudio canais/demo/videos/fixture/section-1.wav'
+    );
+    await expect(section1Player).toBeVisible();
+    const section1BlobUrl = await section1Player.getAttribute('src');
+    expect(section1BlobUrl).toMatch(/^blob:/);
+    await expect(
+      detailRegion.getByText(
+        'Faixa de áudio individual ou auxiliar — completude de narração não inferida fora do narration.sha256 de pilot-evidence.json (não é voz humana nem clone de voz).'
+      )
     ).toBeVisible();
 
     await quickReviewBar
@@ -1935,11 +2102,6 @@ test.describe('M4 — Interface de Produção Técnica Local e Revisão Final (H
       })
       .click();
 
-    const revokedAfterSwitchToJson = await page.evaluate(
-      () => (window as unknown as { __revokedBlobUrls: string[] }).__revokedBlobUrls
-    );
-    expect(revokedAfterSwitchToJson).toContain(audioBlobUrl);
-
     const metadataSummaryRegion = detailRegion.getByRole('region', {
       name: 'Resumo de metadados do artefato',
     });
@@ -1947,6 +2109,12 @@ test.describe('M4 — Interface de Produção Técnica Local e Revisão Final (H
     await expect(metadataSummaryRegion).toContainText('local_tts (windows_sapi)');
     await expect(metadataSummaryRegion).toContainText('measured_sections · 3 segmento(s)');
     await expect(metadataSummaryRegion).toContainText('2 pass, 0 fail, 4 not_checked · publishable: false');
+
+    const revokedAfterSwitchToJson = await page.evaluate(
+      () => (window as unknown as { __revokedBlobUrls: string[] }).__revokedBlobUrls
+    );
+    expect(revokedAfterSwitchToJson).toContain(audioBlobUrl);
+    expect(revokedAfterSwitchToJson).toContain(section1BlobUrl);
 
     const evidencePreviewCard = detailRegion.getByRole('region', {
       name: 'Prévia do artefato pilot-evidence.json',

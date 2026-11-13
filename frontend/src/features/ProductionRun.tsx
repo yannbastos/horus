@@ -287,6 +287,8 @@ export default function ProductionRun({
     const prod = activeProduction;
     const artifact = pilotEvidenceArtifact;
     if (!conn || !prod || !artifact) {
+      setPilotEvidenceData(null);
+      setPilotEvidenceError('');
       return;
     }
 
@@ -302,6 +304,11 @@ export default function ProductionRun({
           return;
         }
         const parsed = parsePilotEvidencePayload(rawText);
+        if (parsed === null) {
+          setPilotEvidenceData(null);
+          setPilotEvidenceError('Manifesto pilot-evidence.json inválido ou malformado.');
+          return;
+        }
         setPilotEvidenceData(parsed);
         setPilotEvidenceError('');
       })
@@ -423,6 +430,7 @@ export default function ProductionRun({
       if (mountedScriptIdRef.current !== targetScriptId) return;
       setProductions(items);
       setTrackingError('');
+      setPilotEvidenceReloadCount(c => c + 1);
       setSelectedId(prev => {
         if (prev && items.some(i => i.id === prev)) {
           return prev;
@@ -462,6 +470,7 @@ export default function ProductionRun({
       }
       upsertProductionRecord(fresh, true);
       setTrackingError('');
+      setPilotEvidenceReloadCount(c => c + 1);
     } catch (reason) {
       if (
         controller.signal.aborted ||
@@ -675,7 +684,8 @@ export default function ProductionRun({
 
   const videoArtifact = activeProduction?.artifacts.find(a => a.kind === 'video') ?? null;
   const subtitlesArtifact = activeProduction?.artifacts.find(a => a.kind === 'subtitles') ?? null;
-  const audioArtifact = activeProduction?.artifacts.find(a => a.kind === 'audio') ?? null;
+  const primaryAudioArtifact =
+    provenance?.narrationAudioArtifact ?? provenance?.fixtureAudioArtifact ?? null;
   const planArtifact = activeProduction?.artifacts.find(a => a.kind === 'plan') ?? null;
   const validationArtifact =
     activeProduction?.artifacts.find(
@@ -1218,18 +1228,38 @@ export default function ProductionRun({
                       Legendas / transcrição SRT
                     </button>
                   )}
-                  {audioArtifact && (
+                  {primaryAudioArtifact && (
                     <button
                       className={`button ${
-                        previewTarget?.artifact.id === audioArtifact.id ? 'active' : ''
+                        previewTarget?.artifact.id === primaryAudioArtifact.id ? 'active' : ''
                       }`}
                       type="button"
                       disabled={previewLoading}
-                      onClick={() => void handlePreviewArtifact(audioArtifact)}
+                      onClick={() => void handlePreviewArtifact(primaryAudioArtifact)}
                     >
                       Áudio / narração WAV
                     </button>
                   )}
+                  {!primaryAudioArtifact &&
+                    provenance.narrationAudioStatus === 'loading_evidence' && (
+                      <span className={`tag ${pilotEvidenceError ? 'bad' : 'warn'}`}>
+                        {pilotEvidenceError
+                          ? 'Narração completa não verificada (falha ao ler pilot-evidence.json · use a tabela para faixas individuais)'
+                          : 'Verificando narração completa em pilot-evidence.json…'}
+                      </span>
+                    )}
+                  {!primaryAudioArtifact &&
+                    provenance.narrationAudioStatus === 'hash_mismatch_or_missing' && (
+                      <span className="tag bad">
+                        Narração completa não verificada (narration.sha256 ausente ou sem correspondência nos artefatos · use a tabela para faixas individuais)
+                      </span>
+                    )}
+                  {!primaryAudioArtifact &&
+                    provenance.narrationAudioStatus === 'evidence_missing_or_unverified' && (
+                      <span className="tag warn">
+                        Narração completa não verificada (pilot-evidence.json ausente · use a tabela para faixas individuais)
+                      </span>
+                    )}
                   {planArtifact && (
                     <button
                       className={`button ${
@@ -1399,9 +1429,11 @@ export default function ProductionRun({
                       aria-label={`Player de áudio ${previewTarget.artifact.relative_path}`}
                     />
                     <small className="muted">
-                      {provenance.narrationKind === 'synthetic_local_tts'
-                        ? 'Áudio de TTS local sintético — não é voz humana nem clone de voz.'
-                        : 'Áudio local de fixture (tom/silêncio para render técnico) — sem narração de voz real.'}
+                      {provenance.narrationAudioArtifact?.id === previewTarget.artifact.id
+                        ? 'Áudio de TTS local sintético — não é voz humana nem clone de voz · Narração completa confirmada por SHA-256 em pilot-evidence.json.'
+                        : provenance.fixtureAudioArtifact?.id === previewTarget.artifact.id
+                        ? 'Áudio local de fixture (tom/silêncio para render técnico) — sem narração de voz real.'
+                        : 'Faixa de áudio individual ou auxiliar — completude de narração não inferida fora do narration.sha256 de pilot-evidence.json (não é voz humana nem clone de voz).'}
                     </small>
                   </div>
                 )}
