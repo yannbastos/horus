@@ -6,7 +6,7 @@ import uuid
 from contextlib import closing
 from pathlib import Path
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 MIGRATIONS = {
     1: (
         """CREATE TABLE jobs (
@@ -104,6 +104,19 @@ MIGRATIONS = {
         """CREATE TABLE script_receipts (
             scope TEXT NOT NULL, idempotency_key TEXT NOT NULL, request TEXT NOT NULL,
             response TEXT NOT NULL, PRIMARY KEY(scope, idempotency_key))""",
+    ),
+    6: (
+        """CREATE TABLE productions (
+            id TEXT PRIMARY KEY, script_id TEXT NOT NULL REFERENCES scripts(id),
+            script_version INTEGER NOT NULL, script_content_hash TEXT NOT NULL,
+            script_review TEXT NOT NULL, job_id TEXT NOT NULL UNIQUE REFERENCES jobs(id),
+            mode TEXT NOT NULL CHECK(mode IN ('simulated','local_demo')),
+            plan TEXT NOT NULL, artifacts TEXT NOT NULL DEFAULT '[]', review TEXT,
+            created_at TEXT NOT NULL)""",
+        """CREATE TABLE production_receipts (
+            scope TEXT NOT NULL, idempotency_key TEXT NOT NULL, request TEXT NOT NULL,
+            production_id TEXT NOT NULL REFERENCES productions(id),
+            PRIMARY KEY(scope,idempotency_key))""",
     ),
 }
 

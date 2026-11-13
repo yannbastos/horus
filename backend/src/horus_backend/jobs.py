@@ -19,6 +19,7 @@ from .storage import Store
 from .transcriber import FILE_MARKER, LANGUAGES, MODELS, is_youtube_url
 from .worker_lock import WorkerLock
 from .workflows import WorkflowService
+from .production import ProductionService
 
 TERMINAL = {"succeeded", "failed", "cancelled", "interrupted", "blocked"}
 RETENTION_INTERVAL_SECONDS = 6 * 3600
@@ -85,6 +86,7 @@ class JobManager:
         self.active_process: OwnedProcess | None = None
         self.worker_lock = WorkerLock(store.path)
         self.workflows = WorkflowService(store, self.queue, self.notify, settings)
+        self.productions = ProductionService(self)
 
     async def start(self):
         if self.worker is not None:
@@ -166,6 +168,8 @@ class JobManager:
         job = self.store.get_job(job_id)
         if not job:
             raise KeyError(job_id)
+        if job["payload"].get("operation") == "production.run":
+            raise ValueError("Produção com efeitos possíveis exige conciliação; crie nova produção explicitamente.")
         if job.get("workflow_id"):
             raise ValueError("Retome o workflow pela operação editorial, não uma etapa isolada.")
         if job["payload"].get("operation") == "transcription.run":
@@ -254,7 +258,9 @@ class JobManager:
             try:
                 job = self.store.get_job(job_id)
                 if job and job["status"] == "queued":
-                    if job.get("workflow_id"):
+                    if job["payload"].get("operation") == "production.run":
+                        await self.productions.run(job)
+                    elif job.get("workflow_id"):
                         self.active_id = job_id
                         try:
                             await self.workflows.run_step(job)
