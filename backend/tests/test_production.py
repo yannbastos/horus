@@ -195,7 +195,8 @@ def test_artifact_links_are_rejected(tmp_path):
     with pytest.raises(WorkflowConflict): confined(root,'link.json')
 
 
-def test_review_hash_and_idempotency_on_registered_real_fixture(settings, tmp_path):
+@pytest.mark.parametrize('notes', [[], [{'at_seconds':0.125,'text':'Rever a legenda deste instante.'}]])
+def test_review_hash_and_idempotency_on_registered_real_fixture(settings, tmp_path, notes):
     # Fixture MP4 H264 real de dois frames, criada localmente pelo codec da fábrica se preparado.
     import os
     video=Path(os.environ.get('HORUS_TEST_REAL_VIDEO', 'missing-video'))
@@ -213,16 +214,46 @@ def test_review_hash_and_idempotency_on_registered_real_fixture(settings, tmp_pa
             db.execute('UPDATE productions SET artifacts=? WHERE id=?',(json.dumps([a]),item['id']))
         client.app.state.store.update(item['job_id'],'succeeded',result={'stage':'review'})
         route=f"/v1/productions/{item['id']}/review"
-        request={'decision':'reject','artifact_sha256':a['sha256']}
+        request={'decision':'reject','artifact_sha256':a['sha256'],'notes':notes}
         headers={'Idempotency-Key':'human-request-fixture'}
         assert client.post(route,json=request|{'artifact_sha256':'0'*64},headers=headers).status_code==409
         response=client.post(route,json=request,headers=headers)
         assert response.status_code==200 and response.json()['review']['decision']=='reject'
+        assert response.json()['review']['notes']==notes
         assert client.post(route,json=request,headers=headers).json()==response.json()
+        if not notes:
+            # Recibos anteriores ao campo opcional não incluíam notes no corpo canônico.
+            with client.app.state.store.connect() as db:
+                receipt=db.execute('SELECT request FROM production_receipts WHERE scope=?',
+                                   ('review:'+item['id'],)).fetchone()
+            assert 'notes' not in json.loads(receipt['request'])
+            without_notes={k:v for k,v in request.items() if k!='notes'}
+            assert client.post(route,json=without_notes,headers=headers).json()==response.json()
         assert client.post(route,json=request|{'decision':'approve'},headers=headers).status_code==409
+        assert client.post(route,json=request|{'notes':[{'at_seconds':1.0,'text':'Outra nota'}]},headers=headers).status_code==409
         assert client.post(route,json=request,headers={'Idempotency-Key':'new'}).status_code==409
         (root/'video.mp4').write_bytes(b'corrupted')
         assert client.get(f"/v1/productions/{item['id']}/artifacts/{a['id']}").status_code==409
+
+
+@pytest.mark.parametrize('notes', [
+    [{'at_seconds':-1,'text':'Texto'}], [{'at_seconds':float('inf'),'text':'Texto'}],
+    [{'at_seconds':True,'text':'Texto'}], [{'at_seconds':'1.2','text':'Texto'}],
+    [{'at_seconds':0,'text':''}], [{'at_seconds':0,'text':'x'*2001}],
+    [{'at_seconds':0,'text':'Texto','extra':1}], [{'at_seconds':0,'text':'Texto'}]*201,
+])
+def test_review_notes_reject_invalid_values(notes):
+    from pydantic import ValidationError
+    from horus_backend.production import ProductionReviewRequest
+    with pytest.raises(ValidationError):
+        ProductionReviewRequest(decision='reject',artifact_sha256='a'*64,notes=notes)
+
+
+def test_review_notes_accept_limits_and_optional_default():
+    from horus_backend.production import ProductionReviewRequest
+    assert ProductionReviewRequest(decision='approve',artifact_sha256='a'*64).notes==[]
+    notes=[{'at_seconds':0,'text':'x'*2000}]*200
+    assert len(ProductionReviewRequest(decision='reject',artifact_sha256='a'*64,notes=notes).notes)==200
 
 
 def test_network_audit_counts_end_events_without_inventing_destinations(tmp_path):

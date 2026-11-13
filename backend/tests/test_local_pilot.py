@@ -262,10 +262,21 @@ def test_real_local_pilot_render_review_and_restart(settings):
         review_route = '/v1/productions/'+item['id']+'/review'
         assert client.post(review_route,json={'decision':'approve','artifact_sha256':'0'*64},headers={'Idempotency-Key':'bad-review'}).status_code==409
         # Decisão fictícia do teste sobre mídia fictícia; não é aceite/licença do operador.
-        response = client.post(review_route,json={'decision':'reject','artifact_sha256':video['sha256']},headers={'Idempotency-Key':'test-review'})
+        review_body = {'decision':'reject','artifact_sha256':video['sha256'],
+                       'notes':[{'at_seconds':2.125,'text':'Conferir legenda e fala neste instante.'}]}
+        response = client.post(review_route,json=review_body,headers={'Idempotency-Key':'test-review'})
         assert response.status_code==200,response.text
         item = response.json()
+        assert item['review']['notes']==review_body['notes']
+        assert client.post(review_route,json=review_body,headers={'Idempotency-Key':'test-review'}).json()==item
+        changed = review_body | {'notes':[{'at_seconds':2.125,'text':'Nota alterada'}]}
+        assert client.post(review_route,json=changed,headers={'Idempotency-Key':'test-review'}).status_code==409
         print('REAL_PILOT_MP4='+str(root/video['relative_path']))
         print('REAL_PILOT_EVIDENCE='+str(root/'pilot-evidence.json'))
+        print('REAL_PILOT_SHA256='+video['sha256'])
+        print('REAL_PILOT_DURATION='+str(evidence['video']['duration_seconds']))
+        print('REAL_PILOT_SCRIPT_WORDS='+str(sum(len(line['narracao'].split()) for line in
+              json.loads((root/'plan.json').read_text(encoding='utf-8'))['roteiro']['linhas'])))
+        print('REAL_PILOT_SUBTITLE_WORD_DEVIATION=not_measured; measured_sections only')
     with client_for(settings) as client:
         assert client.get('/v1/productions/'+item['id']).json()==item

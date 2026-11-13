@@ -28,10 +28,17 @@ class ProductionRequest(BaseModel):
     mode: Literal["simulated", "local_demo", "local_pilot"]
 
 
+class ProductionReviewNote(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    at_seconds: float = Field(ge=0, allow_inf_nan=False, strict=True)
+    text: str = Field(min_length=1, max_length=2000, strict=True)
+
+
 class ProductionReviewRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     decision: Literal["approve", "reject"]
     artifact_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    notes: list[ProductionReviewNote] = Field(default_factory=list, max_length=200)
 
 
 def confined(root: Path, relative: str) -> Path:
@@ -168,7 +175,10 @@ class ProductionService:
         return confined(self.root(production_id), artifact["relative_path"])
 
     def review(self, production_id, request, key):
-        encoded, scope = encode(request.model_dump()), f"review:{production_id}"
+        body = request.model_dump()
+        if not request.notes:
+            body.pop("notes")  # Preserva recibos anteriores ao campo opcional.
+        encoded, scope = encode(body), f"review:{production_id}"
         with self.store.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             row = self.require(db, production_id)
