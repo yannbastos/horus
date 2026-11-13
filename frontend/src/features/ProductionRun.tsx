@@ -37,6 +37,7 @@ import {
 } from '../services/production';
 import AssetProvenancePanel from './production/AssetProvenancePanel';
 import ProductionLaunchOptions from './production/ProductionLaunchOptions';
+import ProductionGlossary, { termTitle } from './production/ProductionGlossary';
 import ProductionProgress, { describeJobEvent } from './production/ProductionProgress';
 import QualityReportPanel from './production/QualityReportPanel';
 import TimecodeReviewWorkspace from './production/TimecodeReviewWorkspace';
@@ -1269,7 +1270,9 @@ export default function ProductionRun({
               <span style={{ overflowWrap: 'anywhere' }}>{activeProduction.job_id}</span>
             </div>
             <div className="info-block">
-              <span className="eyebrow">HASH DO ROTEIRO (M3)</span>
+              <span className="eyebrow" title={termTitle('sha256')}>
+                HASH DO ROTEIRO (M3)
+              </span>
               <span style={{ overflowWrap: 'anywhere' }}>{activeProduction.script_content_hash}</span>
             </div>
             <div className="info-block">
@@ -1296,22 +1299,31 @@ export default function ProductionRun({
           >
             <div className="row spread">
               <span className="eyebrow warn">AVISOS DE PROVENIÊNCIA E ESCOPO TÉCNICO</span>
-              <span className="tag demo">NÃO PUBLICÁVEL (publishable: false)</span>
+              <span className="tag demo" title={termTitle('publishable')}>
+                NÃO PUBLICÁVEL (publishable: false)
+              </span>
             </div>
+            <ProductionGlossary />
             <div className="info-grid" style={{ marginTop: '4px' }}>
               <div className="info-block">
-                <span className="eyebrow">ESCOPO (demo_only)</span>
+                <span className="eyebrow" title={termTitle('demo_only')}>
+                  ESCOPO (demo_only)
+                </span>
                 <small>{describeDemoOnlyFlag(provenance.demoOnly)}</small>
               </div>
               <div className="info-block">
-                <span className="eyebrow">NARRAÇÃO (real_voice)</span>
+                <span className="eyebrow" title={termTitle('real_voice')}>
+                  NARRAÇÃO (real_voice)
+                </span>
                 <small>{provenance.narrationLabel}</small>
                 {provenance.narrationDisclosure && (
                   <small className="muted">{provenance.narrationDisclosure}</small>
                 )}
               </div>
               <div className="info-block">
-                <span className="eyebrow">LEGENDAS (speech_aligned)</span>
+                <span className="eyebrow" title={termTitle('speech_aligned')}>
+                  LEGENDAS (speech_aligned)
+                </span>
                 <small>{provenance.subtitleLabel}</small>
                 {provenance.subtitleDisclosure && (
                   <small className="muted">{provenance.subtitleDisclosure}</small>
