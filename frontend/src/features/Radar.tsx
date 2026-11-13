@@ -31,7 +31,13 @@ function formatDuration(seconds: number | null | undefined): string {
   return `${mins}m ${secs < 10 ? '0' : ''}${secs}s`;
 }
 
-export default function Radar({ connection }: { connection: Connection | null }) {
+export default function Radar({
+  connection,
+  onOpenProduction,
+}: {
+  connection: Connection | null;
+  onOpenProduction?: () => void;
+}) {
   const [datasets, setDatasets] = useState<RadarDatasetSummary[]>([]);
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<string | null>(null);
   const [selectedRevision, setSelectedRevision] = useState<number>(1);
@@ -443,6 +449,13 @@ export default function Radar({ connection }: { connection: Connection | null })
                       O pedido foi enfileirado no pipeline editorial. Acompanhe a execução e autorização na página{' '}
                       <strong>Produção</strong>.
                     </p>
+                    {onOpenProduction && (
+                      <div className="actions">
+                        <button className="button primary" type="button" onClick={onOpenProduction}>
+                          Ir para Produção
+                        </button>
+                      </div>
+                    )}
                     {workflowCreated.radar && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         <p className="eyebrow">ITENS PROCESSADOS PELO RADAR</p>

@@ -361,6 +361,13 @@ test.describe('M1 — Radar, Análise Editorial e Aprovação Humana', () => {
     expect(radarWorkflowCreated).toBe(true);
     await expect(page.getByText(/4 incluídos/i)).toBeVisible();
     await expect(page.getByText(/1 excluídos/i)).toBeVisible();
+
+    // 8. HOR-087 J-03: atalho para a Produção sem usar o menu lateral
+    await page.getByRole('button', { name: 'Ir para Produção', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Produção', exact: true })).toHaveAttribute(
+      'aria-current',
+      'page'
+    );
   });
 
   test('Radar: exibe estado de carregamento com resposta atrasada e só exibe estado vazio após resposta vazia', async ({
