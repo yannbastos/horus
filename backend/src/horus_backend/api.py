@@ -28,6 +28,7 @@ from .jobs import RETENTION_INTERVAL_SECONDS, JobManager, JobRequest, TERMINAL
 from .radar_youtube.state import RadarState
 from .radar_workflow import RadarWorkflowRequest, adapt, demo, eligibility, summary
 from .security import SecurityGate, require_secure, security_status
+from .production import ProductionRequest, ProductionReviewRequest
 from .scripts import ScriptRequest, ScriptReviewRequest, ScriptService
 from .storage import Store
 from .workflows import AuthorizationRequest, ReviewRequest, RevisionRequest, WorkflowConflict, WorkflowRequest
@@ -76,7 +77,7 @@ def create_app(settings: Settings, shutdown=None, ready=None):
     @app.exception_handler(RequestValidationError)
     async def invalid_payload(request: Request, error: RequestValidationError):
         # Pydantic inclui input_value: roteiro/feedback privados não devem voltar no erro.
-        if request.url.path.startswith("/v1/scripts/") or request.url.path.endswith("/scripts"):
+        if request.url.path.startswith(("/v1/scripts/", "/v1/productions/")) or request.url.path.endswith("/scripts"):
             return JSONResponse({"detail": "Pedido de roteiro inválido."}, status_code=422)
         return await request_validation_exception_handler(request, error)
 
@@ -160,6 +161,37 @@ def create_app(settings: Settings, shutdown=None, ready=None):
     def review_script(script_id: str, request: ScriptReviewRequest,
                       idempotency_key: str = Header(min_length=1, max_length=128)):
         return script_call(lambda: scripts.review(script_id, request, idempotency_key))
+
+    @app.post("/v1/scripts/{script_id}/productions")
+    async def start_production(script_id: str, request: ProductionRequest,
+                               idempotency_key: str = Header(min_length=1, max_length=128)):
+        try:
+            record, created = await manager.productions.create(script_id, request, idempotency_key)
+            return JSONResponse(record, status_code=201 if created else 200)
+        except KeyError:
+            raise HTTPException(404, "Roteiro não encontrado.") from None
+        except WorkflowConflict as error:
+            raise HTTPException(409, str(error)) from None
+        except ValueError:
+            raise HTTPException(409, "Roteiro aprovado com estrutura inválida.") from None
+
+    @app.get("/v1/scripts/{script_id}/productions")
+    def list_productions(script_id: str):
+        return script_call(lambda: manager.productions.list(script_id))
+
+    @app.get("/v1/productions/{production_id}")
+    def inspect_production(production_id: str):
+        return script_call(lambda: manager.productions.get(production_id))
+
+    @app.get("/v1/productions/{production_id}/artifacts/{artifact_id}")
+    def production_artifact(production_id: str, artifact_id: str):
+        path = script_call(lambda: manager.productions.artifact(production_id, artifact_id))
+        return FileResponse(path, filename=path.name)
+
+    @app.post("/v1/productions/{production_id}/review")
+    def review_production(production_id: str, request: ProductionReviewRequest,
+                          idempotency_key: str = Header(min_length=1, max_length=128)):
+        return script_call(lambda: manager.productions.review(production_id, request, idempotency_key))
 
     @app.get("/v1/workflows")
     async def list_workflows():
