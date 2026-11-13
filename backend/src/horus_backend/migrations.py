@@ -6,7 +6,7 @@ import uuid
 from contextlib import closing
 from pathlib import Path
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 MIGRATIONS = {
     1: (
         """CREATE TABLE jobs (
@@ -138,6 +138,24 @@ MIGRATIONS = {
         "DROP TABLE productions",
         "ALTER TABLE productions_v7 RENAME TO productions",
         "ALTER TABLE production_receipts_v7 RENAME TO production_receipts",
+    ),
+    # Revisão humana de licença (HOR-097): somente acréscimos, append-only; não toca tabelas existentes.
+    8: (
+        """CREATE TABLE license_reviews (
+            seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE,
+            production_id TEXT NOT NULL REFERENCES productions(id),
+            asset_id TEXT NOT NULL, asset_sha256 TEXT NOT NULL,
+            decision TEXT NOT NULL CHECK(decision IN ('verified','rejected')),
+            license TEXT NOT NULL, evidence TEXT NOT NULL CHECK(length(evidence) BETWEEN 1 AND 2000),
+            reviewed_by TEXT NOT NULL CHECK(reviewed_by = 'human'), reviewed_at TEXT NOT NULL,
+            supersedes TEXT REFERENCES license_reviews(id),
+            idempotency_key TEXT NOT NULL, request TEXT NOT NULL,
+            UNIQUE(production_id, idempotency_key))""",
+        "CREATE INDEX license_reviews_asset ON license_reviews(production_id, asset_id, seq)",
+        """CREATE TRIGGER license_reviews_no_update BEFORE UPDATE ON license_reviews
+            BEGIN SELECT RAISE(ABORT, 'license_reviews é append-only'); END""",
+        """CREATE TRIGGER license_reviews_no_delete BEFORE DELETE ON license_reviews
+            BEGIN SELECT RAISE(ABORT, 'license_reviews é append-only'); END""",
     ),
 }
 

@@ -11,6 +11,7 @@ funções devolvem sempre `publishable=false`. Tempos em segundos relativos ao i
 """
 from __future__ import annotations
 
+import copy
 import math
 import re
 from datetime import datetime
@@ -380,6 +381,34 @@ def commercial_use_permitted(asset: ProvenanceAsset) -> bool:
     """Somente `allowed` verificado por humano permite uso comercial; `unknown`/`restricted`/não verificado nunca."""
     lic = asset.license
     return asset.status == "verified" and lic.commercial_use == "allowed" and lic.verified_by == "human"
+
+
+def apply_license_reviews(provenance: Mapping, reviews: Sequence[Mapping]) -> dict:
+    """Visão efetiva do `asset-provenance.json` com as decisões humanas de licença (HOR-097). Função pura.
+
+    `reviews` vem da mais antiga para a mais nova; vale a última por `asset_id` cujo `asset_sha256` coincide com o do
+    asset (decisão com hash diferente é ignorada). O original não é alterado e o resultado é revalidado;
+    `ValueError` se o documento original ou o efetivo for inválido.
+    """
+    first = validate_asset_provenance(provenance)
+    if not first["ok"]:
+        raise ValueError("asset-provenance inválido.")
+    effective = copy.deepcopy(first["value"])
+    for asset in effective["assets"]:
+        review = next((r for r in reversed(reviews) if r["asset_id"] == asset["asset_id"]
+                       and r["asset_sha256"] == asset["sha256"]), None)
+        if review is None:
+            continue
+        human = review["decision"] == "verified"
+        asset["status"] = review["decision"]
+        asset["license"] = {**asset["license"], **{k: review["license"][k] for k in
+                            ("id", "name", "url", "commercial_use", "attribution_required")},
+                            "verified_by": "human" if human else None,
+                            "verified_at": review["reviewed_at"] if human else None}
+    second = validate_asset_provenance(effective)
+    if not second["ok"]:
+        raise ValueError("asset-provenance efetivo inválido.")
+    return second["value"]
 
 
 # ============================================================================================

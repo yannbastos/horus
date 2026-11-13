@@ -24,6 +24,7 @@ from .config import Settings
 from .diagnostics import diagnose
 from .dependencies import transcription_capabilities
 from .hermes import HermesConnector
+from .license_reviews import LicenseReviewRequest, LicenseReviewService
 from .jobs import RETENTION_INTERVAL_SECONDS, JobManager, JobRequest, TERMINAL
 from .radar_youtube.state import RadarState
 from .radar_workflow import RadarWorkflowRequest, adapt, demo, eligibility, summary
@@ -57,6 +58,7 @@ def create_app(settings: Settings, shutdown=None, ready=None):
     manager = JobManager(store, settings)
     hermes = HermesConnector(settings)
     scripts = ScriptService(store)
+    license_reviews = LicenseReviewService(store, settings.data_dir)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -192,6 +194,16 @@ def create_app(settings: Settings, shutdown=None, ready=None):
     def review_production(production_id: str, request: ProductionReviewRequest,
                           idempotency_key: str = Header(min_length=1, max_length=128)):
         return script_call(lambda: manager.productions.review(production_id, request, idempotency_key))
+
+    @app.get("/v1/productions/{production_id}/license-reviews")
+    def list_license_reviews(production_id: str):
+        return script_call(lambda: license_reviews.list(production_id))
+
+    @app.post("/v1/productions/{production_id}/license-reviews")
+    def create_license_review(production_id: str, request: LicenseReviewRequest,
+                              idempotency_key: str = Header(min_length=1, max_length=128)):
+        record, created = script_call(lambda: license_reviews.create(production_id, request, idempotency_key))
+        return JSONResponse(record, status_code=201 if created else 200)
 
     @app.get("/v1/workflows")
     async def list_workflows():
