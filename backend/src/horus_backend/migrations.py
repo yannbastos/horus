@@ -6,7 +6,7 @@ import uuid
 from contextlib import closing
 from pathlib import Path
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 MIGRATIONS = {
     1: (
         """CREATE TABLE jobs (
@@ -117,6 +117,27 @@ MIGRATIONS = {
             scope TEXT NOT NULL, idempotency_key TEXT NOT NULL, request TEXT NOT NULL,
             production_id TEXT NOT NULL REFERENCES productions(id),
             PRIMARY KEY(scope,idempotency_key))""",
+    ),
+    # SQLite não altera CHECK em coluna existente. Reconstruir pai e recibos na
+    # mesma transação mantém FK ativa, IDs, unicidade e todos os valores anteriores.
+    7: (
+        """CREATE TABLE productions_v7 (
+            id TEXT PRIMARY KEY, script_id TEXT NOT NULL REFERENCES scripts(id),
+            script_version INTEGER NOT NULL, script_content_hash TEXT NOT NULL,
+            script_review TEXT NOT NULL, job_id TEXT NOT NULL UNIQUE REFERENCES jobs(id),
+            mode TEXT NOT NULL CHECK(mode IN ('simulated','local_demo','local_pilot')),
+            plan TEXT NOT NULL, artifacts TEXT NOT NULL DEFAULT '[]', review TEXT,
+            created_at TEXT NOT NULL)""",
+        "INSERT INTO productions_v7 SELECT * FROM productions",
+        """CREATE TABLE production_receipts_v7 (
+            scope TEXT NOT NULL, idempotency_key TEXT NOT NULL, request TEXT NOT NULL,
+            production_id TEXT NOT NULL REFERENCES productions_v7(id),
+            PRIMARY KEY(scope,idempotency_key))""",
+        "INSERT INTO production_receipts_v7 SELECT * FROM production_receipts",
+        "DROP TABLE production_receipts",
+        "DROP TABLE productions",
+        "ALTER TABLE productions_v7 RENAME TO productions",
+        "ALTER TABLE production_receipts_v7 RENAME TO production_receipts",
     ),
 }
 

@@ -3,7 +3,8 @@
 Sem rede, banco, disco ou fábrica: só transforma `ScriptDocument` em `ProductionPlan` determinístico. O dicionário
 `roteiro` segue o formato de `fabrica.modelos.Roteiro` (validado contra o modelo real nos testes, quando a fábrica
 está presente) sem copiar o schema da fábrica nem o perfil editorial do canal. Tudo é demonstração/teste:
-áudio e SRT são sintéticos, não há assets externos e nada é inferido sobre licença ou publicação.
+o plano contém estimativas, não medições de fala. No modo local_pilot o worker precisa gerar TTS e medir WAV
+antes de declarar narração disponível. Não há assets externos nem inferência sobre licença ou publicação.
 """
 from __future__ import annotations
 
@@ -71,7 +72,7 @@ class PlanScene(_Plan):
 
 
 class PlanAudio(_Plan):
-    kind: Literal["fixture_tone"] = "fixture_tone"
+    kind: Literal["fixture_tone", "local_tts"] = "fixture_tone"
     real_voice: ExactFalse = False
     disclosure: str = "Áudio de fixture local (tom): sem narração de voz real."
 
@@ -90,7 +91,7 @@ class PlanLicense(_Plan):
 
 class ProductionPlan(_Plan):
     schema_version: ExactOne = 1
-    mode: Literal["simulated", "local_demo"] = "simulated"
+    mode: Literal["simulated", "local_demo", "local_pilot"] = "simulated"
     demo_only: ExactTrue = True
     script_id: HexId
     script_version: int = Field(ge=1, le=1_000_000)
@@ -106,6 +107,8 @@ class ProductionPlan(_Plan):
 
     @model_validator(mode="after")
     def coherent(self):
+        if (self.audio.kind == "local_tts") != (self.mode == "local_pilot"):
+            raise ValueError("tipo de áudio planejado incompatível com modo.")
         lines, scenes = self.roteiro.linhas, self.scenes
         if self.title != self.roteiro.titulo or len(lines) != len(scenes):
             raise ValueError("roteiro e cenas incoerentes.")
@@ -134,7 +137,7 @@ def line_seconds(narration: str) -> float:
 
 
 def build_production_plan(script: ScriptDocument, *, script_id: str, script_version: int,
-                          script_content_hash: str, mode: Literal["simulated", "local_demo"] = "simulated") -> ProductionPlan:
+                          script_content_hash: str, mode: Literal["simulated", "local_demo", "local_pilot"] = "simulated") -> ProductionPlan:
     """Plano determinístico: mesma entrada, mesmo plano. `script_id`/versão/hash vêm do servidor.
 
     Levanta `ValidationError`/`ValueError` para roteiro inválido ou metadados fora do formato (sem coerção).
@@ -154,6 +157,7 @@ def build_production_plan(script: ScriptDocument, *, script_id: str, script_vers
     return ProductionPlan(
         mode=mode, script_id=script_id, script_version=script_version, script_content_hash=script_content_hash,
         title=document.title, roteiro=PlanRoteiro(titulo=document.title, linhas=lines), scenes=scenes,
+        audio=PlanAudio(kind="local_tts", disclosure="TTS local solicitado; voz e duração só confirmadas após WAV medido; licença não verificada.") if mode == "local_pilot" else PlanAudio(),
         total_duration=cursor, sources=list(dict.fromkeys(ref for scene in scenes for ref in scene.source_ids)))
 
 
