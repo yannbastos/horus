@@ -127,7 +127,7 @@ export default function ProductionLaunchOptions({
         </p>
       )}
       {state === 'error' && (
-        <p className="error" role="alert">
+        <p className="error" role="status">
           Não foi possível carregar as vozes ({error}). A produção usará a voz padrão do backend.
         </p>
       )}

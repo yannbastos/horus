@@ -1360,7 +1360,7 @@ test.describe('M4 — Interface de Produção Técnica Local e Revisão Final (H
       }
       if (pathUrl === `/v1/scripts/${SCRIPT_V2_ID}/productions` && request.method() === 'POST') {
         const body = request.postDataJSON();
-        expect(body).toEqual({ expected_version: 2, mode: 'local_pilot' });
+        expect(body).toEqual({ expected_version: 2, mode: 'local_pilot', render_quality: 'draft' });
 
         if (postStage === 'old_backend_422') {
           await route.fulfill({
