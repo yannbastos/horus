@@ -1,6 +1,6 @@
 # Avaliação comparativa de vozes pt-BR — HOR-132
 
-Pesquisa **somente documental**, acessos em **13/11/2026**. Nada foi baixado, instalado, executado, ouvido nem enviado a serviço externo; nenhuma conta ou API paga foi usada; nenhum texto do projeto saiu do computador. Isto não é parecer jurídico nem concede licença; `publishable=false` e `demo_only=true` permanecem.
+Pesquisa **documental** nas seções 1–5, acessos em **13/11/2026**. Nessas seções, nada foi baixado, instalado, executado, ouvido nem enviado a serviço externo; a **seção 6** registra a prova local, isolada e medida do Kokoro, feita depois e única parte com execução; nenhuma conta ou API paga foi usada; nenhum texto do projeto saiu do computador. Isto não é parecer jurídico nem concede licença; `publishable=false` e `demo_only=true` permanecem.
 
 Convenção: **[F]** fato lido na fonte citada; **[I]** inferência; **[N]** não verificado. As páginas foram lidas por uma ferramenta de leitura que devolve resumo automático, não o texto cru: antes de qualquer decisão contratual ou de compra, reler a fonte original (termos, preços e licenças mudam). Nenhum número aqui é medição do Hórus.
 
@@ -160,13 +160,101 @@ Critérios (nota 1–5 por trecho): naturalidade, pronúncia (erros anotados por
 - Não verificados: qualidade pt-BR de `eleven_v4`; atribuição no plano free; direitos comerciais de todos os tiers; licença dos pesos Chatterbox V3/pt-BR e dos datasets BRSpeech/portuguese-tts; VRAM/RTF em RTX 3050 6 GB e na CPU do usuário para F5/Kokoro/Chatterbox; StyleTTS2.
 - Páginas retornaram erro e não foram lidas: help.elevenlabs.io (403), `ResembleAI/chatterbox-multilingual` (401), `coqui.ai/cpml` (404).
 
+## 6. Prova do Kokoro-82M (medições locais de 13/11/2026)
+
+Prova isolada e autorizada. O Kokoro **não** foi integrado ao Hórus, ao worker, à fábrica ou ao instalador; a Microsoft Maria segue a voz vigente. `publishable=false` e `demo_only=true` permanecem. **Ninguém ouviu os áudios**: não há veredito de naturalidade e nenhuma voz foi aprovada; as seções 2–4 continuam sendo hipótese. Os fatos abaixo são medidos, salvo marca **[N]**. Scripts, JSON e manifesto ficam fora do Git, em `relatorios/PILOTO-LOCAL-2026-11-13/escuta-vozes/evidencias-reservadas/` (a pasta revela a chave da escuta cega: reservada ao avaliador).
+
+### 6.1 Ambiente e artefatos
+
+- Ambiente novo: `%LOCALAPPDATA%\Horus\tools\kokoro-proof\venv` (Python 3.12.16, ~6,7 GB em disco) e `model/` (314 MiB). Nada no venv do backend, global ou no instalador; nenhum driver ou configuração global alterados.
+- Instalação: `uv pip install --require-hashes -r requirements-hashed.txt` (saída de `uv pip compile --generate-hashes`; todos os wheels transitivos com SHA-256 fixado). Principais: `kokoro==0.9.4` (wheel 32.592 B, `a129dc63…efd`), `misaki==0.9.4` (3.617.774 B, `90e2eeb1…a15f`), `espeakng-loader==0.2.4` (wheel win_amd64, 9.437.292 B, `41f1e08a…d7abd7`), `phonemizer-fork==3.3.2` (82.700 B, `97305c76…4b74`), `torch==2.8.0+cu126` (2.915.418.348 B, `f6c79eac…338e4c`, de `download.pytorch.org/whl/cu126`), `numpy==2.5.4`, `transformers==5.23.0`, `huggingface-hub==2.4.0`, `spacy==3.8.18` (exigido por `misaki[en]`, não usado em pt-BR). Lista completa com hashes: `artifact-manifest.json` e `requirements-hashed.txt`.
+- Pesos: `huggingface.co/hexgrad/Kokoro-82M`, revisão fixada `f3ff3571791e39611d31c381e3a41a3af07b4987`. SHA-256 conferido com o OID LFS publicado:
+
+| Arquivo | Bytes | SHA-256 |
+|---|---:|---|
+| `kokoro-v1_0.pth` | 327212226 | `496dba118d1a58f5f3db2efc88dbdc216e0483fc89fe6e47ee1f2c53f18ad1e4` |
+| `voices/pf_dora.pt` | 523425 | `07e4ff987c5d5a8c3995efd15cc4f0db7c4c15e881b198d8ab7f67ecf51f5eb7` |
+| `voices/pm_alex.pt` | 523425 | `cf0ba8c573c2480fc54123683a35cf1e2ae130428e441eb91f9149bdb188a526` |
+| `voices/pm_santa.pt` | 523430 | `d42103169c5c872abbafb9129133af7e942bb9d272c3cc3b95c203e7d7198c29` |
+| `config.json` | 2351 | `5abb01e2403b072bf03d04fde160443e209d7a0dad49a423be15196b9b43c17f` |
+| `README.md` (card, guardado) | 6348 | `91dcabced89db6f109b8786642f50402d3ee87450e8189589b6f85520e7f4d78` |
+| `VOICES.md` (guardado) | 7625 | `ec7e4941ad7e194af61e3455928528a9ff5360c7c505e412efab27d6a69ea106` |
+
+- Licenças (lidas no card e nos metadados; não é parecer jurídico): pesos Apache-2.0 (metadado `apache-2.0`; o repositório não tem arquivo `LICENSE`: a URL devolveu "Entry not found"); `kokoro` e `misaki` Apache-2.0. **espeak-ng é GPL-3.0** e `phonemizer-fork` é GPLv3+ (metadado do wheel). Não houve instalador separado: o pacote `espeakng-loader` já embute `espeak-ng.dll` (419.328 B, `646d387a…e258`) e a pasta `espeak-ng-data` (121 itens), por usuário e sem administrador. Esse componente GPL roda **dentro do processo Python do Kokoro** (DLL carregada em processo); a fronteira de processo é o próprio processo de síntese, separado do backend, que só trocaria arquivos WAV. **[N]** Se isso basta para isolar a GPL numa futura distribuição exige parecer jurídico; hoje nada é distribuído.
+- Card: o treino usou áudio "permissivo/não protegido", incluindo **áudio sintético gerado por TTS fechados** de grandes provedores, e dois conjuntos CC BY (Koniwa `tnc` <1 h, CC BY 3.0; SIWIS <11 h, CC BY 4.0, com exigência de atribuição). **[N]** Não verificado se isso impõe atribuição ou risco aos áudios gerados; o card não traz consentimento de personalidade para `pf_dora`, `pm_alex`, `pm_santa`. O `VOICES.md` repete o aviso de G2P fraco para não inglês e de fraqueza em frases com menos de 10–20 tokens.
+- Hardware: Intel Core i7-13620H (10 núcleos/16 lógicos; PyTorch usou 10 threads) e RTX 3050 6 GB Laptop (driver 621.24; CUDA via wheel cu126, sem instalar o toolkit nem mexer no driver).
+
+### 6.2 Síntese isolada e rede
+
+Um processo Python próprio por dispositivo (`synthesize.py cpu|cuda`, `python -I`) carregou o modelo uma vez e usou `KPipeline(lang_code='p')` com `speed=1.0` e a voz por caminho `.pt` local. Entrada: os três `roteiro.linhas[].narracao` do mesmo `plan.json` da prova do Piper, lido somente leitura (SHA-256 conferido: `7c906e894d9fadf1395f1b4ec8ed5acc1ed5f87ae955bb248e6d49d77cdbc73b`), mais 6 frases fictícias (`texts.json`): T1 números/data/valor/percentual; T2 siglas e nome de canal; T3 frase longa (37 palavras); T4 ênfase ("Não foi um erro. Foi uma decisão."); T5 informal; T6 primeira frase do roteiro. Cada voz sintetizou 9 textos por dispositivo (54 WAVs). Cada texto saiu em **um** chunk (42–247 fonemas; o limite do modelo é 510).
+
+**Rede:** `HF_HUB_OFFLINE=1`, `TRANSFORMERS_OFFLINE=1`, proxies removidos e, antes de importar, uma guarda que registra e recusa `socket.connect`, `connect_ex` e `getaddrinfo`. Resultado: **zero tentativas** nas duas execuções. **Escopo:** guarda em processo Python; não é bloqueio nem auditoria de rede do SO e não vê chamadas nativas (PyTorch/CUDA/espeak). Sem firewall, ETW ou NetLog. Todos os downloads ocorreram antes.
+
+### 6.3 Desempenho (esta execução; sem repetição estatística)
+
+RTF = segundos de `list(pipe(texto))` (G2P + inferência + `cuda.synchronize` na GPU) ÷ duração do áudio; exclui a carga do modelo (CPU 1,12 s; GPU 1,19 s) e a gravação do WAV. Houve uma síntese de aquecimento descartada por voz antes de medir (diferente da prova do Piper, sem aquecimento).
+
+| Voz | CPU, 3 seções: síntese / áudio / RTF | GPU, 3 seções: síntese / áudio / RTF | RTF por texto (CPU; GPU) |
+|---|---|---|---|
+| pf_dora | 9,362 s / 31,225 s / **0,300** | 1,146 s / 31,225 s / **0,037** | 0,295–0,412; 0,033–0,048 |
+| pm_alex | 9,642 s / 31,500 s / **0,306** | 1,061 s / 31,500 s / **0,034** | 0,296–0,442; 0,033–0,050 |
+| pm_santa | 11,221 s / 32,000 s / **0,351** | 1,113 s / 32,000 s / **0,035** | 0,337–0,444; 0,036–0,048 |
+
+(Os RTFs maiores são dos textos mais curtos, p. ex. T4 com 2,2 s.) Maria: o RTF da síntese do piloto não foi medido. Para os 6 textos de teste, `System.Speech` (mesma voz SAPI `TTS_MS_PT-BR_MARIA_11.0`, 22.050 Hz/16 bits/mono) levou 0,195 s no total para 61,2 s de áudio (RTF ≈ 0,003; `Stopwatch` em volta de `Speak`, um processo, sem repetição). Ou seja, a Maria é bem mais rápida de gerar, e o Kokoro (CPU ~0,3; GPU ~0,035) é mais rápido que tempo real nos dois casos. É comparação de geração, não de qualidade. VRAM de pico **[N]** (não medida). Piper (seção 9 de `avaliacao-piper.md`): RTF 0,03–0,10 em CPU.
+
+### 6.4 Formato, qualidade medida e comparação com a Maria
+
+Todos os WAVs do Kokoro: PCM 16 bits, mono, **24.000 Hz** (a Maria do piloto: 22.050 Hz). Duração, pico e clipping por `pilot_quality.analyze_wav`; LUFS integrado e true peak por `av_quality._loudness` (FFmpeg n7.1 do Remotion, fallback `loudnorm`). Resultados da CPU (as sínteses na GPU têm as mesmas durações em amostras, mas **hashes diferentes**: 0 de 27 idênticos; CPU e GPU não são bit a bit iguais; ver `qc_align.json`):
+
+| Voz/seção | Duração (s) | Síntese (s) | RTF | Pico PCM | Clipados | LUFS-I | dBTP | SHA-256 do WAV (CPU) |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| pf_dora/1 | 10.2250 | 3.0181 | 0.2952 | 0.689880 | 0 | -27.08 | -3.19 | `a85ba7f5d4ea3b6dd37b8b551f0d42efd14ca70654cbea117a321f1e0c26b7d6` |
+| pf_dora/2 | 10.4750 | 3.1553 | 0.3012 | 0.574799 | 0 | -26.79 | -4.73 | `dab2bb1c5a2807afe4ed36a18cb2157d89230689221ffd4dc51b5d6cdaae542e` |
+| pf_dora/3 | 10.5250 | 3.1882 | 0.3029 | 0.659210 | 0 | -26.76 | -3.62 | `908dd84ca26812164c7770d85a89313725bda842430f2fd53ceec809fbab9a86` |
+| pm_alex/1 | 10.4750 | 3.0951 | 0.2955 | 0.472565 | 0 | -26.56 | -6.25 | `fcf9412b275b29bb642b69689f5ec05cb163ca28e98fc3bef62f22b090ec7aa8` |
+| pm_alex/2 | 10.5750 | 3.3311 | 0.3150 | 0.509369 | 0 | -26.34 | -5.86 | `c26b8b10f1f5b367217c4d7005f8ebbfbced308c0eaddbf26cc7f67aa8bc0991` |
+| pm_alex/3 | 10.4500 | 3.2159 | 0.3077 | 0.487854 | 0 | -26.46 | -6.08 | `e63c782a22dcc54545765eb0d3498e4541c2b85c9f568354b49da980fa5e0308` |
+| pm_santa/1 | 10.5250 | 3.6460 | 0.3464 | 0.482422 | 0 | -26.32 | -6.33 | `227f4b4b6346e502c9bfbb543df8a95f64ef7b64630b7ed52effa2f8522b4d95` |
+| pm_santa/2 | 10.8000 | 3.8210 | 0.3538 | 0.554932 | 0 | -26.07 | -5.12 | `46a64b10c7198108c24b00df6f736f64acc0a95f05e021c520e7c0c9540e6950` |
+| pm_santa/3 | 10.6750 | 3.7537 | 0.3516 | 0.486511 | 0 | -26.12 | -6.15 | `074ffd5c495d4491a72de954f910d9a11a9a87729eb657e05c9f1299e073bf4b` |
+
+Hashes dos demais WAVs (CPU e GPU): `synthesis-cpu.json` e `synthesis-cuda.json`. Nos 54 WAVs não há amostra clipada; pico PCM máximo 0,690 (a saída flutuante do modelo nunca passou de 0,69, sem normalização). Kokoro: −25,68 a −27,08 LUFS e true peak de −8,22 a −3,19 dBTP; Maria do piloto: −23,32 a −24,40 LUFS (true peak −4,49 a −6,00). O Kokoro sai ~2–3 LU mais baixo que a Maria; é só nível, não qualidade.
+
+**Duração do mesmo roteiro (3 seções):** pf_dora 31,225 s, pm_alex 31,500 s, pm_santa 32,000 s, contra **47,913 s** da Maria (Piper: ~30–32 s). Nos 6 textos de teste a Maria soma 61,22 s e o Kokoro 39,70–40,30 s. Isso mede ritmo/andamento nas configurações padrão, **não** naturalidade nem inteligibilidade.
+
+### 6.5 Alinhamento (indício de inteligibilidade; não é MOS)
+
+`speech_alignment.run_alignment` (faster-whisper `small`, CPU int8, offline, pasta `%LOCALAPPDATA%\Horus\models\whisper`) sobre as três seções concatenadas por voz (sem pausas inseridas), com seções medidas pelas durações. Mesmo procedimento na Maria (`section-1..3.wav` da aprovação, cujos hashes permaneceram intactos).
+
+| Narração | Palavras | Casadas | Interpoladas | match_rate | Maior trecho interpolado | `speech_aligned` |
+|---|---:|---:|---:|---:|---:|---|
+| Kokoro pf_dora | 77 | 77 | 0 | 1,000 | 0 s | sim |
+| Kokoro pm_alex | 77 | 77 | 0 | 1,000 | 0 s | sim |
+| Kokoro pm_santa | 77 | 77 | 0 | 1,000 | 0 s | sim |
+| Maria | 77 | 77 | 0 | 1,000 | 0 s | sim |
+
+No roteiro do piloto o Whisper reconheceu **todas** as palavras das quatro narrações, na posição certa; esse roteiro é simples, sem números nem siglas. Nos 6 textos de teste (107 palavras): pf_dora 104 casadas/3 interpoladas (0,972), pm_alex 104/3 (0,972), pm_santa 102/5 (0,953), Maria 105/2 (0,981). As interpoladas em todas as vozes, Maria incluída, são `R$`, `1.250,50,` e `3,5%`: discordância de normalização numérica entre ASR e roteiro, **não** prova de erro de pronúncia. Só **pm_santa** acrescentou duas, `a` (T1) e `PIX` (T2): possível sinal de articulação pior, mas é um ponto isolado numa execução e o ASR é tolerante. As quatro narrações receberam `alignment_below_threshold` (o validador exige mais cobertura do que os textos com números permitem). Limites: o ASR mede reconhecibilidade, **não** pronúncia correta nem naturalidade (o Whisper pode "corrigir" uma fala torta); uma só passada; WER por palavra não calculado.
+
+### 6.6 Material de escuta cega e verificações
+
+- `relatorios/PILOTO-LOCAL-2026-11-13/escuta-vozes/`: `audios/` com **24 WAV** (6 trechos × Maria + 3 vozes Kokoro, mesmo texto), `README.md` (protocolo), `CHAVE-RESERVADA-NAO-ABRIR.json` e `evidencias-reservadas/`. Códigos aleatórios criptográficos e ordem embaralhada por trecho.
+- Todos: PCM 16 bits mono 48 kHz, sem metadados, −17 LUFS integrados (desvio medido ≤ 0,02 LU), true peak ≤ −1 dBTP (−1,43 a −2,34), zero amostras clipadas, verificados com `analyze_wav` e `_loudness`. Método: `loudnorm` de duas passagens linear (−16/−1,5) + atenuação a −17. O `loudnorm` do FFmpeg do Remotion estourou o pico nos 3 trechos T4 do Kokoro (2,2 s) e, neles, usei ganho + limitador de pico por amostra com antecipação de 5 ms (limite −1,5 dBFS; implementação própria em numpy, porque esse build não tem `alimiter`), iterado até −17 LUFS. O limitador altera levemente a dinâmica desses 3 áudios; a Maria T4 seguiu o caminho `loudnorm`. **Registrado, não escondido.**
+- **Falha da prova anterior, só mitigada:** as durações **não** são comparáveis. Em cada trecho a Maria dura 1,3–1,9× mais que o Kokoro (T1 14,2 s vs 8,7; T2 7,2 vs 5,5; T3 17,8 vs 12,4; T4 4,3 vs 2,2; T5 9,6 vs 5,3; T6 8,2 vs 5,8) e, entre as três vozes Kokoro, a diferença é ≤ 0,2 s no mesmo trecho. Preferi trechos curtos, mas não distorci o áudio (esticar/comprimir mudaria a naturalidade). O README da escuta avisa explicitamente que a duração denuncia uma das versões, sem apontar qual.
+- Regressão: `& backend/.venv/Scripts/python.exe -m pytest backend/tests/test_pilot_quality.py backend/tests/test_av_quality.py backend/tests/test_speech_alignment.py -q` → **119 passed, 2 skipped** (7,42 s). Nenhum arquivo de código do repositório foi alterado; as funções existentes foram apenas importadas pelos scripts de QC, que rodaram fora do Git.
+
+### 6.7 Conclusão técnica e pendências
+
+- **Funciona em pt-BR no Windows, offline e por usuário**, com 3 vozes, em CPU (RTF ~0,30–0,35) e na GPU de 6 GB (RTF ~0,035); pt-BR é nativo (`lang_code='p'`), sem treino. Pesos Apache-2.0; o espeak-ng embutido é GPL (ver 6.1).
+- Nada nesta prova mede naturalidade, pronúncia correta de números/siglas, ênfase ou fadiga: só a escuta decide. O ASR sugere boa reconhecibilidade em texto simples. Não há tempos por palavra nativos (exigiria o alinhador existente).
+- **Pendente:** escuta humana cega (`escuta-vozes/`), parecer jurídico sobre a GPL do espeak-ng e sobre a procedência dos dados de treino (sintético de TTS fechado, CC BY), medição de VRAM, repetição estatística do RTF, e a decisão sobre integração (incremento separado, só se a escuta aprovar).
+
 ## Fontes (acessadas em 13/11/2026)
 
 - <https://elevenlabs.io/docs/overview/models>, <https://elevenlabs.io/pricing/api>, <https://elevenlabs.io/docs/api-reference/text-to-speech/convert-with-timestamps>
 - <https://elevenlabs.io/docs/overview/capabilities/text-to-speech/best-practices>, <https://elevenlabs.io/docs/overview/capabilities/voices>, <https://elevenlabs.io/docs/developers/resources/zero-retention-mode>, <https://elevenlabs.io/terms-of-use>
 - `fabrica-canais/scripts/fabrica/elevenlabs.py` (leitura local)
 - <https://github.com/SWivid/F5-TTS>, <https://huggingface.co/SWivid/F5-TTS>, <https://huggingface.co/firstpixel/F5-TTS-pt-br>, <https://huggingface.co/acidente/fala_pb_checkpoints> (busca)
-- <https://huggingface.co/hexgrad/Kokoro-82M> e `VOICES.md`
+- <https://huggingface.co/hexgrad/Kokoro-82M> (revisão `f3ff3571…`) e `VOICES.md`; <https://pypi.org/project/kokoro/0.9.4/>; <https://download.pytorch.org/whl/cu126/>
 - <https://raw.githubusercontent.com/resemble-ai/chatterbox/master/README.md>, <https://huggingface.co/ResembleAI/chatterbox>, <https://huggingface.co/gorack/Chatterbox-TTS-Portuguese>, busca web sobre VRAM (NVIDIA model card e terceiros)
 - <https://huggingface.co/coqui/XTTS-v2> e busca web sobre CPML/encerramento da Coqui
 - <https://huggingface.co/fishaudio/openaudio-s1-mini>
