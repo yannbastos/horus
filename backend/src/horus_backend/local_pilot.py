@@ -20,7 +20,6 @@ import time
 import wave
 
 from .processes import OwnedProcess
-from .media_contracts import MAX_INTERPOLATED_RUN_SECONDS, MIN_MATCH_RATE
 from .narration.providers import PRODUCTION_ORIGINS
 
 def narration_disclosure(provider, voice):
@@ -367,6 +366,7 @@ def prepare(root, folder, plan, *, alignment_model=None, progress=None):
             raise ValueError('Contrato do alinhamento acústico inválido.')
     report = {k:v for k,v in alignment.items() if k != 'document'}
     if alignment['executed'] and not checked['speech_aligned']:
+        from .media_contracts import MAX_INTERPOLATED_RUN_SECONDS, MIN_MATCH_RATE  # importação tardia: o worker não carrega pydantic
         info = checked['value'].get('alignment') or {}
         report['reason'] = (f"taxa de casamento {info.get('match_rate')} (mínimo {MIN_MATCH_RATE}) e maior trecho interpolado "
                             f"{info.get('longest_interpolated_seconds')} s (máximo {MAX_INTERPOLATED_RUN_SECONDS} s)")
