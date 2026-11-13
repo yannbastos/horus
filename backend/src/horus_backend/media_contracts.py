@@ -26,6 +26,8 @@ TIME_EPS = 0.001            # precisão de ms dos tempos declarados
 SECTION_EPS = 0.05          # jitter aceito entre palavra e limite de seção medida
 DURATION_EPS = 0.05         # divergência aceita entre duração declarada e medida
 MAX_WORDS = 20_000
+MIN_MATCH_RATE = 0.85               # alinhamento acústico: fração mínima de palavras com tempo medido (speech_aligned)
+MAX_INTERPOLATED_RUN_SECONDS = 2.0  # maior trecho contínuo de palavras interpoladas aceito (speech_aligned)
 MAX_ERRORS = 50
 
 _CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
@@ -85,6 +87,7 @@ def _issues_to_error(issues: list[tuple[str, str, str]]) -> None:
 # ============================================================================================
 
 WordSource = Literal["tts_engine_events", "forced_alignment", "estimated"]
+WordTimingKind = Literal["measured", "interpolated"]
 
 
 class WordEngine(_Media):
@@ -100,6 +103,19 @@ class WordTiming(_Media):
     end: Seconds
     char_offset: int = Field(ge=0, le=10_000_000)
     char_length: int = Field(ge=1, le=200)
+    # Só em forced_alignment: measured = tempo medido pelo ASR; interpolated = palavra sem correspondência, entre
+    # âncoras medidas (nunca é medição). None = documento legado, governado por `source`.
+    timing: WordTimingKind | None = None
+
+
+class AlignmentSummary(_Media):
+    """Resumo do alinhamento acústico; o validador recomputa tudo a partir das palavras."""
+    method: Literal["asr_sequence_match"]
+    asr_engine: str = Field(min_length=1, max_length=200)
+    matched_words: int = Field(ge=0, lt=MAX_WORDS)
+    interpolated_words: int = Field(ge=0, lt=MAX_WORDS)
+    match_rate: float = Field(ge=0, le=1, allow_inf_nan=False)
+    longest_interpolated_seconds: Seconds
 
 
 class WordTimings(_Media):
@@ -109,10 +125,12 @@ class WordTimings(_Media):
     source: WordSource
     engine: WordEngine
     words: list[WordTiming] = Field(min_length=1, max_length=MAX_WORDS)
+    alignment: AlignmentSummary | None = None
 
     @model_validator(mode="after")
     def coherent(self):
         issues: list[tuple[str, str, str]] = []
+        issues.extend(self._alignment_issues())
         previous = None
         for position, word in enumerate(self.words):
             where = f"words[{position}]"
@@ -136,6 +154,37 @@ class WordTimings(_Media):
             previous = word
         _issues_to_error(issues)
         return self
+
+    def _alignment_issues(self) -> list[tuple[str, str, str]]:
+        if self.source != "forced_alignment":
+            issues = []
+            if self.alignment is not None:
+                issues.append(("alignment_not_allowed", "alignment", "alignment só existe com source=forced_alignment."))
+            if any(word.timing is not None for word in self.words):
+                issues.append(("timing_not_allowed", "words", "timing por palavra só existe com source=forced_alignment."))
+            return issues
+        if self.alignment is None:
+            return [("alignment_missing", "alignment", "forced_alignment exige o resumo alignment.")]
+        if any(word.timing is None for word in self.words):
+            return [("timing_missing", "words", "forced_alignment exige timing em todas as palavras.")]
+        measured, interpolated, longest, run_start = 0, 0, 0.0, None
+        for position, word in enumerate(self.words):
+            if word.timing == "interpolated":
+                interpolated += 1
+                run_start = word.start if run_start is None else run_start
+                longest = max(longest, word.end - run_start)
+            else:
+                measured += 1
+                run_start = None
+        found, summary = [], self.alignment
+        if (summary.matched_words, summary.interpolated_words) != (measured, interpolated):
+            found.append(("alignment_counts", "alignment", "contagens difere das palavras measured/interpolated."))
+        if abs(summary.match_rate - measured / len(self.words)) > 0.0001:
+            found.append(("alignment_match_rate", "alignment.match_rate", "match_rate difere de matched_words/total."))
+        if abs(summary.longest_interpolated_seconds - longest) > TIME_EPS:
+            found.append(("alignment_longest_run", "alignment.longest_interpolated_seconds",
+                          "maior trecho interpolado difere do recomputado."))
+        return found
 
 
 # ============================================================================================
@@ -337,9 +386,11 @@ def commercial_use_permitted(asset: ProvenanceAsset) -> bool:
 # Funções de validação (nunca levantam)
 # ============================================================================================
 
-def _result(errors: list[dict], warnings: list[str], value: BaseModel | None, **extra) -> dict:
+def _result(errors: list[dict], warnings: list[str], value: BaseModel | None, *, exclude_none: bool = False,
+            **extra) -> dict:
+    dumped = value.model_dump(mode="json", exclude_none=exclude_none) if value is not None and not errors else None
     return {"schema_version": SCHEMA_VERSION, "ok": not errors, "errors": errors[:MAX_ERRORS], "warnings": warnings,
-            "publishable": False, "value": value.model_dump(mode="json") if value is not None and not errors else None, **extra}
+            "publishable": False, "value": dumped, **extra}
 
 
 def _error(code: str, path: str, message: str) -> dict:
@@ -411,8 +462,13 @@ def _validate_word_timings(data, narration_sha256, duration_seconds, script_text
         errors.extend(_check_sections(model, sections))
     if model.source == "estimated":
         warnings.append("estimated_source_not_speech_aligned")
+    if model.source == "forced_alignment" and model.alignment is not None and not errors:
+        if (model.alignment.match_rate < MIN_MATCH_RATE
+                or model.alignment.longest_interpolated_seconds > MAX_INTERPOLATED_RUN_SECONDS):
+            warnings.append("alignment_below_threshold")
     aligned = (not errors and not warnings and model.source != "estimated")
-    return _result(errors, warnings, model, speech_aligned=aligned)
+    # exclude_none: o documento só ganha `timing`/`alignment` quando forced_alignment os declara (legado idêntico).
+    return _result(errors, warnings, model, exclude_none=True, speech_aligned=aligned)
 
 
 def _cover_script(model: WordTimings, script_text: str) -> list[dict]:

@@ -427,7 +427,11 @@ def _word_checks(ctx: _Context, stats, cues, script_tokens) -> list[dict]:
 
 
 def _cues_vs_words(cues, words, method, timing_source) -> dict:
+    # Palavras `interpolated` (forced_alignment sem correspondência acústica) não são medição: o desvio só usa cues
+    # cujas palavras de borda são medidas; as demais são contadas e informadas.
     deviations, unmatched, position, worst = [], 0, 0, (0.0, None)
+    interpolated_words = sum(1 for w in words if w.get("timing") == "interpolated")
+    unmeasured_cues = 0
     for n, cue in enumerate(cues):
         tokens = cue["text"].split()
         chunk = words[position:position + len(tokens)]
@@ -435,11 +439,19 @@ def _cues_vs_words(cues, words, method, timing_source) -> dict:
             unmatched += 1
             continue
         position += len(tokens)
+        if chunk[0].get("timing") == "interpolated" or chunk[-1].get("timing") == "interpolated":
+            unmeasured_cues += 1
+            continue
         deviation = max(abs(cue["start"] - chunk[0]["start"]), abs(cue["end"] - chunk[-1]["end"]))
         deviations.append(deviation)
         if deviation > worst[0]:
             worst = (deviation, (cue["start"], cue["end"]))
+    extra = {"interpolated_words": interpolated_words, "cues_edge_interpolated": unmeasured_cues} if interpolated_words else {}
     if not deviations:
+        if unmeasured_cues and not unmatched:
+            return _check("subtitles_vs_words", "sync", "warn", method,
+                          f"nenhuma cue com palavras de borda medidas ({unmeasured_cues} com borda interpolada; {interpolated_words} palavras interpoladas).",
+                          {"source": f"srt_vs_word_timings:{timing_source}", "unmatched_cues": 0, **extra})
         return _check("subtitles_vs_words", "sync", "fail", method, f"nenhuma cue casou com as palavras ({unmatched} sem correspondência).",
                       {"source": f"srt_vs_word_timings:{timing_source}", "unmatched_cues": unmatched})
     maximum, mean = max(deviations), sum(deviations) / len(deviations)
@@ -447,9 +459,12 @@ def _cues_vs_words(cues, words, method, timing_source) -> dict:
     return _check("subtitles_vs_words", "sync", status, method,
                   f"desvio máximo {maximum:.3f}s, médio {mean:.3f}s em {len(deviations)} cues"
                   + (f"; {unmatched} cues sem correspondência" if unmatched else "")
+                  + (f"; {unmeasured_cues} cues com borda interpolada fora do desvio ({interpolated_words} palavras interpoladas)"
+                     if interpolated_words else "")
                   + ("; word-timings estimado: não é medição de fala" if method == "estimated" else ""),
                   {"source": f"srt_vs_word_timings:{timing_source}", "max_deviation_seconds": _round(maximum),
-                   "mean_deviation_seconds": _round(mean), "cues_matched": len(deviations), "unmatched_cues": unmatched},
+                   "mean_deviation_seconds": _round(mean), "cues_matched": len(deviations), "unmatched_cues": unmatched,
+                   **extra},
                   {"warn_seconds": SYNC_WARN, "fail_seconds": SYNC_FAIL}, timecode=worst[1])
 
 

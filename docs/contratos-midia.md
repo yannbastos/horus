@@ -1,6 +1,6 @@
 # Contratos de mídia e QC audiovisual (HOR-089 / HOR-097 / HOR-055)
 
-Estado: **contratos (Fase 1) e módulo de QC `av_quality.py` (Fase 2) implementados e testados**; revisão por timecode e exposição na API **ainda não implementadas** (ver tabela). Tudo é demonstração (`demo_only=true`); nada aqui autoriza publicação, e `publishable` é sempre `false`.
+Estado: **contratos (Fase 1), módulo de QC `av_quality.py` (Fase 2) e alinhamento acústico local `speech_alignment.py` (HOR-054) implementados e testados; o alinhamento ainda não está ligado ao worker de produção**; revisão por timecode e exposição na API **ainda não implementadas** (ver tabela). Tudo é demonstração (`demo_only=true`); nada aqui autoriza publicação, e `publishable` é sempre `false`.
 
 Código: `backend/src/horus_backend/media_contracts.py`. Testes: `backend/tests/test_media_contracts.py`. JSON Schemas exportados: `contracts/media/*.schema.json` (regenerar com `backend/.venv/Scripts/python.exe contracts/media/generate_schemas.py`; um teste falha se divergirem dos modelos).
 
@@ -8,6 +8,7 @@ Código: `backend/src/horus_backend/media_contracts.py`. Testes: `backend/tests/
 |---|---|
 | Modelos Pydantic estritos + `validate_word_timings/quality_report/asset_provenance` | Implementado e testado |
 | JSON Schema exportado e teste de sincronia | Implementado |
+| Alinhamento acústico (`speech_alignment.py`): `word-timings.json` com `source=forced_alignment` | Implementado e testado; ensaio real no WAV do piloto (ver seção 4); integração no worker: incremento separado |
 | Módulo de QC (`av_quality.py`): `quality-report.json` a partir dos arquivos reais | Implementado; testes sintéticos e ensaio somente leitura na evidência real (ver seção QC) |
 | `ProductionReviewRequest.notes`, `quality_report`/`speech_aligned`/`asset_provenance` no registro da produção | Planejado (outros arquivos) |
 | Provedores Pexels/Pixabay | Somente valores de `origin` e regras; sem API, chave ou download |
@@ -22,7 +23,7 @@ Código: `backend/src/horus_backend/media_contracts.py`. Testes: `backend/tests/
 
 ## 1. `word-timings.json`
 
-`{schema_version, narration_sha256, duration_seconds, source, engine:{name, voice}, words:[{index, text, section, start, end, char_offset, char_length}]}`.
+`{schema_version, narration_sha256, duration_seconds, source, engine:{name, voice}, words:[{index, text, section, start, end, char_offset, char_length, timing?}], alignment?}`.
 
 `source`: `tts_engine_events` (tempos informados pelo motor durante a síntese), `forced_alignment` (alinhamento acústico) ou `estimated` (heurística).
 
@@ -30,7 +31,9 @@ Regras internas: `index` = 0..N-1; `end > start`; palavras em ordem e sem sobrep
 
 Validação cruzada (`validate_word_timings(data, narration_sha256=, duration_seconds=, script_text=, sections=)`): hash do WAV registrado; duração medida (tolerância 50 ms); cobertura do roteiro (cada token separado por espaço, na ordem, mesmo texto e offset: `words_missing`, `words_extra`, `word_text_mismatch`); `sections=[{section,start,end}]` medidas (tolerância 50 ms; `unknown_section`, `word_outside_section`).
 
-**`speech_aligned=true` somente se** o documento é válido, `source != estimated` e hash, duração, roteiro e seções foram fornecidos e conferem. Qualquer outro caso é `false`.
+Extensão compatível (HOR-054), campos opcionais: `words[].timing` (`measured` = tempo medido pelo ASR; `interpolated` = palavra sem correspondência acústica, com tempo distribuído entre âncoras medidas, nunca uma medição) e `alignment` = `{method:"asr_sequence_match", asr_engine, matched_words, interpolated_words, match_rate, longest_interpolated_seconds}`. Com `source=forced_alignment` ambos são obrigatórios e o validador **recomputa** contagens, `match_rate` e o maior trecho interpolado contínuo a partir das palavras (`alignment_counts`, `alignment_match_rate`, `alignment_longest_run`; `timing_missing`, `alignment_missing`). Com outra fonte são proibidos (`timing_not_allowed`, `alignment_not_allowed`). Documentos legados (`estimated`) continuam válidos e idênticos byte a byte no round-trip: o `value` devolvido omite campos `None` (`exclude_none`).
+
+**`speech_aligned=true` somente se** o documento é válido, `source != estimated` e hash, duração, roteiro e seções foram fornecidos e conferem. Em `forced_alignment` exige-se também `match_rate >= 0,85` (`MIN_MATCH_RATE`) e maior trecho interpolado contínuo `<= 2,0 s` (`MAX_INTERPOLATED_RUN_SECONDS`); abaixo disso o documento é válido, com o aviso `alignment_below_threshold` e `speech_aligned=false`. Qualquer outro caso é `false`.
 
 ## 2. `quality-report.json`
 
@@ -73,6 +76,21 @@ Entradas em `root`: `pilot-evidence.json`, assets de entrada, SRT ao lado da nar
 **Regra de proveniência:** o cruzamento cobre só os assets de **entrada** (PNGs de cena, WAVs de seção e narração concatenada). Saídas derivadas (MP4, `render/audio-review.wav`, quadros de inspeção) não exigem proveniência própria.
 
 Limitações: o FFmpeg da sandbox da fábrica (build do Remotion) não tem `ebur128`, `blackdetect`, `freezedetect`, `fps` nem muxer `rawvideo`; por isso loudness usa `loudnorm` e a análise visual é feita em Python. Silêncio e clipping vêm do WAV de narração, não da mixagem final do MP4 (a loudness vem do MP4). Só WAV PCM 16 bits é analisado (outro formato → `skipped`). Inteligibilidade e qualidade da voz não são medidas. Um relatório sem falhas não significa vídeo bom nem publicável.
+
+## 4. Alinhamento acústico local (`speech_alignment.py`, HOR-054)
+
+A voz SAPI não emite eventos de palavra; o método mede a fala do WAV com o faster-whisper e alinha ao roteiro:
+
+1. **ASR** (`run_alignment`/`run_alignment_async`): subprocesso possuído (`processes.OwnedProcess`: Job Object, timeout de 900 s, cancelável), CPU int8, `word_timestamps=True`, idioma `pt`, `local_files_only` e `HF_HUB_OFFLINE=1` (sem rede). Exige o extra `transcription` e um modelo CTranslate2 local em `<model_dir>/<nome>` ou `<model_dir>/faster-whisper-<nome>` (com `model.bin`); nada é baixado pelo código. Sem extra, modelo, WAV legível ou com falha/timeout do ASR, devolve `{executed:false, reason}` e nenhum documento: nunca uma estimativa disfarçada.
+2. **Alinhamento** (`align_script`, função pura): subpalavras normalizadas (minúsculas, sem acentos nem pontuação, hifens separam, dígitos em extenso pt-BR: `2026` ↔ "dois mil e vinte e seis", `50%` ↔ "cinquenta por cento") alinhadas por programação dinâmica monótona (casamento exato 1,0; grafia próxima ≥ 0,8 de similaridade em palavras de ≥ 4 letras, 0,6). Uma palavra do ASR só casa com token de uma seção se seu ponto médio cai na seção ± 0,5 s. Um token do roteiro é `measured` se **todas** as suas subpalavras casaram; o tempo é o do ASR, aparado aos limites medidos da seção. Tokens sem subpalavra falada (ex.: "—") são `interpolated`.
+3. **Palavras do ASR descartadas**: tempo inválido/não finito, duração < 1 ms, que regridem no tempo; sobreposição pequena é aparada no início.
+4. **Interpolação**: tokens sem correspondência recebem tempo proporcional ao tamanho entre âncoras medidas da mesma seção (largura mínima 20 ms); se não houver espaço, âncoras vizinhas são rebaixadas a `interpolated` (nunca o contrário).
+5. O roteiro é o texto das seções unidas por `
+` (uma linha por seção medida, mesma convenção do piloto); o documento devolvido já passou por `validate_word_timings` com hash, duração, roteiro e seções. `align_with_report` devolve também o diagnóstico (taxa, aparos, desvio das bordas medidas em relação aos limites de seção).
+
+QC: `subtitles_vs_words` calcula o desvio só com cues cujas palavras de borda são `measured` e informa quantas palavras/cues são interpoladas.
+
+**Ensaio real (2026-11-13, somente leitura)**: narração do piloto (47,91 s, 77 palavras, voz SAPI Maria), modelo `Systran/faster-whisper-small`, CPU int8: 77/77 palavras casadas (taxa 1,0), 0 interpoladas, `speech_aligned=true`, 0 aparos, desvio das bordas medidas em relação aos limites de seção: médio 0,545 s, máximo 1,131 s (silêncio inicial/final de cada seção da síntese; as seções são limites de arquivo, não de fala), execução do ASR 9,7 s. Teste real condicional: `HORUS_WHISPER_MODEL_DIR`, `HORUS_ALIGNMENT_EVIDENCE` e `HORUS_ALIGNMENT_WAV`. Limitações: uma única narração curta e limpa de voz sintética; a taxa não generaliza para fala humana, ruído ou roteiros longos; precisão de tempo por palavra do Whisper é da ordem de décimos de segundo; não valida a pronúncia; integração no worker ainda não existe.
 
 ## Pendente / fora desta entrega
 

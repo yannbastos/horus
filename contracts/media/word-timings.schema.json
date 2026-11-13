@@ -1,5 +1,56 @@
 {
   "$defs": {
+    "AlignmentSummary": {
+      "additionalProperties": false,
+      "description": "Resumo do alinhamento acústico; o validador recomputa tudo a partir das palavras.",
+      "properties": {
+        "asr_engine": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Asr Engine",
+          "type": "string"
+        },
+        "interpolated_words": {
+          "exclusiveMaximum": 20000,
+          "minimum": 0,
+          "title": "Interpolated Words",
+          "type": "integer"
+        },
+        "longest_interpolated_seconds": {
+          "maximum": 86400.0,
+          "minimum": 0,
+          "title": "Longest Interpolated Seconds",
+          "type": "number"
+        },
+        "match_rate": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Match Rate",
+          "type": "number"
+        },
+        "matched_words": {
+          "exclusiveMaximum": 20000,
+          "minimum": 0,
+          "title": "Matched Words",
+          "type": "integer"
+        },
+        "method": {
+          "const": "asr_sequence_match",
+          "title": "Method",
+          "type": "string"
+        }
+      },
+      "required": [
+        "method",
+        "asr_engine",
+        "matched_words",
+        "interpolated_words",
+        "match_rate",
+        "longest_interpolated_seconds"
+      ],
+      "title": "AlignmentSummary",
+      "type": "object"
+    },
     "WordEngine": {
       "additionalProperties": false,
       "properties": {
@@ -68,6 +119,22 @@
           "pattern": "^\\S+$",
           "title": "Text",
           "type": "string"
+        },
+        "timing": {
+          "anyOf": [
+            {
+              "enum": [
+                "measured",
+                "interpolated"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timing"
         }
       },
       "required": [
@@ -85,6 +152,17 @@
   },
   "additionalProperties": false,
   "properties": {
+    "alignment": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AlignmentSummary"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
     "duration_seconds": {
       "exclusiveMinimum": 0,
       "maximum": 86400.0,
