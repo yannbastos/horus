@@ -39,6 +39,7 @@ class ProductionReviewRequest(BaseModel):
     decision: Literal["approve", "reject"]
     artifact_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
     notes: list[ProductionReviewNote] = Field(default_factory=list, max_length=200)
+    acknowledge_quality_errors: bool = Field(default=False, strict=True)
 
 
 def confined(root: Path, relative: str) -> Path:
@@ -97,10 +98,16 @@ class ProductionService:
     def record(self, db, row):
         job = self.store.job(db.execute("SELECT * FROM jobs WHERE id=?", (row["job_id"],)).fetchone())
         result = job["result"] or {}
+        from .local_pilot import confirmed_media
+        media = confirmed_media(self.root(row['id']),json.loads(row['artifacts']),row['id'])
+        quality = media['quality_report']
+        acknowledgement_required = row['mode']=='local_pilot' and (
+            quality is None or quality['status']=='not_run' or bool(quality['blocking_errors']))
         return {key: row[key] for key in ("id", "script_id", "script_version", "script_content_hash", "job_id", "mode", "created_at")} | {
             "updated_at": max(job["updated_at"], (json.loads(row["review"]) or {}).get("reviewed_at", "")) if row["review"] else job["updated_at"], "stage": result.get("stage", "prepare"), "status": job["status"],
             "artifacts": json.loads(row["artifacts"]), "review": json.loads(row["review"]) if row["review"] else None,
-            "error": job["error"], "demo_only": True, "real_voice": False, "speech_aligned": False,
+            "error": job["error"], "demo_only": True, "real_voice": False, **media,
+            "quality_acknowledgement_required":acknowledgement_required,
             "publishable": False, "narration_kind": result.get("narration_kind"),
             "narration_disclosure": result.get("narration_disclosure"), "alignment_method": result.get("alignment_method")}
 
@@ -178,6 +185,8 @@ class ProductionService:
         body = request.model_dump()
         if not request.notes:
             body.pop("notes")  # Preserva recibos anteriores ao campo opcional.
+        if not request.acknowledge_quality_errors:
+            body.pop('acknowledge_quality_errors')
         encoded, scope = encode(body), f"review:{production_id}"
         with self.store.connect() as db:
             db.execute("BEGIN IMMEDIATE")
@@ -188,6 +197,9 @@ class ProductionService:
                     raise WorkflowConflict("Chave de revisão usada com outra decisão.")
                 return self.record(db, row)
             record = self.record(db, row)
+            if (request.decision=='approve' and record['quality_acknowledgement_required']
+                    and not request.acknowledge_quality_errors):
+                raise WorkflowConflict('QC reprovado ou indisponível exige confirmação explícita dos problemas de qualidade.')
             if record["status"] != "succeeded" or row["mode"] not in {"local_demo", "local_pilot"} or row["review"]:
                 raise WorkflowConflict("Revisão exige vídeo real concluído e ainda não revisado.")
             video = next((a for a in record["artifacts"] if a["kind"] == "video" and a["sha256"] == request.artifact_sha256), None)
@@ -243,7 +255,7 @@ class ProductionService:
                     try:
                         event = json.loads(raw)
                         stage = event.get("stage")
-                        if stage in {"prepare", "narration", "scenes", "subtitles", "render", "review"}:
+                        if stage in {"prepare", "narration", "scenes", "subtitles", "render", "quality", "review"}:
                             current = self.store.get_job(job_id)
                             self.store.update(job_id, current["status"], result={"stage": stage})
                             await manager.emit(job_id, "stage", stage)

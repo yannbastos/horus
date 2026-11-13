@@ -116,6 +116,69 @@ def test_metadata_cannot_claim_tts_without_registered_evidence(tmp_path):
         confirmed_metadata(tmp_path,[])
 
 
+def test_estimated_words_provenance_quality_and_registered_hashes(tmp_path,monkeypatch):
+    from horus_backend import local_pilot as pilot
+    from horus_backend.production import inspect_artifact
+    from test_production_contract import build
+    plan=build(mode='local_pilot').model_dump(mode='json')
+    folder=tmp_path/'canais/demo/videos/fixture'
+    folder.mkdir(parents=True)
+    pilot.write(tmp_path/'plan.json',plan)
+    async def synthetic_inputs(request):
+        for section in json.loads(request.read_text(encoding='utf-8'))['sections']:
+            path=folder/f"section-{section['n']}.wav"
+            with wave.open(str(path),'wb') as audio:
+                audio.setparams((1,2,22050,0,'NONE','not compressed'))
+                audio.writeframes(b''.join(struct.pack('<h',round(3000*math.sin(2*math.pi*440*i/22050))) for i in range(22050)))
+            (folder/f"scene-{section['n']}.png").write_bytes(b'\x89PNG\r\n\x1a\nunit-fixture')
+            pilot.write(folder/f"scene-{section['n']}.layout.json",{})
+        pilot.write(folder/'voice.json',{'culture':'pt-BR','voice':'Voz fictícia do teste'})
+    monkeypatch.setattr(pilot,'synthesize',synthetic_inputs)
+    paths=pilot.prepare(tmp_path,folder,plan)
+    words=json.loads((tmp_path/'word-timings.json').read_text(encoding='utf-8'))
+    assert words['source']=='estimated'
+    assert [w['text'] for w in words['words']]==[w for l in plan['roteiro']['linhas'] for w in l['narracao'].split()]
+    assert all(a['end']<=b['start']+.001 for a,b in zip(words['words'],words['words'][1:]))
+    (folder/'render').mkdir()
+    (folder/'render/short-rascunho.mp4').write_bytes(b'\0\0\0\x18ftypunit-fixture')
+    evidence=json.loads((tmp_path/'pilot-measurements.json').read_text(encoding='utf-8'))
+    evidence['video']={'duration_seconds':3.8,'width':540,'height':960,'frames':114}
+    pilot.write(tmp_path/'pilot-evidence.json',evidence)
+    pilot.quality_report(tmp_path,folder,'unit-production')
+    paths += [{'relative_path':'plan.json','kind':'plan'},
+              {'relative_path':'quality-report.json','kind':'manifest'},
+              {'relative_path':(folder/'render/short-rascunho.mp4').relative_to(tmp_path).as_posix(),'kind':'video'}]
+    artifacts=[inspect_artifact(tmp_path,p['relative_path'],p['kind']) for p in paths]
+    metadata=pilot.confirmed_media(tmp_path,artifacts,'unit-production')
+    assert metadata['speech_aligned'] is False
+    assert metadata['quality_report']['status']=='warn'
+    assert metadata['asset_provenance'] is not None
+    assert all(a['status']=='unverified' and a['license']['commercial_use']=='unknown' for a in metadata['asset_provenance']['assets'])
+    assert all(c['method']=='estimated' for c in metadata['quality_report']['checks'] if c['category']=='sync')
+    # Somente fixture do contrato: nenhuma inferência acústica real é alegada neste teste.
+    declared_alignment=json.loads(json.dumps(words))|{'source':'forced_alignment'}
+    pilot.write(tmp_path/'word-timings.json',declared_alignment)
+    refreshed=[inspect_artifact(tmp_path,p['relative_path'],p['kind']) for p in paths]
+    assert pilot.confirmed_media(tmp_path,refreshed,'unit-production')['speech_aligned'] is True
+    without_plan=[a for a in refreshed if a['relative_path']!='plan.json']
+    assert pilot.confirmed_media(tmp_path,without_plan,'unit-production')['speech_aligned'] is False
+    declared_alignment['words'][0]['text']='x'*len(declared_alignment['words'][0]['text'])
+    pilot.write(tmp_path/'word-timings.json',declared_alignment)
+    refreshed=[inspect_artifact(tmp_path,p['relative_path'],p['kind']) for p in paths]
+    assert pilot.confirmed_media(tmp_path,refreshed,'unit-production')['speech_aligned'] is False
+    pilot.write(tmp_path/'word-timings.json',words)
+    evidence['demo_only']=False
+    pilot.write(tmp_path/'pilot-evidence.json',evidence)
+    pilot.quality_report(tmp_path,folder,'unit-production')
+    report=json.loads((tmp_path/'quality-report.json').read_text(encoding='utf-8'))
+    assert report['status']=='fail' and report['blocking_errors']
+    assert (folder/'fixture.wav').exists() and (folder/'render/short-rascunho.mp4').exists()
+    (tmp_path/'quality-report.json').write_text('{}',encoding='utf-8')
+    assert pilot.confirmed_media(tmp_path,artifacts,'unit-production')['quality_report'] is None
+    (tmp_path/'asset-provenance.json').write_text('{}',encoding='utf-8')
+    assert pilot.confirmed_media(tmp_path,artifacts,'unit-production')['asset_provenance'] is None
+
+
 @pytest.mark.skipif(not os.environ.get('HORUS_PILOT_FACTORY'),reason='SAPI real explícito somente no ensaio Windows.')
 def test_real_sapi_owned_process_cancels_without_finishing(tmp_path):
     import asyncio
@@ -245,11 +308,20 @@ def test_real_local_pilot_render_review_and_restart(settings):
         assert item['status']=='succeeded',item
         assert item['narration_kind']=='local_tts' and item['alignment_method']=='measured_sections'
         assert not item['real_voice'] and not item['speech_aligned'] and not item['publishable']
+        assert item['quality_report']['status']=='warn'
+        assert item['quality_report']['video_sha256']==next(a['sha256'] for a in item['artifacts'] if a['kind']=='video')
+        assert item['quality_acknowledgement_required'] is False
+        assert item['asset_provenance'] is not None
         root = settings.data_dir/'productions'/item['id']
         evidence = json.loads((root/'pilot-evidence.json').read_text(encoding='utf-8'))
         assert evidence['narration']['voice'] and evidence['narration']['duration_seconds']>0
         assert evidence['video']['duration_seconds'] >= evidence['narration']['duration_seconds']
         assert evidence['video']['frames']>2
+        for name in ('word-timings.json','asset-provenance.json','quality-report.json'):
+            artifact=next(a for a in item['artifacts'] if a['relative_path']==name)
+            assert hashlib.sha256((root/name).read_bytes()).hexdigest()==artifact['sha256']
+        word_timings=json.loads((root/'word-timings.json').read_text(encoding='utf-8'))
+        assert word_timings['source']=='estimated' and len(word_timings['words'])==77
         assert evidence['subtitles'][0]['start']==0
         assert evidence['subtitles'][-1]['end']==pytest.approx(evidence['narration']['duration_seconds'])
         for asset in evidence['assets']:

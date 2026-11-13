@@ -170,6 +170,40 @@ def prepare(root, folder, plan):
                      'duration_seconds':measured,'sha256':sha(folder/'fixture.wav')},
         'scenes':scenes,'subtitles':subtitles,'assets':evidence_assets,'alignment_method':'measured_sections'})
     paths.append({'kind':'manifest','relative_path':'pilot-measurements.json'})
+    # A fonte é deliberadamente estimated: somente as seções foram medidas.
+    word_document = {'schema_version':1,'narration_sha256':sha(folder/'fixture.wav'),
+        'duration_seconds':measured,'source':'estimated',
+        'engine':{'name':'windows_sapi_measured_sections_heuristic_subtitles','voice':voice['voice']},'words':[]}
+    offset = 0
+    for section, line in zip(sections,lines):
+        tokens = list(re.finditer(r'\S+',section['text']))
+        for index, match in enumerate(tokens):
+            duration = line['fim']-line['inicio']
+            word_document['words'].append({'index':len(word_document['words']),'text':match.group(),
+                'section':section['n'],'start':round(line['inicio']+duration*index/len(tokens),3),
+                'end':round(line['inicio']+duration*(index+1)/len(tokens),3),
+                'char_offset':offset+match.start(),'char_length':len(match.group())})
+        offset += len(section['text'])+1  # roteiro concatenado com uma quebra entre seções
+    from .media_contracts import validate_word_timings, validate_asset_provenance
+    checked = validate_word_timings(word_document,narration_sha256=word_document['narration_sha256'],
+        duration_seconds=measured,script_text='\n'.join(s['text'] for s in sections),
+        sections=[{'section':s['n'],'start':l['inicio'],'end':l['fim']} for s,l in zip(sections,lines)])
+    if not checked['ok']:
+        raise ValueError('Contrato de palavras estimadas inválido.')
+    write(root/'word-timings.json',checked['value'])
+    provenance = {'schema_version':1,'assets':[
+        {'asset_id':a['id'],'relative_path':a['relative_path'],'sha256':a['sha256'],
+         'kind':'image' if a['origin']=='original_local' else 'voice','origin':a['origin'],
+         'source_url':None,'author':None,
+         'license':{'id':'original' if a['origin']=='original_local' else None,
+                    'name':None,'url':None,'commercial_use':'unknown','attribution_required':None,
+                    'verified_by':None,'verified_at':None},
+         'status':'unverified','notes':a['attribution']} for a in evidence_assets]}
+    checked = validate_asset_provenance(provenance,artifacts={a['relative_path']:a['sha256'] for a in evidence_assets})
+    if not checked['ok']:
+        raise ValueError('Contrato de proveniência inválido.')
+    write(root/'asset-provenance.json',checked['value'])
+    paths.extend({'kind':'manifest','relative_path':name} for name in ('word-timings.json','asset-provenance.json'))
     return paths
 
 
@@ -214,3 +248,74 @@ def confirmed_metadata(root, artifacts):
     if not any(item['kind']=='video' for item in artifacts):
         raise ValueError('Piloto sem vídeo registrado.')
     return {'narration_kind':'local_tts','narration_disclosure':DISCLOSURE,'alignment_method':'measured_sections'}
+
+
+def quality_report(root, folder, production_id, *, ffmpeg=None, ffprobe=None):
+    """QC físico dentro do worker já possuído; subprocessos seguem sua árvore."""
+    from .av_quality import run_quality
+    from .media_contracts import validate_quality_report
+    report = run_quality(root,production_id=production_id,ffmpeg=ffmpeg,ffprobe=ffprobe)
+    words = json.loads((root/'word-timings.json').read_text(encoding='utf-8'))
+    checked = validate_quality_report(report,video_sha256=sha(folder/'render/short-rascunho.mp4'),
+        production_id=production_id,word_timings_source=words['source'])
+    if not checked['ok']:
+        raise ValueError('Contrato do relatório QC inválido: '+str(checked['errors']))
+    write(root/'quality-report.json',checked['value'])
+
+
+def registered_json(root, artifacts, relative):
+    """Só lê JSON confinado e com o hash registrado; inválido/ausente não é evidência."""
+    from .production import confined
+    from .workflows import WorkflowConflict
+    try:
+        item = next(a for a in artifacts if a['relative_path']==relative and a['kind'] in {'manifest','plan'})
+        path = confined(root,relative)
+        if path.stat().st_size > 16*1024*1024 or sha(path) != item['sha256']:
+            return None
+        return json.loads(path.read_text(encoding='utf-8'))
+    except (StopIteration, OSError, ValueError, TypeError, KeyError, WorkflowConflict):
+        return None
+
+
+def confirmed_media(root, artifacts, production_id):
+    """Deriva metadados dos contratos registrados, nunca de flags devolvidas pelo worker."""
+    from .media_contracts import validate_quality_report, validate_word_timings, validate_asset_provenance
+    prefix = 'canais/demo/videos/fixture/'
+    inputs = {a['relative_path']:a['sha256'] for a in artifacts if
+              re.fullmatch(re.escape(prefix)+r'(?:scene-\d+\.png|section-\d+\.wav|fixture\.wav)',a['relative_path'])}
+    provenance = validate_asset_provenance(registered_json(root,artifacts,'asset-provenance.json'),artifacts=inputs)
+    word_data = registered_json(root,artifacts,'word-timings.json')
+    word_result = validate_word_timings(word_data)
+    # Só existe caminho para true quando os fatos físicos e o roteiro também conferem.
+    if word_result['ok'] and word_data['source'] != 'estimated':
+        try:
+            from .production import confined
+            plan = registered_json(root,artifacts,'plan.json')
+            lines = plan['roteiro']['linhas']
+            audio = confined(root,prefix+'fixture.wav')
+            measured_sections, cursor = [], 0.0
+            for line in lines:
+                path = confined(root,prefix+f"section-{line['n']}.wav")
+                if sha(path) != inputs[path.relative_to(root).as_posix()]:
+                    raise ValueError('Hash da seção divergente.')
+                duration = wav_info(path)[1]
+                measured_sections.append({'section':line['n'],'start':cursor,'end':cursor+duration})
+                cursor += duration
+            audio_hash = sha(audio)
+            if audio_hash != inputs[prefix+'fixture.wav']:
+                raise ValueError('Hash da narração divergente.')
+            duration = wav_info(audio)[1]
+            if abs(cursor-duration) > .001:
+                raise ValueError('Duração concatenada diverge das seções medidas.')
+            word_result = validate_word_timings(word_data,narration_sha256=audio_hash,
+                duration_seconds=duration,script_text='\n'.join(l['narracao'] for l in lines),
+                sections=measured_sections)
+        except (OSError, ValueError, TypeError, KeyError, wave.Error, EOFError):
+            word_result = {'speech_aligned':False}
+    video = next((a for a in artifacts if a['kind']=='video'),None)
+    quality = validate_quality_report(registered_json(root,artifacts,'quality-report.json'),
+        video_sha256=video['sha256'] if video else None,production_id=production_id,
+        word_timings_source=word_data.get('source') if isinstance(word_data,dict) else None)
+    return {'quality_report':quality['value'] if quality['ok'] and video else None,
+            'speech_aligned':word_result.get('speech_aligned',False),
+            'asset_provenance':provenance['value'] if provenance['ok'] else None}

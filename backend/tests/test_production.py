@@ -134,14 +134,15 @@ def test_approval_snapshot_hash_is_required(settings):
 
 
 @pytest.mark.parametrize('mode', ['simulated','local_pilot'])
-def test_running_cancel_owns_tree_and_sanitizes_logs(settings, tmp_path, monkeypatch, mode):
+@pytest.mark.parametrize('stage', ['render','quality'])
+def test_running_cancel_owns_tree_and_sanitizes_logs(settings, tmp_path, monkeypatch, mode, stage):
     import sys
     from horus_backend.processes import OwnedProcess
     marker = tmp_path / 'heartbeat.txt'
     child = tmp_path / 'child.py'
     child.write_text('import time\nfrom pathlib import Path\np=Path('+repr(str(marker))+')\nwhile True:\n p.write_text(str(time.time_ns()))\n time.sleep(.02)\n')
     parent = tmp_path / 'parent.py'
-    parent.write_text('import subprocess,sys,time\nsubprocess.Popen([sys.executable,'+repr(str(child))+'])\nprint("Bearer SECRET_PRODUCTION_TEST",flush=True)\ntime.sleep(60)\n')
+    parent.write_text('import subprocess,sys,time,json\nsubprocess.Popen([sys.executable,'+repr(str(child))+'])\nprint("Bearer SECRET_PRODUCTION_TEST",flush=True)\nprint(json.dumps({"stage":'+repr(stage)+'}),flush=True)\ntime.sleep(60)\n')
     original = OwnedProcess.start
     captured = []
     async def start_test(command, **kwargs):
@@ -157,6 +158,10 @@ def test_running_cancel_owns_tree_and_sanitizes_logs(settings, tmp_path, monkeyp
             if marker.exists(): break
             time.sleep(.02)
         assert marker.exists()
+        for _ in range(100):
+            if client.get('/v1/productions/'+item['id']).json()['stage']==stage: break
+            time.sleep(.02)
+        assert client.get('/v1/productions/'+item['id']).json()['stage']==stage
         response = client.post(f"/v1/jobs/{item['job_id']}/cancel")
         assert response.status_code == 200
         final = finished(client,item)
@@ -254,6 +259,64 @@ def test_review_notes_accept_limits_and_optional_default():
     assert ProductionReviewRequest(decision='approve',artifact_sha256='a'*64).notes==[]
     notes=[{'at_seconds':0,'text':'x'*2000}]*200
     assert len(ProductionReviewRequest(decision='reject',artifact_sha256='a'*64,notes=notes).notes)==200
+
+
+@pytest.mark.parametrize('quality_state', ['missing','invalid','not_run','fail','warn','pass',
+                                        'hash_mismatch','wrong_video','wrong_production'])
+@pytest.mark.parametrize('decision', ['approve','reject'])
+def test_pilot_review_quality_acknowledgement_and_idempotency(settings,quality_state,decision):
+    # Fixture de armazenamento/contrato: não afirma render ou decodificação real.
+    from horus_backend.local_pilot import write
+    with client_for(settings) as client:
+        script=script_for(client)
+        client.portal.call(client.app.state.manager.worker.cancel)
+        item=start(client,script,mode='local_pilot').json()
+        root=settings.data_dir/'productions'/item['id']
+        root.mkdir(parents=True)
+        (root/'video.mp4').write_bytes(b'\0\0\0\x18ftypunit-fixture')
+        video=inspect_artifact(root,'video.mp4','video')
+        artifacts=[video]
+        if quality_state!='missing':
+            report_status=quality_state if quality_state in {'not_run','fail','warn','pass','invalid'} else 'pass'
+            checks=[] if quality_state=='not_run' else [
+                {'id':'unit_check','category':'integrity','status':report_status if quality_state!='invalid' else 'pass',
+                 'method':'declared','measured':{},'threshold':{},'detail':'Fixture de contrato'}]
+            report={'schema_version':1,'production_id':item['id'],'video_sha256':video['sha256'],
+                    'generated_at':'2026-11-13T12:00:00Z','tool':{'name':'unit','version':'1'},
+                    'status':report_status,'checks':checks,
+                    'blocking_errors':['unit_check'] if quality_state=='fail' else [],
+                    'warnings':['unit_check'] if quality_state=='warn' else []}
+            if quality_state=='wrong_video': report['video_sha256']='f'*64
+            if quality_state=='wrong_production': report['production_id']='other-production'
+            write(root/'quality-report.json',report)
+            artifacts.append(inspect_artifact(root,'quality-report.json','manifest'))
+            if quality_state=='hash_mismatch': write(root/'quality-report.json',report|{'generated_at':'2026-11-14T12:00:00Z'})
+        with client.app.state.store.connect() as db:
+            db.execute('UPDATE productions SET artifacts=? WHERE id=?',(json.dumps(artifacts),item['id']))
+        client.app.state.store.update(item['job_id'],'succeeded',result={'stage':'review'})
+        item=client.get('/v1/productions/'+item['id']).json()
+        invalid=quality_state in {'missing','invalid','hash_mismatch','wrong_video','wrong_production'}
+        required=invalid or quality_state in {'not_run','fail'}
+        assert item['quality_acknowledgement_required']==required
+        assert item['status']=='succeeded' and item['publishable'] is False
+        assert (item['quality_report'] is None)==invalid
+        body={'decision':decision,'artifact_sha256':video['sha256'],
+              'notes':[{'at_seconds':0.5,'text':'Nota de teste'}]}
+        route='/v1/productions/'+item['id']+'/review'
+        headers={'Idempotency-Key':'quality-review'}
+        response=client.post(route,json=body,headers=headers)
+        if decision=='approve' and required:
+            assert response.status_code==409
+            body['acknowledge_quality_errors']=True
+            response=client.post(route,json=body,headers=headers)
+        assert response.status_code==200,response.text
+        reviewed=response.json()
+        assert reviewed['review']['acknowledge_quality_errors']==body.get('acknowledge_quality_errors',False)
+        assert client.post(route,json=body,headers=headers).json()==reviewed
+        assert client.post(route,json=body|{'acknowledge_quality_errors':not body.get('acknowledge_quality_errors',False)},headers=headers).status_code==409
+        assert reviewed['publishable'] is False
+    with client_for(settings) as client:
+        assert client.get('/v1/productions/'+item['id']).json()==reviewed
 
 
 def test_network_audit_counts_end_events_without_inventing_destinations(tmp_path):
