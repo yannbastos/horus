@@ -1,8 +1,8 @@
 # Avaliação técnica do Piper TTS para pt-BR — HOR-131
 
-Documento de pesquisa, **sem execução**: nenhum modelo, binário ou wheel foi baixado, nada foi instalado e nenhum código foi alterado. Só foram lidas páginas e metadados públicos (GitHub, PyPI, Hugging Face), sem envio de dados do projeto. Todas as fontes foram acessadas em **13/11/2026**.
+Pesquisa inicial nas seções 1–8, realizada sem execução, complementada pela **prova isolada autorizada e medida na seção 9**. As fontes iniciais foram acessadas em **13/11/2026**; downloads, ambiente separado e resultados posteriores estão descritos em “Resultados da prova”. Nenhum áudio foi enviado a serviço externo.
 
-Convenção: **[F]** fato lido na fonte citada; **[I]** inferência; **[N]** não verificado. Nada aqui foi ouvido ou medido; números de desempenho de terceiros não são medições do Hórus.
+Convenção: **[F]** fato lido na fonte citada; **[I]** inferência; **[N]** não verificado. Na pesquisa inicial, nada foi ouvido ou medido; números de terceiros não são medições do Hórus. A seção 9 registra fatos medidos localmente; a escuta humana permanece pendente.
 
 Contexto: o piloto atual usa Microsoft Maria (SAPI) com `license=unverified` e `alignment_method=measured_sections` (ver [piloto-local.md](piloto-local.md)). O Piper seria um candidato a voz local com licença rastreável e, possivelmente, tempos por fonema.
 
@@ -138,6 +138,114 @@ Proposta **[I]**, compatível com a arquitetura existente (`OwnedProcess` + Job 
 Etapas: (1) criar venv novo, instalar com `--require-hashes` sem rede após o download; (2) bloquear rede (firewall/NetLog) e sintetizar o roteiro fictício Jardim Aurora por processo separado; (3) medir RTF carregando o modelo uma vez (anotar CPU, versão, fonte da medição); (4) conferir WAV (taxa, PCM, duração, hash); (5) testar `include_alignments=True`: soma das durações × duração do WAV e reconstrução das palavras; (6) escuta cega do usuário; (7) relatório com hashes, licenças e resultados; só então decidir integração (issue separada).
 
 Este documento não concede licença, não altera `publishable=false` nem `demo_only=true` e não substitui parecer jurídico nem aprovação humana.
+
+## 9. Resultados da prova
+
+**Medições locais de 13/11/2026; prova isolada autorizada.** Esta seção complementa a pesquisa acima. Piper não foi integrado ao Hórus, ao worker, à fábrica ou ao instalador; Microsoft Maria permanece a voz vigente. `publishable=false` e `demo_only=true` permanecem. Não houve escuta humana nem aprovação de voz.
+
+### Ambiente, entrada e rastreabilidade
+
+- Ambiente novo: `%LOCALAPPDATA%\Horus\tools\piper-proof\venv`, Python 3.12.16; wheels, modelos, scripts e resultados fora do repositório. Nenhuma dependência Piper instalada no backend ou globalmente.
+- CPU: Intel Core i7-13620H, 10 núcleos / 16 processadores lógicos (`Get-CimInstance Win32_Processor`); Windows, somente `CPUExecutionProvider`, sem CUDA. Fonte dos tempos: `time.perf_counter()` no processo de síntese; não são estimativas.
+- Versões fixadas: `flatbuffers==25.12.19`, `ml_dtypes==0.6.0`, `numpy==2.5.4`, `onnx==1.23.2`, `onnxruntime==1.32.0`, `packaging==26.3`, `pathvalidate==3.3.1`, `piper-tts==1.8.0`, `protobuf==7.36.2`, `typing_extensions==4.16.0`.
+- FFmpeg já disponível no ensaio, sem instalação: `ffmpeg version n7.1 Copyright (c) 2000-2024 the FFmpeg developers`.
+- A pasta de aprovação não contém `plan.json`. O coordenador indicou, somente para leitura, o plano do ensaio da main: `C:/Users/yannf/AppData/Local/Temp/horus-pilot-main-qc-114914/test_real_local_pilot_render_r0/data/productions/e8ea0b951c2746f1b9d9f1a7b38af4f6/plan.json`. Foram usados exclusivamente os três `roteiro.linhas[].narracao`, sem reconstrução por legendas. Tamanho: 2.229 bytes; SHA-256 medido: `7c906e894d9fadf1395f1b4ec8ed5acc1ed5f87ae955bb248e6d49d77cdbc73b` (a mensagem do coordenador omitia o último dígito).
+- Comparação Maria: `section-1.wav` a `section-3.wav` da pasta aprovada `integracao-conjunta/aprovacao/canais/demo/videos/fixture/`. Todos os arquivos da aprovação tiveram hashes comparados antes/depois do QC e permaneceram intactos. Não foi refeita síntese Maria; seu tempo de geração/RTF não foi medido.
+
+### Artefatos e instalação
+
+O wheel de 34.119.688 bytes foi baixado independentemente do [release oficial v1.8.0](https://github.com/OHF-Voice/piper1-gpl/releases/tag/v1.8.0) e do [PyPI 1.8.0](https://pypi.org/project/piper-tts/1.8.0/). Ambos deram SHA-256 `5da9bfdb05dfe15da3536859d422e605483ffa6d2b3ec2c5b9593bae6b5aa6a4`; o hash também coincide com os metadados das origens. Todos os dez wheels tiveram SHA-256 confrontado com o JSON público da versão no PyPI antes da instalação. Instalação local: `uv pip install --python <venv>/Scripts/python.exe --no-index --find-links <wheels> --require-hashes -r <requirements-hashed.txt>`.
+
+Modelos conferidos com os hashes completos da seção 3 e os OIDs LFS do Hugging Face; configurações e cards também preservados com tamanho e hash:
+
+| Artefato | Bytes | SHA-256 local |
+|---|---:|---|
+| `models/faber/pt_BR-faber-medium.onnx` | 63221984 | `75e913eb463db0b6ac7ddf68d3e4c9ac19ace36dc3b710a81039b448352b8ffc` |
+| `models/faber/pt_BR-faber-medium.onnx.json` | 5466 | `fa8a8fecb01ae198bc416381e368d3206f85bad1449a0f11e1f6a9edf85a32f1` |
+| `models/faber/MODEL_CARD` | 456 | `a99caaa7e04fea58294ba4dea46a7ba07fa1f7902c6dff65b6ea2be0e98c5132` |
+| `models/cadu/pt_BR-cadu-medium.onnx` | 63221984 | `d5a662e3f606d5a49dd29ba9ce90c304ae45dd9543f8b0c773bcb0de282499de` |
+| `models/cadu/pt_BR-cadu-medium.onnx.json` | 5465 | `9fa837b7c1237ea5978bcd7be38c130798e8faa064f754873bb4ce5fc498bd88` |
+| `models/cadu/MODEL_CARD` | 420 | `ccd97b4369f50e6fba3a4fb730643ef2675f87b43c5d22298404c58f8204a375` |
+| `models/jeff/pt_BR-jeff-medium.onnx` | 63221984 | `82ddcdb01a0342f078bd89ce2815eda27185818d15e15f06fb9a72ac3bce94e1` |
+| `models/jeff/pt_BR-jeff-medium.onnx.json` | 5465 | `078ea4e42a680ca3cb662a8929237c32e2c0d581f5363f2f55f09bc266497bf6` |
+| `models/jeff/MODEL_CARD` | 420 | `a81ea309434fe2fa23ed89c8ae270bc8aa40908b14e182fae54c021cc368f7a8` |
+
+Os três `MODEL_CARD`s crus declaram CC0 para o dataset. O card de faber cita Cori Samuel como voz do modelo-base inglês, não como identificação do locutor pt-BR; cadu e jeff citam base rdh/nl_BE. Nenhum consentimento de personalidade foi verificado. O wheel inclui `espeak-ng-data`; assinaturas/attestations não foram verificadas. Manifesto completo com URLs, versões, bytes e hashes de todos os wheels/modelos/cards: `escuta-piper/evidencias-reservadas/artifact-manifest.json`.
+
+### Síntese, CPU e qualidade medida
+
+Um processo Python separado do backend carregou cada modelo uma vez com `use_cuda=False` e `include_alignments=True`, sintetizando uma vez por voz/seção (9 WAVs). `SynthesisConfig` padrão: `normalize_audio=True`, `volume=1`, escalas herdadas do modelo (`length_scale=1`, `noise_scale=0.5`, `noise_w=0.333`). RTF = segundos de `list(voice.synthesize(...))` / duração PCM; exclui carga, serialização WAV e QC, inclui fonemização, inferência e construção de alinhamentos. Sem aquecimento, afinidade ou repetição estatística; a primeira seção de faber inclui a inicialização compartilhada do fonemizador. Os números representam esta execução, com o patch de alinhamento ativo.
+
+| Voz | Carga (s) | Síntese total (s) | Áudio total (s) | RTF total |
+|---|---:|---:|---:|---:|
+| faber | 1.7311 | 1.6202 | 29.9421 | 0.0541 |
+| cadu | 0.6840 | 1.0657 | 31.9390 | 0.0334 |
+| jeff | 0.7690 | 1.0649 | 30.3369 | 0.0351 |
+
+Todos os originais são WAV PCM 16 bits, mono, 22.050 Hz. Duração, pico e amostras no extremo do PCM vêm de `pilot_quality.analyze_wav`; LUFS integrados e true peak vêm de `av_quality._loudness` com o filtro `loudnorm` do FFmpeg (o fallback existente, pois `ebur128` não pôde ser usado neste build). A contagem de clipping abaixo é a definição do analisador (`>=32767` ou `<=-32768`), não um diagnóstico auditivo de distorção. A normalização padrão do Piper encosta no fundo de escala, com true peak até +0,13 dBTP; isso exige margem no áudio de escuta.
+
+| Voz/seção | Duração (s) | Síntese (s) | RTF | Pico PCM | Amostras no extremo | LUFS-I | dBTP |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Maria/1 | 14.8714 | não medido | não medido | 0.593689 | 0 | -23.32 | -4.49 |
+| faber/1 | 9.3344 | 0.9207 | 0.0986 | 0.999969 | 1 | -15.33 | 0.13 |
+| cadu/1 | 9.8569 | 0.3068 | 0.0311 | 0.999969 | 2 | -17.97 | -0.00 |
+| jeff/1 | 9.9614 | 0.4259 | 0.0428 | 0.999969 | 0 | -20.30 | 0.00 |
+| Maria/2 | 16.4144 | não medido | não medido | 0.574707 | 0 | -23.99 | -4.81 |
+| faber/2 | 10.4490 | 0.3553 | 0.0340 | 0.999969 | 2 | -14.82 | 0.07 |
+| cadu/2 | 11.0527 | 0.3263 | 0.0295 | 0.999969 | 3 | -18.80 | 0.08 |
+| jeff/2 | 10.2632 | 0.3628 | 0.0354 | 0.999969 | 1 | -19.61 | 0.03 |
+| Maria/3 | 16.6272 | não medido | não medido | 0.499847 | 0 | -24.40 | -6.00 |
+| faber/3 | 10.1587 | 0.3442 | 0.0339 | 0.999969 | 3 | -15.51 | 0.08 |
+| cadu/3 | 11.0295 | 0.4325 | 0.0392 | 0.999969 | 3 | -17.87 | 0.01 |
+| jeff/3 | 10.1123 | 0.2761 | 0.0273 | 0.999969 | 1 | -18.80 | 0.08 |
+
+SHA-256 dos WAVs originais (o manifesto de QC também registra tamanho, formato, RMS, fração de clipping e intervalos de silêncio):
+
+| Voz/seção | SHA-256 WAV |
+|---|---|
+| Maria/1 | `a242cb549dbb7f35a2643c94c1d7be59225bc33aba513754da3af2fec5a3bd1b` |
+| faber/1 | `ac3b2b0acf4ae637b346d828c7ed45808fca3a254c88b5d9e336ec3d66327dbd` |
+| cadu/1 | `a1eb238e79de20ce408d985f554111a00d056a25a40b9b192080edea9200fae6` |
+| jeff/1 | `0956bc90bd582dbac67a5b089c60afab5c7f4572ea4a95143651dce8e65bb6a6` |
+| Maria/2 | `5d0361f1049795aa78ebb84c8630577ffa6f7ad6172b9e1b67b0941aa81be023` |
+| faber/2 | `c41904cbadbccba6af09159bf41856b615b58d2db090a3008e62e957171f6a2a` |
+| cadu/2 | `22f4057b7848d075eb8fef3e4f8f3884512f567f18516b37fd614b8581618ab8` |
+| jeff/2 | `0396442f2b02d15b16bc627230a416b12caccbb8956f325b5f42b1eed87fc700` |
+| Maria/3 | `70176a894ce4fd841a25ef1d985fae982ddac135ba5e625b1e881cadc9038c42` |
+| faber/3 | `958b039d99da64b7b65f81c3d45114b534b8c9a6c7878ef631209b26cc520523` |
+| cadu/3 | `4a070928bc217ea2c60042155c460ff470256de3ead4bd280b25ddfb6fcc6442` |
+| jeff/3 | `3da615395c8ff7618766678b75bafdbfe49ca012eb18ab91e6585d018a0caea8` |
+
+Maria totaliza 47,9129 s; Piper, cerca de 30–32 s para o mesmo texto. Essa diferença mede duração/ritmo nesta configuração; não demonstra maior naturalidade, inteligibilidade ou qualidade. Nenhuma dessas propriedades foi julgada automaticamente.
+
+### Rede e limite da evidência offline
+
+Todos os downloads ocorreram antes da síntese. O processo definiu `HF_HUB_OFFLINE=1`, removeu variáveis de proxy e instalou, antes de importar Piper, uma guarda que registra e recusa `socket.socket.connect`, `connect_ex` e `getaddrinfo`. Resultado observado: **zero tentativas** nas nove sínteses e na verificação adicional de fonemização. Não houve alteração de firewall nem uso de administrador. **É guarda em processo Python, não bloqueio/auditoria de rede do SO ou de chamadas nativas do ONNX/espeak.** Não foi feita captura ETW/NetLog. Portanto, o comportamento com recursos locais foi validado dentro desse escopo; ausência absoluta de tráfego nativo não foi comprovada.
+
+### Alinhamentos e reconstrução de palavras
+
+O pacote `onnx==1.23.2` permitiu o patch em memória. Todos os chunks das nove sínteses retornaram `phoneme_id_samples` e `phoneme_alignments`. A soma por ID e por fonema coincide exatamente com as amostras do WAV, sem tolerância necessária:
+
+| Voz | Seção 1: WAV = alinhamento (amostras) | Seção 2 | Seção 3 |
+|---|---:|---:|---:|
+| faber | 205824 | 230400 | 224000 |
+| cadu | 217344 | 243712 | 243200 |
+| jeff | 219648 | 226304 | 222976 |
+
+Os espaços nos fonemas produziram 24, 25 e 28 grupos nas três seções, igual à quantidade de tokens do roteiro, para todas as vozes. Isso permite uma associação posicional candidata neste texto, mas não comprova identidade lexical: a API não retorna palavras ortográficas, e copiar os tokens por índice seria assumir a reconstrução. Uma prova adicional comparou cada grupo em contexto com a fonemização independente do token do roteiro, ignorando pontuação e marcas de acento: houve correspondência em **16/24, 17/25 e 23/28**, respectivamente. Exemplos de divergência contextual: “Jardim”, “moradores”, “um”; elas não são, por si, erros de pronúncia. Os pares completos estão em `word-mapping-probe.json`.
+
+**Conclusão técnica:** a soma temporal por fonema passou; a reconstrução lexical não foi validada. Este incremento não fornece evidência suficiente para `source=tts_engine_events` por palavra. Tratar a saída como `derived_phoneme_durations`, com mapeamento lexical e verificação independente ainda necessários; não foi implementado contrato nem alinhador forçado.
+
+### Material de escuta e verificações
+
+- Pasta local: `C:\00. Projetos\01. HORUS\relatorios\PILOTO-LOCAL-2026-11-13\escuta-piper\`. `audios/` contém 12 WAVs (três trechos × quatro vozes), nomes com códigos aleatórios criptográficos; o README contém o protocolo. Mapa e hashes ficam separados em `CHAVE-RESERVADA-NAO-ABRIR.json`; o usuário deve abrir somente `audios/` até registrar as notas.
+- Todos os arquivos de escuta foram reamostrados para PCM 16 bits mono/48 kHz, sem metadados de voz. Duas passagens `loudnorm`, seguidas de atenuação para o mesmo loudness medido de **−17 LUFS-I (±0,03 LU)**; true peak **≤ −1 dBTP** e **zero amostras clipadas**, verificados novamente pelos analisadores existentes. Originais preservados; duração/pausas naturais não foram comprimidas. Cegagem não elimina pistas perceptivas da voz ou duração.
+- Limitação do protocolo: só há três seções, sem números/datas/siglas, com Piper em 9–11 s e Maria em 15–17 s. Não existem cinco trechos das categorias de §4, nem 60 s contínuos por voz. O README apresenta isso como triagem; o aceite em 4/5 trechos e fadiga contínua continuam pendentes.
+- Regressão: `& backend/.venv/Scripts/python.exe -m pytest backend/tests/test_pilot_quality.py backend/tests/test_av_quality.py -q` → **95 passed, 1 skipped** (symlink indisponível sem privilégio). Nenhum teste removido/alterado; sem testes de rede ou inferência externa.
+- Verificação externa final: `& backend/.venv/Scripts/python.exe <piper-proof>/equalize_verify.py` → 12 WAVs com LUFS/pico/clipping nos limites acima. `synthesize.py` e `word_mapping_probe.py` rodaram somente no novo venv do Piper; o QC usou o venv preexistente do backend apenas para importar os analisadores, sem Piper e sem instalar dependências nele.
+- Evidências completas e scripts fora do repo: `escuta-piper/evidencias-reservadas/` (`synthesis.json`, `quality.json`, `word-mapping-probe.json`, manifesto de artefatos, requisitos com hashes, CPU e cards). Esses arquivos revelam a chave: reservar ao avaliador até o fim da escuta.
+
+**Pendente:** escuta humana, extensão para o protocolo completo, mapeamento lexical robusto/validação independente, avaliação jurídica do motor/distribuição e direitos de personalidade. Não se decidiu adoção, integração, publicação ou substituição da Maria.
 
 ## Fontes (acessadas em 13/11/2026)
 
