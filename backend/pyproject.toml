@@ -3,7 +3,11 @@ name = "horus-backend"
 version = "0.1.0"
 description = "API local e execução técnica de tarefas do Hórus"
 requires-python = ">=3.12,<3.13"
-dependencies = ["fastapi>=0.115,<1", "uvicorn>=0.34,<1"]
+dependencies = [
+    "fastapi>=0.115,<1",
+    "keyring>=25,<26",
+    "uvicorn>=0.34,<1",
+]
 
 [project.optional-dependencies]
 test = ["pytest>=8,<10", "httpx>=0.28,<1"]

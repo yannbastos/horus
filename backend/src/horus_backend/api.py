@@ -20,6 +20,7 @@ from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+from .narration.service import NarrationService, narration_router
 from .config import Settings
 from .diagnostics import diagnose
 from .dependencies import transcription_capabilities
@@ -59,6 +60,7 @@ def create_app(settings: Settings, shutdown=None, ready=None):
     hermes = HermesConnector(settings)
     scripts = ScriptService(store)
     license_reviews = LicenseReviewService(store, settings.data_dir)
+    narration = NarrationService(settings, store)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -68,18 +70,21 @@ def create_app(settings: Settings, shutdown=None, ready=None):
         try:
             yield
         finally:
+            narration.close()
             await manager.close()
 
     app = FastAPI(title="Hórus local", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
+    app.include_router(narration_router(narration))
+    app.state.narration = narration
     app.state.radar = radar_state
     app.state.store, app.state.manager = store, manager
-    app.add_middleware(CORSMiddleware, allow_origins=list(settings.origins), allow_methods=["GET", "POST"],
+    app.add_middleware(CORSMiddleware, allow_origins=list(settings.origins), allow_methods=["GET", "POST", "PUT", "DELETE"],
                        allow_headers=["Authorization", "Content-Type", "Idempotency-Key"])
 
     @app.exception_handler(RequestValidationError)
     async def invalid_payload(request: Request, error: RequestValidationError):
         # Pydantic inclui input_value: roteiro/feedback privados não devem voltar no erro.
-        if request.url.path.startswith(("/v1/scripts/", "/v1/productions/")) or request.url.path.endswith("/scripts"):
+        if request.url.path.startswith(("/v1/scripts/", "/v1/productions/", "/v1/narration/")) or request.url.path.endswith("/scripts"):
             return JSONResponse({"detail": "Pedido de roteiro inválido."}, status_code=422)
         return await request_validation_exception_handler(request, error)
 
