@@ -773,4 +773,102 @@ test.describe('M3 — Roteiro Estruturado Simulado e Revisão Humana (HOR-050)',
     await listAside.getByRole('button', { name: new RegExp(WORKFLOW_ID.slice(0, 12)) }).click();
     await expect(scriptRegion.getByRole('region', { name: 'Documento do roteiro versão 1' })).toBeVisible();
   });
+
+  test('Retenção M2/M3: request_changes recusado com 409 após redação do Radar preserva visualização/histórico e permite approve', async ({
+    page,
+  }) => {
+    const currentWf = createWorkflowFixture();
+    let scriptRecord = createScriptRecordFixture(1, 'awaiting_review', null);
+
+    await page.route('http://127.0.0.1:8765/**', async route => {
+      const request = route.request();
+      const pathUrl = new URL(request.url()).pathname;
+      if (request.method() === 'OPTIONS') {
+        await route.fulfill({ status: 204, headers: corsHeaders });
+        return;
+      }
+      if (pathUrl === '/health') {
+        await route.fulfill({ status: 200, headers: corsHeaders, json: { status: 'ready' } });
+        return;
+      }
+      if (pathUrl === '/v1/hermes') {
+        await route.fulfill({
+          status: 200,
+          headers: corsHeaders,
+          json: { state: 'ready', connected: true, cli_available: true, configured: true, features: [] },
+        });
+        return;
+      }
+      if (pathUrl === '/v1/jobs') {
+        await route.fulfill({ status: 200, headers: corsHeaders, json: [] });
+        return;
+      }
+      if (pathUrl === '/v1/workflows') {
+        await route.fulfill({ status: 200, headers: corsHeaders, json: [currentWf] });
+        return;
+      }
+      if (pathUrl === `/v1/workflows/${WORKFLOW_ID}`) {
+        await route.fulfill({ status: 200, headers: corsHeaders, json: currentWf });
+        return;
+      }
+      if (pathUrl === `/v1/workflows/${WORKFLOW_ID}/scripts` && request.method() === 'GET') {
+        await route.fulfill({ status: 200, headers: corsHeaders, json: { items: [scriptRecord] } });
+        return;
+      }
+      if (pathUrl === `/v1/scripts/${SCRIPT_V1_ID}/review` && request.method() === 'POST') {
+        const body = request.postDataJSON();
+        if (body.decision === 'request_changes') {
+          await route.fulfill({
+            status: 409,
+            headers: corsHeaders,
+            json: {
+              detail:
+                'Snapshot do Radar já redigido: novas revisões com alterações não são permitidas; aprove ou rejeite a versão atual.',
+            },
+          });
+          return;
+        }
+        scriptRecord = {
+          ...scriptRecord,
+          status: body.decision === 'approve' ? 'approved' : 'rejected',
+          review: {
+            decision: body.decision,
+            feedback: body.feedback ?? '',
+            reviewed_at: '2026-11-12T10:30:00Z',
+          },
+        };
+        await route.fulfill({ status: 200, headers: corsHeaders, json: scriptRecord });
+        return;
+      }
+      await route.fulfill({ status: 404, headers: corsHeaders, json: { detail: 'Não encontrado' } });
+    });
+
+    await connectSession(page);
+    await page.getByRole('button', { name: 'Produção', exact: true }).click();
+
+    const scriptRegion = page.getByRole('region', { name: 'Roteiro e revisão humana' });
+    const docV1Region = scriptRegion.getByRole('region', { name: 'Documento do roteiro versão 1' });
+    const reviewBox = scriptRegion.getByRole('region', { name: 'Revisão humana do roteiro' });
+
+    await expect(docV1Region).toBeVisible();
+    await reviewBox.getByLabel('Feedback do roteiro').fill('Tentar pedir nova revisão após redação do Radar.');
+    await reviewBox.getByRole('button', { name: 'Solicitar alterações no roteiro', exact: true }).click();
+
+    // 1. 409 error is shown explicitly without claiming changes were saved
+    await expect(scriptRegion.getByRole('alert')).toContainText(
+      'Conflito de revisão ou estado (409): Snapshot do Radar já redigido'
+    );
+    await expect(scriptRegion.getByText('ALTERAÇÕES SOLICITADAS NA VERSÃO 1')).toHaveCount(0);
+
+    // 2. Visualization, history, and typed feedback are preserved
+    await expect(docV1Region.getByRole('heading', { name: 'Roteiro Editorial v1: Automação Local com Supervisão' })).toBeVisible();
+    await expect(reviewBox.getByLabel('Feedback do roteiro')).toHaveValue(
+      'Tentar pedir nova revisão após redação do Radar.'
+    );
+
+    // 3. Approving the existing version still succeeds
+    await reviewBox.getByRole('button', { name: 'Aprovar roteiro', exact: true }).click();
+    await expect(scriptRegion.getByRole('region', { name: 'Revisão humana do roteiro' })).toHaveCount(0);
+    await expect(docV1Region.getByText('Aprovado').first()).toBeVisible();
+  });
 });
