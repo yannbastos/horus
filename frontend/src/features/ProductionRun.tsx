@@ -219,6 +219,8 @@ export default function ProductionRun({
   const previewControllerRef = useRef<AbortController | null>(null);
   const activeBlobUrlRef = useRef<string | null>(null);
   const logsRef = useRef<HTMLPreElement>(null);
+  const previewPanelRef = useRef<HTMLDivElement>(null);
+  const revealPreviewRef = useRef(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const pendingSeekSecondsRef = useRef<number | null>(null);
 
@@ -567,6 +569,16 @@ export default function ProductionRun({
     pilotEvidenceReloadCount,
   ]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // J-11: depois de pedir uma prévia, leva a vista até ela (e o foco, sem nova rolagem).
+  useEffect(() => {
+    if (!previewTarget || !revealPreviewRef.current) return;
+    revealPreviewRef.current = false;
+    const panel = previewPanelRef.current;
+    if (!panel) return;
+    panel.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
+    panel.focus({ preventScroll: true });
+  }, [previewTarget]);
+
   // Auto-scroll job logs
   useEffect(() => {
     if (logsRef.current) {
@@ -790,6 +802,7 @@ export default function ProductionRun({
 
   async function handlePreviewArtifact(artifact: ProductionArtifact) {
     if (!connection || !activeProduction) return;
+    revealPreviewRef.current = true;
     previewControllerRef.current?.abort();
     const controller = new AbortController();
     previewControllerRef.current = controller;
@@ -1782,6 +1795,8 @@ export default function ProductionRun({
 
             {previewTarget && (
               <div
+                ref={previewPanelRef}
+                tabIndex={-1}
                 className="card"
                 role="region"
                 aria-label={`Prévia do artefato ${previewTarget.artifact.relative_path}`}
