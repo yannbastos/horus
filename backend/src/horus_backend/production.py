@@ -246,6 +246,8 @@ class ProductionService:
             # Ambiente mínimo: nenhum token, .env, perfil ou credencial de operador.
             env = {k: v for k, v in os.environ.items() if k.upper() in {"PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "COMSPEC", "PATHEXT"}}
             env.update(PYTHONUTF8="1", PYTHONUNBUFFERED="1")
+            if row["mode"] == "local_pilot" and self.settings.alignment_model:
+                env["HORUS_ALIGNMENT_MODEL"] = str(self.settings.alignment_model.resolve())
             manager.active_process = await OwnedProcess.start(command, env=env, cwd=root)
             process = manager.active_process.process
             if self.store.get_job(job_id)["status"] == "cancel_requested":
@@ -255,7 +257,7 @@ class ProductionService:
                     try:
                         event = json.loads(raw)
                         stage = event.get("stage")
-                        if stage in {"prepare", "narration", "scenes", "subtitles", "render", "quality", "review"}:
+                        if stage in {"prepare", "narration", "scenes", "align", "subtitles", "render", "quality", "review"}:
                             current = self.store.get_job(job_id)
                             self.store.update(job_id, current["status"], result={"stage": stage})
                             await manager.emit(job_id, "stage", stage)

@@ -191,7 +191,7 @@ def main():
     if plan['mode'] == 'local_pilot':
         from horus_backend.local_pilot import prepare
         try:
-            artifacts.extend(prepare(root, folder, plan))
+            artifacts.extend(prepare(root, folder, plan, alignment_model=os.environ.get("HORUS_ALIGNMENT_MODEL"), progress=stage))
         except ValueError as error:
             write_json(root / 'result.json', {'blocked': True, 'error': 'Piloto local bloqueado: ' + str(error), 'artifacts': artifacts})
             return

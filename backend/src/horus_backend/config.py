@@ -93,6 +93,9 @@ class Settings:
     token: str
     data_dir: Path = field(default_factory=default_data_dir)
     factory_root: Path | None = field(default_factory=discover_factory)
+    # Pasta de modelos preparada pelo operador; nunca baixar durante produção.
+    alignment_model: Path | None = field(default_factory=lambda: (
+        Path(os.environ["HORUS_ALIGNMENT_MODEL"]).expanduser() if os.environ.get("HORUS_ALIGNMENT_MODEL") else None))
     # Apenas configuração do operador/testes. Nunca aceitar executável vindo da API.
     factory_command: tuple[str, ...] | None = None
     # Somente testes substituem o subprocesso de transcrição/download.

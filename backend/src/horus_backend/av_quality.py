@@ -153,10 +153,13 @@ def _load(ctx: _Context) -> None:
         ctx.evidence_error = "pilot-evidence.json ausente ou ilegível"
         ctx.evidence = None
         return
-    verdict = validate_pilot_evidence(ctx.evidence)
+    verdict = validate_pilot_evidence(ctx.evidence, word_timings=ctx.read_json("word-timings.json"))
     if verdict["blocking_errors"]:
         ctx.evidence_error = "manifesto inválido: " + "; ".join(verdict["blocking_errors"][:3])
-        return
+        # Uma falha temporal das cues não invalida os hashes/caminhos estruturais:
+        # mantenha a falha no relatório e meça a causa contra o áudio real.
+        if any(not error.startswith('subtitles_timing:') for error in verdict['blocking_errors']):
+            return
     narration_sha = ctx.evidence["narration"]["sha256"]
     for asset in ctx.evidence["assets"]:
         path, reason = _confined(ctx.root, asset["relative_path"])
@@ -340,7 +343,16 @@ def _check_sync(ctx: _Context, stats: dict | None, srt: Path | None) -> list[dic
         checks.append(_skip("subtitles_vs_sections", "subtitles", reason if not cues else "manifesto indisponível"))
         checks.append(_skip("script_coverage", "subtitles", reason if not cues else "manifesto indisponível"))
     else:
-        checks.append(_cues_vs_sections(cues, ctx.evidence["scenes"]))
+        if ctx.evidence.get('alignment_method') == 'forced_alignment':
+            from .pilot_quality import caption_holds
+            raw_words = ctx.read_json('word-timings.json')
+            hold = caption_holds(cues, raw_words.get('words', []) if isinstance(raw_words, dict) else [],
+                                 ctx.evidence['video']['duration_seconds'], ctx.evidence['scenes'])
+            checks.append(_check('subtitles_vs_sections', 'subtitles', 'fail' if hold['errors'] else 'pass',
+                'measured', '; '.join(hold['errors'][:4]) or 'Contenção por palavras com manutenção visual declarada.',
+                {'source':'srt_vs_measured_words+factory_caption_hold', **hold}))
+        else:
+            checks.append(_cues_vs_sections(cues, ctx.evidence["scenes"]))
         checks.append(_coverage(cues, script_tokens))
     checks.extend(_word_checks(ctx, stats, cues, script_tokens))
     return checks

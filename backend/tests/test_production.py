@@ -134,7 +134,7 @@ def test_approval_snapshot_hash_is_required(settings):
 
 
 @pytest.mark.parametrize('mode', ['simulated','local_pilot'])
-@pytest.mark.parametrize('stage', ['render','quality'])
+@pytest.mark.parametrize('stage', ['align','render','quality'])
 def test_running_cancel_owns_tree_and_sanitizes_logs(settings, tmp_path, monkeypatch, mode, stage):
     import sys
     from horus_backend.processes import OwnedProcess
