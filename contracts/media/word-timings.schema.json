@@ -1,0 +1,136 @@
+{
+  "$defs": {
+    "WordEngine": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "voice": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Voice",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "voice"
+      ],
+      "title": "WordEngine",
+      "type": "object"
+    },
+    "WordTiming": {
+      "additionalProperties": false,
+      "properties": {
+        "char_length": {
+          "maximum": 200,
+          "minimum": 1,
+          "title": "Char Length",
+          "type": "integer"
+        },
+        "char_offset": {
+          "maximum": 10000000,
+          "minimum": 0,
+          "title": "Char Offset",
+          "type": "integer"
+        },
+        "end": {
+          "maximum": 86400.0,
+          "minimum": 0,
+          "title": "End",
+          "type": "number"
+        },
+        "index": {
+          "exclusiveMaximum": 20000,
+          "minimum": 0,
+          "title": "Index",
+          "type": "integer"
+        },
+        "section": {
+          "maximum": 1000,
+          "minimum": 1,
+          "title": "Section",
+          "type": "integer"
+        },
+        "start": {
+          "maximum": 86400.0,
+          "minimum": 0,
+          "title": "Start",
+          "type": "number"
+        },
+        "text": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "index",
+        "text",
+        "section",
+        "start",
+        "end",
+        "char_offset",
+        "char_length"
+      ],
+      "title": "WordTiming",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "duration_seconds": {
+      "exclusiveMinimum": 0,
+      "maximum": 86400.0,
+      "title": "Duration Seconds",
+      "type": "number"
+    },
+    "engine": {
+      "$ref": "#/$defs/WordEngine"
+    },
+    "narration_sha256": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Narration Sha256",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "source": {
+      "enum": [
+        "tts_engine_events",
+        "forced_alignment",
+        "estimated"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "words": {
+      "items": {
+        "$ref": "#/$defs/WordTiming"
+      },
+      "maxItems": 20000,
+      "minItems": 1,
+      "title": "Words",
+      "type": "array"
+    }
+  },
+  "required": [
+    "narration_sha256",
+    "duration_seconds",
+    "source",
+    "engine",
+    "words"
+  ],
+  "title": "WordTimings",
+  "type": "object"
+}
