@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .script_contract import validate_script
 from .storage import now
-from .workflows import WorkflowConflict, WorkflowService, digest, encode, radar_redacted
+from .workflows import RADAR_REDACTED, WorkflowConflict, WorkflowService, digest, encode, radar_redacted
 
 
 class ScriptRequest(BaseModel):
@@ -148,6 +148,10 @@ class ScriptService:
             replay = self._replay(db, scope, key, encoded)
             if replay is not None:
                 return replay
+            if request.decision == "request_changes":
+                workflow = WorkflowService._require(db, row["workflow_id"])
+                if radar_redacted(json.loads(workflow["payload"])):
+                    raise WorkflowConflict(RADAR_REDACTED)
             latest = db.execute("SELECT MAX(version) FROM scripts WHERE workflow_id=?", (row["workflow_id"],)).fetchone()[0]
             if row["status"] != "awaiting_review" or row["version"] != request.expected_version or row["version"] != latest:
                 raise WorkflowConflict("Versão obsoleta ou roteiro fora da revisão humana.")
