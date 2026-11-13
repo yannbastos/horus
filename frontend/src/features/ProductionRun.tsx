@@ -9,16 +9,21 @@ import type {
   ProductionRecord,
   ProductionReviewDecision,
   ProductionStage,
+  SrtSegment,
 } from '../services/production';
 import {
   cancelProductionJob,
   createScriptProduction,
+  deriveProductionProvenance,
   fetchProductionArtifactBlob,
   formatProductionError,
   getProduction,
   getScriptProductions,
+  parsePilotEvidencePayload,
+  parseSrtSegments,
   reviewProduction,
   sortProductionsDesc,
+  summarizeJsonArtifact,
 } from '../services/production';
 
 const PRODUCTION_STAGES: ProductionStage[] = [
@@ -64,6 +69,7 @@ const STATUS_TONE: Record<JobStatus, string> = {
 const MODE_LABELS: Record<ProductionMode, string> = {
   simulated: 'SIMULADO (FIXTURE)',
   local_demo: 'DEMO LOCAL (FÁBRICA OFFLINE)',
+  local_pilot: 'PILOTO LOCAL COM NARRAÇÃO',
 };
 
 const ARTIFACT_KIND_LABELS: Record<ProductionArtifactKind, string> = {
@@ -97,18 +103,6 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
-function describeRealVoiceFlag(value: boolean | undefined): string {
-  if (value === false) return 'Sem voz real (tom de fixture: fixture_tone)';
-  if (value === true) return 'Não verificado para publicação (demonstrativo)';
-  return 'Não verificado (ausente; nunca inferir voz real)';
-}
-
-function describeSpeechAlignedFlag(value: boolean | undefined): string {
-  if (value === false) return 'Sem alinhamento de fala (SRT sintético: synthetic_srt)';
-  if (value === true) return 'Não verificado para publicação (demonstrativo)';
-  return 'Não verificado (ausente; nunca inferir alinhamento real)';
-}
-
 function describeDemoOnlyFlag(value: boolean | undefined): string {
   if (value === true) return 'Somente demonstração / teste (publishable: false)';
   return 'Não verificado para publicação (demo / teste)';
@@ -132,6 +126,11 @@ export default function ProductionRun({
   const [trackingError, setTrackingError] = useState('');
   const [reconciled, setReconciled] = useState(false);
 
+  // Pilot evidence manifest state (loaded from generic manifest artifact pilot-evidence.json when present)
+  const [pilotEvidenceData, setPilotEvidenceData] = useState<Record<string, unknown> | null>(null);
+  const [pilotEvidenceError, setPilotEvidenceError] = useState('');
+  const [pilotEvidenceReloadCount, setPilotEvidenceReloadCount] = useState(0);
+
   // Preview state (authenticated blob URL or text content)
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState('');
@@ -140,6 +139,8 @@ export default function ProductionRun({
     kind: 'video' | 'audio' | 'image' | 'text';
     blobUrl?: string;
     text?: string;
+    srtSegments?: SrtSegment[];
+    jsonSummary?: Array<{ label: string; value: string }>;
   } | null>(null);
 
   const inFlightRef = useRef(false);
@@ -215,6 +216,8 @@ export default function ProductionRun({
     setError('');
     setJobEvents([]);
     setJobError('');
+    setPilotEvidenceData(null);
+    setPilotEvidenceError('');
     idempotencyCacheRef.current = null;
   }, [latestScript?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -266,7 +269,61 @@ export default function ProductionRun({
     clearPreview();
     setTrackingError('');
     setReconciled(false);
+    setPilotEvidenceData(null);
+    setPilotEvidenceError('');
   }, [activeProduction?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const pilotEvidenceArtifact =
+    activeProduction?.artifacts.find(
+      a =>
+        a.kind === 'manifest' &&
+        (a.relative_path === 'pilot-evidence.json' ||
+          a.relative_path.endsWith('/pilot-evidence.json'))
+    ) ?? null;
+
+  // Automatically fetch pilot-evidence.json when registered in activeProduction.artifacts
+  useEffect(() => {
+    const conn = connection;
+    const prod = activeProduction;
+    const artifact = pilotEvidenceArtifact;
+    if (!conn || !prod || !artifact) {
+      return;
+    }
+
+    let active = true;
+    const controller = new AbortController();
+    const targetScriptId = prod.script_id;
+    const targetProductionId = prod.id;
+
+    void fetchProductionArtifactBlob(conn, targetProductionId, artifact.id, controller.signal)
+      .then(async ({ blob }) => {
+        const rawText = await blob.text();
+        if (!active || controller.signal.aborted || mountedScriptIdRef.current !== targetScriptId) {
+          return;
+        }
+        const parsed = parsePilotEvidencePayload(rawText);
+        setPilotEvidenceData(parsed);
+        setPilotEvidenceError('');
+      })
+      .catch(reason => {
+        if (!active || controller.signal.aborted || mountedScriptIdRef.current !== targetScriptId) {
+          return;
+        }
+        setPilotEvidenceError(formatProductionError(reason));
+      });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [
+    connection,
+    activeProduction?.id,
+    activeProduction?.script_id,
+    pilotEvidenceArtifact?.id,
+    pilotEvidenceArtifact?.sha256,
+    pilotEvidenceReloadCount,
+  ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-scroll job logs
   useEffect(() => {
@@ -349,7 +406,9 @@ export default function ProductionRun({
     Boolean(latestScript) &&
     isLatestScriptApproved &&
     !hasActiveRun &&
-    (!activeProduction || !['failed', 'interrupted', 'blocked', 'cancelled'].includes(activeProduction.status) || reconciled) &&
+    (!activeProduction ||
+      !['failed', 'interrupted', 'blocked', 'cancelled'].includes(activeProduction.status) ||
+      reconciled) &&
     !loading &&
     !submitting;
 
@@ -511,7 +570,10 @@ export default function ProductionRun({
         const blobUrl = URL.createObjectURL(blob);
         activeBlobUrlRef.current = blobUrl;
         setPreviewTarget({ artifact, kind: 'audio', blobUrl });
-      } else if (artifact.kind === 'scene' && artifact.relative_path.toLowerCase().endsWith('.png')) {
+      } else if (
+        artifact.kind === 'scene' &&
+        artifact.relative_path.toLowerCase().endsWith('.png')
+      ) {
         const blobUrl = URL.createObjectURL(blob);
         activeBlobUrlRef.current = blobUrl;
         setPreviewTarget({ artifact, kind: 'image', blobUrl });
@@ -519,14 +581,41 @@ export default function ProductionRun({
         const rawText = await blob.text();
         if (controller.signal.aborted || mountedScriptIdRef.current !== targetScriptId) return;
         let formattedText = rawText;
+        let jsonSummary: Array<{ label: string; value: string }> | undefined;
+        let srtSegments: SrtSegment[] | undefined;
+
         if (artifact.relative_path.endsWith('.json')) {
           try {
-            formattedText = JSON.stringify(JSON.parse(rawText), null, 2);
+            const parsed: unknown = JSON.parse(rawText);
+            formattedText = JSON.stringify(parsed, null, 2);
+            if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+              const recordData = parsed as Record<string, unknown>;
+              jsonSummary = summarizeJsonArtifact(artifact.relative_path, recordData);
+              if (
+                artifact.relative_path === 'pilot-evidence.json' ||
+                artifact.relative_path.endsWith('/pilot-evidence.json')
+              ) {
+                setPilotEvidenceData(recordData);
+                setPilotEvidenceError('');
+              }
+            }
           } catch {
             formattedText = rawText;
           }
+        } else if (
+          artifact.kind === 'subtitles' ||
+          artifact.relative_path.toLowerCase().endsWith('.srt')
+        ) {
+          srtSegments = parseSrtSegments(rawText);
         }
-        setPreviewTarget({ artifact, kind: 'text', text: formattedText });
+
+        setPreviewTarget({
+          artifact,
+          kind: 'text',
+          text: formattedText,
+          srtSegments,
+          jsonSummary,
+        });
       }
     } catch (reason) {
       if (controller.signal.aborted || mountedScriptIdRef.current !== targetScriptId) return;
@@ -538,7 +627,10 @@ export default function ProductionRun({
     }
   }
 
-  async function handleReviewProduction(decision: ProductionReviewDecision, videoArtifact: ProductionArtifact) {
+  async function handleReviewProduction(
+    decision: ProductionReviewDecision,
+    videoArtifact: ProductionArtifact
+  ) {
     if (!connection || !activeProduction || inFlightRef.current || submitting) return;
 
     const targetScriptId = activeProduction.script_id;
@@ -577,7 +669,19 @@ export default function ProductionRun({
     }
   }
 
+  const provenance = activeProduction
+    ? deriveProductionProvenance(activeProduction, pilotEvidenceData)
+    : null;
+
   const videoArtifact = activeProduction?.artifacts.find(a => a.kind === 'video') ?? null;
+  const subtitlesArtifact = activeProduction?.artifacts.find(a => a.kind === 'subtitles') ?? null;
+  const audioArtifact = activeProduction?.artifacts.find(a => a.kind === 'audio') ?? null;
+  const planArtifact = activeProduction?.artifacts.find(a => a.kind === 'plan') ?? null;
+  const validationArtifact =
+    activeProduction?.artifacts.find(
+      a => a.kind === 'manifest' && a.relative_path.endsWith('validation.json')
+    ) ?? null;
+
   const isTerminal = activeProduction ? terminalStatuses.includes(activeProduction.status) : false;
   const canCancelJob =
     activeProduction &&
@@ -592,7 +696,7 @@ export default function ProductionRun({
   const canReviewFinal =
     Boolean(activeProduction) &&
     activeProduction?.status === 'succeeded' &&
-    activeProduction?.mode === 'local_demo' &&
+    activeProduction?.mode !== 'simulated' &&
     Boolean(videoArtifact?.sha256) &&
     activeProduction?.review === null;
 
@@ -610,7 +714,7 @@ export default function ProductionRun({
         <div className="row">
           {(isLatestScriptApproved || activeProduction !== null) && (
             <span className={`tag ${mode === 'simulated' ? 'simulated' : 'demo'}`}>
-              {MODE_LABELS[mode]}
+              {MODE_LABELS[mode] || mode}
             </span>
           )}
           {activeProduction && (
@@ -663,7 +767,11 @@ export default function ProductionRun({
                 Roteiro ID: <strong>{latestScript.id}</strong> · Versão: <strong>v{latestScript.version}</strong>
               </small>
             </div>
-            <span className="tag demo">TESTE / DEMO · SEM VOZ REAL</span>
+            <span className="tag demo">
+              {mode === 'local_pilot'
+                ? 'PILOTO LOCAL · TTS SINTÉTICO (SEM VOZ HUMANA/CLONE)'
+                : 'TESTE / DEMO · SEM VOZ REAL'}
+            </span>
           </div>
 
           <div className="form-row" style={{ alignItems: 'end' }}>
@@ -677,6 +785,9 @@ export default function ProductionRun({
               >
                 <option value="simulated">Simulado (gera plano e fixtures locais sem vídeo)</option>
                 <option value="local_demo">Demo local (fábrica offline, exige dependências instaladas)</option>
+                <option value="local_pilot">
+                  Piloto local com narração (TTS local sintético offline, sujeito a dependências)
+                </option>
               </select>
             </label>
             <div className="actions">
@@ -690,7 +801,9 @@ export default function ProductionRun({
                   ? 'Processando…'
                   : mode === 'simulated'
                   ? 'Iniciar produção simulada'
-                  : 'Iniciar demo local'}
+                  : mode === 'local_demo'
+                  ? 'Iniciar demo local'
+                  : 'Iniciar piloto local com narração'}
               </button>
               <button
                 className="button"
@@ -716,7 +829,9 @@ export default function ProductionRun({
           <small className="muted">
             {mode === 'simulated'
               ? 'Modo Simulado: gera plano de produção, cenas PNG, WAV de tom e SRT sintético sem renderizar vídeo MP4. Nunca apresentado como render real.'
-              : 'Modo Demo local: aciona a fábrica offline em diretório isolado (teste: true, áudio de tom local sem voz real). Se dependências locais (FFmpeg/Remotion/browser) estiverem ausentes, o job fica Bloqueado sem falso vídeo.'}
+              : mode === 'local_demo'
+              ? 'Modo Demo local: aciona a fábrica offline em diretório isolado (teste: true, áudio de tom local sem voz real). Se dependências locais (FFmpeg/Remotion/browser) estiverem ausentes, o job fica Bloqueado sem falso vídeo.'
+              : 'Modo Piloto local com narração: solicita síntese de voz local (TTS sintético offline; não é voz humana nem clone), cenas demonstrativas, legenda segmentada e renderização local sem provedores externos. Não promete ferramenta instalada: se motor de voz/render faltar ou o backend não suportar o modo, o bloqueio ou erro real do backend é exibido.'}
           </small>
         </div>
       )}
@@ -727,7 +842,7 @@ export default function ProductionRun({
         </p>
       )}
 
-      {activeProduction && (
+      {activeProduction && provenance && (
         <div
           className="card sunken"
           role="region"
@@ -742,8 +857,10 @@ export default function ProductionRun({
               <h3>Produção {activeProduction.id}</h3>
             </div>
             <div className="row">
-              <span className={`tag ${activeProduction.mode === 'simulated' ? 'simulated' : 'demo'}`}>
-                {MODE_LABELS[activeProduction.mode]}
+              <span
+                className={`tag ${activeProduction.mode === 'simulated' ? 'simulated' : 'demo'}`}
+              >
+                {MODE_LABELS[activeProduction.mode] || activeProduction.mode}
               </span>
               <span className={`tag ${STATUS_TONE[activeProduction.status] || ''}`}>
                 {STATUS_LABELS[activeProduction.status] || activeProduction.status}
@@ -786,17 +903,81 @@ export default function ProductionRun({
             <div className="info-grid" style={{ marginTop: '4px' }}>
               <div className="info-block">
                 <span className="eyebrow">ESCOPO (demo_only)</span>
-                <small>{describeDemoOnlyFlag(activeProduction.demo_only)}</small>
+                <small>{describeDemoOnlyFlag(provenance.demoOnly)}</small>
               </div>
               <div className="info-block">
                 <span className="eyebrow">NARRAÇÃO (real_voice)</span>
-                <small>{describeRealVoiceFlag(activeProduction.real_voice)}</small>
+                <small>{provenance.narrationLabel}</small>
+                {provenance.narrationDisclosure && (
+                  <small className="muted">{provenance.narrationDisclosure}</small>
+                )}
               </div>
               <div className="info-block">
                 <span className="eyebrow">LEGENDAS (speech_aligned)</span>
-                <small>{describeSpeechAlignedFlag(activeProduction.speech_aligned)}</small>
+                <small>{provenance.subtitleLabel}</small>
+                {provenance.subtitleDisclosure && (
+                  <small className="muted">{provenance.subtitleDisclosure}</small>
+                )}
+              </div>
+              <div className="info-block">
+                <span className="eyebrow">CENAS VISUAIS</span>
+                <small>{provenance.sceneLabel}</small>
+              </div>
+              <div className="info-block">
+                <span className="eyebrow">RELATÓRIO DE QUALIDADE</span>
+                <small>{provenance.qualityLabel}</small>
+                {provenance.qualityChecksSummary &&
+                  provenance.qualityChecksSummary.warnings.length > 0 && (
+                    <small className="muted">
+                      Avisos QC: {provenance.qualityChecksSummary.warnings.join(' · ')}
+                    </small>
+                  )}
+                {provenance.qualityChecksSummary &&
+                  provenance.qualityChecksSummary.blockingErrors.length > 0 && (
+                    <small className="error">
+                      Erros QC: {provenance.qualityChecksSummary.blockingErrors.join(' · ')}
+                    </small>
+                  )}
+              </div>
+              <div className="info-block">
+                <span className="eyebrow">MANIFESTO DO PILOTO E LICENÇAS</span>
+                <small>
+                  {provenance.pilotEvidenceArtifact
+                    ? `${provenance.pilotEvidenceArtifact.relative_path} (${
+                        provenance.pilotEvidenceLoaded
+                          ? 'Evidência carregada'
+                          : pilotEvidenceError
+                          ? 'Falha ao ler manifesto'
+                          : 'Carregando evidência…'
+                      })`
+                    : 'Não verificado (pilot-evidence.json ausente nos artefatos)'}
+                </small>
+                <small className="muted">{provenance.licenseSummary}</small>
               </div>
             </div>
+            {pilotEvidenceError && (
+              <div
+                role="alert"
+                aria-label="Erro ao carregar evidência do piloto"
+                style={{ marginTop: '8px' }}
+              >
+                <p className="error">{pilotEvidenceError}</p>
+                <small className="muted">
+                  O estado conhecido da produção foi preservado; campos dependentes de{' '}
+                  <code>pilot-evidence.json</code> permanecem como Não verificado até nova leitura.
+                </small>
+                <div className="actions" style={{ marginTop: '6px' }}>
+                  <button
+                    className="button"
+                    type="button"
+                    disabled={loading || submitting}
+                    onClick={() => setPilotEvidenceReloadCount(c => c + 1)}
+                  >
+                    Recarregar evidência do piloto
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div>
@@ -821,7 +1002,11 @@ export default function ProductionRun({
                     className={`tag ${isDone ? 'good' : isBad ? 'bad' : isWarn ? 'warn' : ''}`}
                   >
                     {index + 1}. {STAGE_LABELS[stageKey]}
-                    {isCurrent ? ` (${STATUS_LABELS[activeProduction.status]})` : isDone ? ' (Concluída)' : ''}
+                    {isCurrent
+                      ? ` (${STATUS_LABELS[activeProduction.status]})`
+                      : isDone
+                      ? ' (Concluída)'
+                      : ''}
                   </span>
                 );
               })}
@@ -841,16 +1026,19 @@ export default function ProductionRun({
           {activeProduction.status === 'blocked' && (
             <div className="fact-item" role="alert" aria-label="Produção bloqueada">
               <div className="row spread">
-                <span className="eyebrow warn">EXECUÇÃO BLOQUEADA POR PRÉ-CONDIÇÃO OU DEPENDÊNCIA</span>
+                <span className="eyebrow warn">
+                  EXECUÇÃO BLOQUEADA POR PRÉ-CONDIÇÃO OU DEPENDÊNCIA
+                </span>
                 <span className="tag bad">BLOQUEADO</span>
               </div>
               <p>
                 {activeProduction.error ||
-                  'Dependências locais da fábrica (CLI/FFmpeg/Remotion/browser) ausentes ou pré-condição offline não atendida. Nenhum vídeo falso foi gerado.'}
+                  'Dependências locais da fábrica (TTS/CLI/FFmpeg/Remotion/browser) ausentes ou pré-condição offline não atendida. Nenhum vídeo falso foi gerado.'}
               </p>
               <small className="muted">
-                Prepare o ambiente isolado da fábrica ou utilize o modo Simulado para validar o contrato e o
-                plano sem renderização de vídeo.
+                Prepare o ambiente isolado da fábrica (incluindo síntese de voz local quando em Piloto
+                local) ou utilize o modo Simulado para validar o contrato e o plano sem renderização de
+                vídeo.
               </small>
             </div>
           )}
@@ -861,7 +1049,10 @@ export default function ProductionRun({
                 <span className="eyebrow warn">FALHA NA EXECUÇÃO TÉCNICA</span>
                 <span className="tag bad">FALHOU</span>
               </div>
-              <p>{activeProduction.error || 'A tarefa de produção encerrou com erro no executor local.'}</p>
+              <p>
+                {activeProduction.error ||
+                  'A tarefa de produção encerrou com erro no executor local.'}
+              </p>
             </div>
           )}
 
@@ -881,13 +1072,17 @@ export default function ProductionRun({
           {activeProduction.status === 'succeeded' && activeProduction.review === null && (
             <div className="fact-item" role="note" aria-label="Aviso de conclusão técnica">
               <div className="row spread">
-                <span className="eyebrow accent">EXECUÇÃO TÉCNICA CONCLUÍDA · NÃO É APROVAÇÃO FINAL</span>
+                <span className="eyebrow accent">
+                  EXECUÇÃO TÉCNICA CONCLUÍDA · NÃO É APROVAÇÃO FINAL
+                </span>
                 <span className="tag warn">REVISÃO PENDENTE</span>
               </div>
               <p className="muted">
                 O status <code>succeeded</code> indica apenas que o job técnico terminou.{' '}
                 {activeProduction.mode === 'simulated'
                   ? 'Como esta execução é SIMULADA (sem vídeo real), ela não admite aprovação final de vídeo como produção real.'
+                  : activeProduction.mode === 'local_pilot'
+                  ? 'No modo Piloto local com narração, os artefatos utilizam TTS local sintético (não é voz humana nem clone), cenas demonstrativas e legenda segmentada com alinhamento não verificado (publishable: false). Inspecione vídeo, SRT, metadados e proveniência antes de registrar a decisão humana vinculada ao hash SHA-256.'
                   : 'Mesmo com MP4 gerado em Demo Local, trata-se de render técnico com áudio de tom (sem voz real) e legenda sintética (não publicável). Inspecione o vídeo e registre a decisão humana vinculada ao hash SHA-256.'}
               </p>
             </div>
@@ -911,21 +1106,48 @@ export default function ProductionRun({
             )}
             {needsReconciliation && (
               <div role="region" aria-label="Conciliação da produção">
-                <p>Confira os arquivos e os efeitos da tentativa anterior antes de criar outra produção. A tentativa anterior e seus artefatos serão preservados; não há retentativa automática.</p>
-                <label><input type="checkbox" checked={reconciled} onChange={event => setReconciled(event.target.checked)} />Conferi os artefatos e os efeitos da tentativa anterior</label>
-              <button
-                className="button"
-                type="button"
-                disabled={!reconciled || !canStartProduction}
-                onClick={() => void handleStartProduction()}
-              >
-                Criar nova produção após conciliação
-              </button>
+                <p>
+                  Confira os arquivos e os efeitos da tentativa anterior antes de criar outra
+                  produção. A tentativa anterior e seus artefatos serão preservados; não há
+                  retentativa automática.
+                </p>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={reconciled}
+                    onChange={event => setReconciled(event.target.checked)}
+                  />
+                  Conferi os artefatos e os efeitos da tentativa anterior
+                </label>
+                <button
+                  className="button"
+                  type="button"
+                  disabled={!reconciled || !canStartProduction}
+                  onClick={() => void handleStartProduction()}
+                >
+                  Criar nova produção após conciliação
+                </button>
               </div>
             )}
           </div>
 
-          {trackingError && <div role="alert" aria-label="Acompanhamento desatualizado"><p>Acompanhamento indisponível. Último estado conhecido em {formatDate(activeProduction.updated_at)}; não confirma o término nem o cancelamento.</p><p className="error">{trackingError}</p><button className="button" disabled={loading || submitting} onClick={() => void handleInspectProduction(activeProduction)}>Verificar acompanhamento agora</button></div>}
+          {trackingError && (
+            <div role="alert" aria-label="Acompanhamento desatualizado">
+              <p>
+                Acompanhamento indisponível. Último estado conhecido em{' '}
+                {formatDate(activeProduction.updated_at)}; não confirma o término nem o
+                cancelamento.
+              </p>
+              <p className="error">{trackingError}</p>
+              <button
+                className="button"
+                disabled={loading || submitting}
+                onClick={() => void handleInspectProduction(activeProduction)}
+              >
+                Verificar acompanhamento agora
+              </button>
+            </div>
+          )}
 
           <details open>
             <summary>Logs e eventos reais do job ({activeProduction.job_id})</summary>
@@ -954,8 +1176,99 @@ export default function ProductionRun({
               <p className="eyebrow">
                 ARTEFATOS REGISTRADOS ({activeProduction.artifacts.length})
               </p>
-              <span className="tag demo">ÁUDIO DE FIXTURE · SEM NARRAÇÃO DE VOZ REAL · SRT SINTÉTICO</span>
+              <span className="tag demo">
+                {provenance.narrationKind === 'synthetic_local_tts'
+                  ? 'TTS LOCAL SINTÉTICO (SEM VOZ HUMANA/CLONE) · CENAS DEMO · LEGENDA SEGMENTADA'
+                  : 'ÁUDIO DE FIXTURE · SEM NARRAÇÃO DE VOZ REAL · SRT SINTÉTICO'}
+              </span>
             </div>
+
+            {activeProduction.artifacts.length > 0 && (
+              <div
+                className="fact-item"
+                role="region"
+                aria-label="Acesso rápido de insumos para revisão"
+                style={{ background: 'var(--Background)' }}
+              >
+                <span className="eyebrow">
+                  ACESSO RÁPIDO PARA REVISÃO (VÍDEO, SRT/TRANSCRIÇÃO, METADADOS E PROVENIÊNCIA)
+                </span>
+                <div className="actions" style={{ marginTop: '4px' }}>
+                  {videoArtifact && (
+                    <button
+                      className={`button ${
+                        previewTarget?.artifact.id === videoArtifact.id ? 'active' : ''
+                      }`}
+                      type="button"
+                      disabled={previewLoading}
+                      onClick={() => void handlePreviewArtifact(videoArtifact)}
+                    >
+                      Prévia de vídeo (MP4)
+                    </button>
+                  )}
+                  {subtitlesArtifact && (
+                    <button
+                      className={`button ${
+                        previewTarget?.artifact.id === subtitlesArtifact.id ? 'active' : ''
+                      }`}
+                      type="button"
+                      disabled={previewLoading}
+                      onClick={() => void handlePreviewArtifact(subtitlesArtifact)}
+                    >
+                      Legendas / transcrição SRT
+                    </button>
+                  )}
+                  {audioArtifact && (
+                    <button
+                      className={`button ${
+                        previewTarget?.artifact.id === audioArtifact.id ? 'active' : ''
+                      }`}
+                      type="button"
+                      disabled={previewLoading}
+                      onClick={() => void handlePreviewArtifact(audioArtifact)}
+                    >
+                      Áudio / narração WAV
+                    </button>
+                  )}
+                  {planArtifact && (
+                    <button
+                      className={`button ${
+                        previewTarget?.artifact.id === planArtifact.id ? 'active' : ''
+                      }`}
+                      type="button"
+                      disabled={previewLoading}
+                      onClick={() => void handlePreviewArtifact(planArtifact)}
+                    >
+                      Plano e metadados
+                    </button>
+                  )}
+                  {pilotEvidenceArtifact && (
+                    <button
+                      className={`button ${
+                        previewTarget?.artifact.id === pilotEvidenceArtifact.id ? 'active' : ''
+                      }`}
+                      type="button"
+                      disabled={previewLoading}
+                      onClick={() => void handlePreviewArtifact(pilotEvidenceArtifact)}
+                    >
+                      Proveniência / qualidade (pilot-evidence.json)
+                    </button>
+                  )}
+                  {validationArtifact && (
+                    <button
+                      className={`button ${
+                        previewTarget?.artifact.id === validationArtifact.id ? 'active' : ''
+                      }`}
+                      type="button"
+                      disabled={previewLoading}
+                      onClick={() => void handlePreviewArtifact(validationArtifact)}
+                    >
+                      Validação de stream
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
 
             {activeProduction.artifacts.length === 0 ? (
               <p className="muted">Nenhum artefato registrado até o momento para esta execução.</p>
@@ -1068,6 +1381,10 @@ export default function ProductionRun({
                       src={previewTarget.blobUrl}
                       aria-label={`Player de vídeo ${previewTarget.artifact.relative_path}`}
                     />
+                    <small className="muted">
+                      Prévia local via Blob autenticado — Narração: {provenance.narrationLabel} ·
+                      Legendas: {provenance.subtitleLabel}.
+                    </small>
                   </div>
                 )}
 
@@ -1082,7 +1399,9 @@ export default function ProductionRun({
                       aria-label={`Player de áudio ${previewTarget.artifact.relative_path}`}
                     />
                     <small className="muted">
-                      Áudio local de fixture (tom/silêncio para render técnico) — sem narração de voz real.
+                      {provenance.narrationKind === 'synthetic_local_tts'
+                        ? 'Áudio de TTS local sintético — não é voz humana nem clone de voz.'
+                        : 'Áudio local de fixture (tom/silêncio para render técnico) — sem narração de voz real.'}
                     </small>
                   </div>
                 )}
@@ -1093,33 +1412,104 @@ export default function ProductionRun({
                       key={previewTarget.blobUrl}
                       src={previewTarget.blobUrl}
                       alt={`Cena ${previewTarget.artifact.relative_path}`}
-                      style={{ maxHeight: '320px', border: '1px solid var(--Line)', display: 'block' }}
+                      style={{
+                        maxHeight: '320px',
+                        border: '1px solid var(--Line)',
+                        display: 'block',
+                      }}
                     />
                     <small className="muted">
-                      Cena original gerada localmente (fixture) — sem assets externos.
+                      Cena demonstrativa gerada localmente (fixture) — sem assets externos.
                     </small>
                   </div>
                 )}
 
                 {previewTarget.kind === 'text' && (
-                  <pre className="logs" aria-label={`Conteúdo de ${previewTarget.artifact.relative_path}`}>
-                    {previewTarget.text}
-                  </pre>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {previewTarget.srtSegments && previewTarget.srtSegments.length > 0 && (
+                      <div
+                        className="fact-item"
+                        role="region"
+                        aria-label="Segmentos de legenda SRT"
+                      >
+                        <div className="row spread">
+                          <span className="eyebrow">
+                            TRANSCRIÇÃO / LEGENDA SEGMENTADA ({previewTarget.srtSegments.length}{' '}
+                            TRECHO(S))
+                          </span>
+                          <span className="tag warn">{provenance.alignmentLabel}</span>
+                        </div>
+                        <div
+                          style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '6px',
+                            marginTop: '4px',
+                          }}
+                        >
+                          {previewTarget.srtSegments.map(seg => (
+                            <div
+                              key={seg.index}
+                              style={{
+                                padding: '6px 8px',
+                                background: 'var(--Background)',
+                                border: '1px solid var(--Line)',
+                              }}
+                            >
+                              <small className="eyebrow accent">
+                                #{seg.index} · {seg.start} → {seg.end}
+                              </small>
+                              <p style={{ marginTop: '2px', fontSize: '13px' }}>{seg.text}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {previewTarget.jsonSummary && previewTarget.jsonSummary.length > 0 && (
+                      <div
+                        className="fact-item"
+                        role="region"
+                        aria-label="Resumo de metadados do artefato"
+                      >
+                        <span className="eyebrow">RESUMO DE METADADOS E PROVENIÊNCIA</span>
+                        <div className="info-grid" style={{ marginTop: '4px' }}>
+                          {previewTarget.jsonSummary.map(item => (
+                            <div key={item.label} className="info-block">
+                              <span className="eyebrow">{item.label}</span>
+                              <small style={{ overflowWrap: 'anywhere' }}>{item.value}</small>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <pre
+                      className="logs"
+                      aria-label={`Conteúdo de ${previewTarget.artifact.relative_path}`}
+                    >
+                      {previewTarget.text}
+                    </pre>
+                  </div>
                 )}
               </div>
             )}
           </div>
 
           {activeProduction.mode === 'simulated' && activeProduction.status === 'succeeded' && (
-            <div className="fact-item" role="region" aria-label="Restrição de revisão em modo simulado">
+            <div
+              className="fact-item"
+              role="region"
+              aria-label="Restrição de revisão em modo simulado"
+            >
               <div className="row spread">
                 <span className="eyebrow accent">MODO SIMULADO · SEM VÍDEO REAL</span>
                 <span className="tag simulated">SIMULAÇÃO</span>
               </div>
               <p className="muted">
-                Execuções em modo <strong>Simulado</strong> validam o plano e os artefatos de fixture sem
-                renderizar vídeo real. Conforme o contrato M4, produções simuladas sem vídeo não admitem
-                revisão final como produção real.
+                Execuções em modo <strong>Simulado</strong> validam o plano e os artefatos de fixture
+                sem renderizar vídeo real. Conforme o contrato M4, produções simuladas sem vídeo não
+                admitem revisão final como produção real.
               </p>
             </div>
           )}
@@ -1132,11 +1522,25 @@ export default function ProductionRun({
               </div>
               <h3>Registrar decisão humana sobre o vídeo</h3>
               <p className="muted">
-                Confirme a integridade do vídeo renderizado antes de aprovar ou rejeitar. Mesmo com MP4
-                gerado localmente, este artefato usa <strong>tom de fixture (sem narração de voz real)</strong>{' '}
-                e <strong>legenda SRT sintética</strong> (<code>publishable: false</code>). Esta decisão é
-                vinculada ao hash SHA-256 do vídeo e <strong>não</strong> executa{' '}
-                <code>fabrica aprovar</code>, <code>produzir</code> ou <code>publicar</code>.
+                Confirme a integridade do vídeo renderizado, das legendas/transcrição SRT e dos
+                metadados antes de aprovar ou rejeitar.{' '}
+                {provenance.narrationKind === 'synthetic_local_tts' ? (
+                  <>
+                    Este piloto utiliza <strong>TTS local sintético (não é voz humana nem clone)</strong>,{' '}
+                    <strong>cenas demonstrativas locais</strong> e{' '}
+                    <strong>legenda segmentada com alinhamento não verificado</strong> (
+                    <code>publishable: false</code>).
+                  </>
+                ) : (
+                  <>
+                    Mesmo com MP4 gerado localmente, este artefato usa{' '}
+                    <strong>tom de fixture (sem narração de voz real)</strong> e{' '}
+                    <strong>legenda SRT sintética</strong> (<code>publishable: false</code>).
+                  </>
+                )}{' '}
+                Esta decisão é vinculada ao hash SHA-256 do vídeo,{' '}
+                <strong>não implica licença ou publicabilidade</strong> e <strong>não</strong> executa{' '}
+                <code>fabrica aprovar</code>, <code>produzir</code>, upload ou <code>publicar</code>.
               </p>
               <div className="fact-item">
                 <span className="eyebrow">ARTEFATO DE VÍDEO ALVO</span>
@@ -1145,6 +1549,9 @@ export default function ProductionRun({
                 </span>
                 <small className="muted" style={{ overflowWrap: 'anywhere' }}>
                   SHA-256: <strong>{videoArtifact.sha256}</strong>
+                </small>
+                <small className="muted">
+                  Qualidade: {provenance.qualityLabel} · Narração: {provenance.narrationLabel}
                 </small>
               </div>
               <div className="actions">
@@ -1193,8 +1600,9 @@ export default function ProductionRun({
                 Hash SHA-256 revisado: <strong>{activeProduction.review.artifact_sha256}</strong>
               </p>
               <small className="muted">
-                Revisado em: {formatDate(activeProduction.review.reviewed_at)} · Render técnico de
-                demonstração (sem voz real, SRT sintético, não publicável; não forja marcador da fábrica).
+                Revisado em: {formatDate(activeProduction.review.reviewed_at)} · Decisão vinculada ao
+                hash não implica licença/publicabilidade, não realiza upload/publicação e não forja
+                marcador da fábrica (<code>publishable: false</code>).
               </small>
             </div>
           )}
@@ -1223,8 +1631,10 @@ export default function ProductionRun({
                     <span className="eyebrow accent" style={{ overflowWrap: 'anywhere' }}>
                       {item.id}
                     </span>
-                    <span className={`tag ${item.mode === 'simulated' ? 'simulated' : 'demo'}`}>
-                      {MODE_LABELS[item.mode]}
+                    <span
+                      className={`tag ${item.mode === 'simulated' ? 'simulated' : 'demo'}`}
+                    >
+                      {MODE_LABELS[item.mode] || item.mode}
                     </span>
                     <span className={`tag ${STATUS_TONE[item.status] || ''}`}>
                       {STATUS_LABELS[item.status] || item.status}
