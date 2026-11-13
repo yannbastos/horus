@@ -1,0 +1,226 @@
+{
+  "$defs": {
+    "AssetLicense": {
+      "additionalProperties": false,
+      "properties": {
+        "attribution_required": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Attribution Required"
+        },
+        "commercial_use": {
+          "enum": [
+            "allowed",
+            "restricted",
+            "unknown"
+          ],
+          "title": "Commercial Use",
+          "type": "string"
+        },
+        "id": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Url"
+        },
+        "verified_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Verified At"
+        },
+        "verified_by": {
+          "anyOf": [
+            {
+              "const": "human",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Verified By"
+        }
+      },
+      "required": [
+        "commercial_use",
+        "attribution_required",
+        "verified_by",
+        "verified_at"
+      ],
+      "title": "AssetLicense",
+      "type": "object"
+    },
+    "ProvenanceAsset": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$",
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "author": {
+          "anyOf": [
+            {
+              "maxLength": 300,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Author"
+        },
+        "kind": {
+          "enum": [
+            "image",
+            "video",
+            "audio",
+            "voice",
+            "music",
+            "font"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "license": {
+          "$ref": "#/$defs/AssetLicense"
+        },
+        "notes": {
+          "default": "",
+          "maxLength": 2000,
+          "title": "Notes",
+          "type": "string"
+        },
+        "origin": {
+          "enum": [
+            "original_local",
+            "system_voice",
+            "local_tts_model",
+            "stock_pexels",
+            "stock_pixabay",
+            "licensed_manual"
+          ],
+          "title": "Origin",
+          "type": "string"
+        },
+        "relative_path": {
+          "maxLength": 260,
+          "minLength": 1,
+          "title": "Relative Path",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "source_url": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Url"
+        },
+        "status": {
+          "enum": [
+            "verified",
+            "unverified",
+            "rejected"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "asset_id",
+        "relative_path",
+        "sha256",
+        "kind",
+        "origin",
+        "license",
+        "status"
+      ],
+      "title": "ProvenanceAsset",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "assets": {
+      "items": {
+        "$ref": "#/$defs/ProvenanceAsset"
+      },
+      "maxItems": 500,
+      "title": "Assets",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "assets"
+  ],
+  "title": "AssetProvenance",
+  "type": "object"
+}
