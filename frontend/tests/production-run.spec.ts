@@ -1663,7 +1663,7 @@ test.describe('M4 — Interface de Produção Técnica Local e Revisão Final (H
       provRegion.getByText('pilot-evidence.json (Evidência carregada)')
     ).toBeVisible();
     await expect(
-      provRegion.getByText(/1 asset\(s\) system_voice \(license: unverified — voz SAPI não comprova licença comercial nem publicabilidade\)/)
+      provRegion.getByText(/1 asset\(s\) não verificado\(s\) \(license: unverified — voz do Windows não comprova licença comercial nem publicabilidade\)/)
     ).toBeVisible();
   });
 

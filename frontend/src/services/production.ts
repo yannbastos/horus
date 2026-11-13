@@ -868,6 +868,37 @@ const ASSET_KIND_LABELS: Record<string, string> = {
   font: 'Fonte (font)',
 };
 
+const ENGINE_NAMES: Record<string, string> = {
+  windows_sapi: 'Windows SAPI',
+  piper: 'Piper',
+  kokoro: 'Kokoro',
+};
+
+/**
+ * Descreve a voz de um asset a partir da proveniência (origin + narration.engine/voice),
+ * sem presumir SAPI: system_voice é a voz do Windows; local_tts_model mostra provedor e voz.
+ */
+export function describeVoiceAssets(assets: unknown[]): string {
+  const labels: string[] = [];
+  for (const item of assets) {
+    if (!isRecord(item)) continue;
+    const origin = readString(item.origin);
+    if (origin !== 'system_voice' && origin !== 'local_tts_model') continue;
+    const narration = isRecord(item.narration) ? item.narration : null;
+    const engine = readString(narration?.engine);
+    const voice = readString(narration?.voice) ?? readString(narration?.voice_id);
+    let label: string;
+    if (origin === 'system_voice') {
+      label = voice ? `voz do Windows (${voice})` : 'voz do Windows';
+    } else {
+      const name = engine ? (ENGINE_NAMES[engine] ?? engine) : 'modelo de voz local';
+      label = voice ? `${name} ${voice}` : name;
+    }
+    if (!labels.includes(label)) labels.push(label);
+  }
+  return labels.length > 0 ? labels.join(', ') : 'voz local';
+}
+
 const ASSET_ORIGIN_LABELS: Record<string, string> = {
   original_local: 'Original local (original_local)',
   system_voice: 'Voz do sistema (system_voice)',
@@ -1647,9 +1678,12 @@ export function deriveProductionProvenance(
   const originalAssets = evAssets.filter(
     item => isRecord(item) && readString(item.license) === 'original'
   );
+  const unverifiedVoices = unverifiedAssets.filter(
+    item => isRecord(item) && /^(system_voice|local_tts_model)$/.test(readString(item.origin) ?? '')
+  );
   const licenseSummary =
     evAssets.length > 0
-      ? `${originalAssets.length} asset(s) original_local (license: original) · ${unverifiedAssets.length} asset(s) system_voice (license: unverified — voz SAPI não comprova licença comercial nem publicabilidade)`
+      ? `${originalAssets.length} asset(s) original_local (license: original) · ${unverifiedAssets.length} asset(s) não verificado(s) (license: unverified — ${describeVoiceAssets(unverifiedVoices)} não comprova licença comercial nem publicabilidade)`
       : 'Não publicável (publishable: false · licença de voz/publicação não verificada)';
 
   const rawQuality =
@@ -1991,7 +2025,7 @@ export function summarizeJsonArtifact(
       ).length;
       summary.push({
         label: 'Licenças dos assets',
-        value: `${originalCount} original · ${unverifiedCount} unverified (voz SAPI não comprova publicabilidade)`,
+        value: `${originalCount} original · ${unverifiedCount} unverified (${describeVoiceAssets(assetsArray)} não comprova publicabilidade)`,
       });
     }
 
