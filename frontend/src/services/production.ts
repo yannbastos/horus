@@ -34,6 +34,7 @@ export type ProductionStage =
   | 'prepare'
   | 'narration'
   | 'scenes'
+  | 'align'
   | 'subtitles'
   | 'render'
   | 'quality'

@@ -37,6 +37,7 @@ import {
 } from '../services/production';
 import AssetProvenancePanel from './production/AssetProvenancePanel';
 import ProductionLaunchOptions from './production/ProductionLaunchOptions';
+import ProductionProgress, { describeJobEvent } from './production/ProductionProgress';
 import QualityReportPanel from './production/QualityReportPanel';
 import TimecodeReviewWorkspace from './production/TimecodeReviewWorkspace';
 
@@ -54,6 +55,7 @@ const STAGE_LABELS: Record<ProductionStage, string> = {
   prepare: 'Preparação',
   narration: 'Narração',
   scenes: 'Cenas',
+  align: 'Alinhando fala',
   subtitles: 'Legendas',
   render: 'Render',
   quality: 'Qualidade (QC)',
@@ -1041,8 +1043,9 @@ export default function ProductionRun({
         n.text.trim().length > 2000
     );
 
+  // `align` ocorre entre Cenas e Legendas e não consta da trilha: marca Cenas como concluída.
   const currentStageIndex = activeProduction
-    ? PRODUCTION_STAGES.indexOf(activeProduction.stage)
+    ? PRODUCTION_STAGES.indexOf(activeProduction.stage === 'align' ? 'subtitles' : activeProduction.stage)
     : -1;
 
   return (
@@ -1240,6 +1243,16 @@ export default function ProductionRun({
               <span>{formatDate(activeProduction.updated_at)}</span>
             </div>
           </div>
+
+          <ProductionProgress
+            stage={activeProduction.stage}
+            status={activeProduction.status}
+            createdAt={activeProduction.created_at}
+            updatedAt={activeProduction.updated_at}
+            lastEvent={jobEvents.length > 0 ? jobEvents[jobEvents.length - 1] : null}
+            terminal={terminalStatuses.includes(activeProduction.status)}
+            showNarrationHint={activeProduction.mode === 'local_pilot'}
+          />
 
           <div
             className="fact-item"
@@ -1510,7 +1523,7 @@ export default function ProductionRun({
             <pre ref={logsRef} className="logs" aria-label="Logs da produção">
               {jobEvents.length > 0
                 ? jobEvents
-                    .map(ev => `${ev.kind === 'state' ? 'estado' : ev.kind}: ${ev.message}`)
+                    .map(ev => describeJobEvent(ev))
                     .join('\n')
                 : terminalStatuses.includes(activeProduction.status)
                 ? `Job ${activeProduction.job_id} em estado ${activeProduction.status}.`
