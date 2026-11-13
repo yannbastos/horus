@@ -121,6 +121,18 @@ def _redact_runs(db, workflow_id, expired_at) -> int:
     return changed
 
 
+def _script_literal_matches(db, workflow_id, literals) -> tuple[int, int]:
+    """Inventário separado das cópias editoriais M3, preservadas como a proposta."""
+    scripts = db.execute("SELECT id,document FROM scripts WHERE workflow_id=?", (workflow_id,)).fetchall()
+    document_hits = sum(_hits(json.loads(row["document"]), literals) for row in scripts)
+    # Cada recibo guarda uma resposta editorial própria; não altera a métrica legada de artefatos.
+    receipts = db.execute("""SELECT response FROM script_receipts WHERE scope=? OR scope IN
+        (SELECT 'review:' || id FROM scripts WHERE workflow_id=?)""",
+        (f"generate:{workflow_id}", workflow_id))
+    receipt_hits = sum(_hits(json.loads(row["response"])["document"], literals) for row in receipts)
+    return document_hits, receipt_hits
+
+
 def _scrub_errors(db, workflow_id, literals) -> int:
     """Mensagens de erro só são trocadas quando reproduzem literalmente texto do dataset."""
     if not literals:
@@ -157,10 +169,13 @@ def _redact_workflow(db, row, payload, expired_at, stamp) -> None:
     artifacts, editorial_hits = _redact_artifacts(db, row["id"], expired_at, literals)
     runs = _redact_runs(db, row["id"], expired_at)
     errors = _scrub_errors(db, row["id"], literals)
+    script_hits, receipt_hits = _script_literal_matches(db, row["id"], literals)
     WorkflowService._event(db, row["id"], row["revision"], "workflow.radar_redacted", {
         "reason": REASON, "expired_at": expired_at, "snapshot_id": payload["radar"].get("snapshot_id"),
         "artifacts": artifacts, "cognitive_runs": runs, "error_fields": errors,
-        "editorial_literal_matches": editorial_hits})
+        "editorial_literal_matches": editorial_hits,
+        "script_editorial_literal_matches": script_hits,
+        "script_receipt_editorial_literal_matches": receipt_hits})
 
 
 def run_retention(store: Store, *, clock=utcnow, dry_run: bool = False, retry_checkpoint: bool = False,

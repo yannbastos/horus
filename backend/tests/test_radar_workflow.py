@@ -134,6 +134,7 @@ def test_expiration(app,monkeypatch):
         assert response.status_code==404
 
 def test_migration_v4(tmp_path, monkeypatch):
+    monkeypatch.setattr('horus_backend.migrations.SCHEMA_VERSION', 4)  # Isola a migração v3→v4.
     import sqlite3
     from horus_backend.migrations import MIGRATIONS
     path=tmp_path/'old.sqlite3'
