@@ -8,7 +8,11 @@ Revisão documental em 2026-11-11. Os ensaios abaixo são registros anteriores, 
 
 Roteiros estruturados simulados implementados e integrados: proposta aprovada → roteiro v1 → solicitação de alterações → v2 aprovada, com histórico persistente após reinício. Contrato estrito e referências do snapshot, APIs autenticadas, idempotência e revisão humana por versão estão cobertos por testes. Aprovar não inicia render ou publicação. A retenção mantém a política M2 para derivados editoriais e bloqueia nova geração/solicitação de alterações após redação do Radar. Detalhes em [roteiros simulados](roteiros-simulados.md).
 
-M4 permanece em preparação: adaptar roteiro aprovado à fábrica independente, acompanhar execução no JobManager e validar vídeo demonstrativo local. Voz paga, inferência real, upload e publicação continuam desabilitados. O CLI existente possui render short, legendas e manifesto; dependências e demonstração real ainda precisam de validação nesta máquina.
+## Incremento M4 — 13/11/2026
+
+Produção técnica local integrada: roteiro aprovado → JobManager → fábrica independente → artefatos → prévia autenticada e revisão humana por hash. Validação na main: 729 testes Python aprovados e 2 ignorados, 99 Playwright aprovados e build aprovado. Ensaio real da API/interface gerou e reproduziu MP4 H.264 de 540×960/5,6 s; cancelamento, conciliação explícita antes de nova produção e persistência após reinício aprovados. A revisão de fixture não representa aceite humano do vídeo.
+
+O MP4 demonstra o render, com tom de áudio, cenas sintéticas e SRT separado. Narração de fala, alinhamento e acabamento de um piloto completo continuam pendentes. NetLog parcial e guard local não homologam isolamento de SO nem ausência de tráfego de toda a sessão. A próxima rodada usa recursos locais, sem voz paga, inferência real, upload ou publicação; detalhes e limites em [produção local](producao-local.md). O Project continua sendo a fonte operacional das tarefas parciais.
 
 ## Como interpretar os estados
 

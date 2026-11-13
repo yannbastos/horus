@@ -4,9 +4,11 @@ Fonte canônica da stack, das fronteiras e das decisões arquiteturais. A seçã
 
 ## Implementação atual
 
-O incremento M3 acrescenta [roteiros estruturados simulados](roteiros-simulados.md), com geração síncrona local após aprovação da proposta, versões e revisão humana. O schema atual é v5: a migração aditiva v4→v5 inclui roteiros e recibos idempotentes. Aprovar roteiro não inicia produção.
+O incremento M3 acrescenta [roteiros estruturados simulados](roteiros-simulados.md), com geração síncrona local após aprovação da proposta, versões e revisão humana. O schema atual é v6: além de roteiros e recibos idempotentes (v5), a migração aditiva v5→v6 inclui produções e recibos de produção. Aprovar roteiro não inicia produção.
 
-Atualização M3 em 12/11/2026: `ScriptReview.tsx` integra geração, histórico e revisão humana por versão. O servidor verifica aprovação persistida, revisão e hash da proposta; o ensaio local validou v1 → alterações → v2 aprovada e histórico após reinício. M4 ainda não está implementado: deverá reutilizar o CLI independente e o JobManager, preservando aprovações da fábrica, sem provedores pagos ou publicação. A inspeção documental anterior de 11/11 não executou testes de runtime.
+Atualização M3 em 12/11/2026: `ScriptReview.tsx` integra geração, histórico e revisão humana por versão. O servidor verifica aprovação persistida, revisão e hash da proposta; o ensaio local validou v1 → alterações → v2 aprovada e histórico após reinício. A inspeção documental anterior de 11/11 não executou testes de runtime.
+
+Atualização M4 em 13/11/2026: [produção técnica local](producao-local.md) integrada, com [plano estrito](contrato-producao.md), JobManager, worker isolado, renderer da fábrica independente e `ProductionRun.tsx`. O ensaio na main validou MP4 real de 540×960/5,6 s, prévia autenticada, cancelamento, nova produção após conciliação explícita e persistência após reinício. A revisão final exige decisão humana e hash do vídeo; não publica nem aprova no CLI da fábrica. O demo usa tom local, cenas sintéticas e SRT separado; não é narração nem vídeo editorial completo. Guard de processo e NetLog parcial não equivalem a sandbox de SO nem auditoria integral de rede. Hermes real, provedores pagos e publicação permanecem desabilitados.
 
 Incremento posterior autorizado: [núcleo editorial simulado](workflows-editoriais.md), validado por testes do backend em bancos temporários. Isso acrescenta workflow/revisões sem declarar integração cognitiva real ou modificar a fábrica.
 
