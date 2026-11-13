@@ -147,7 +147,8 @@ export default function ProductionRun({
   const [qualityArtifactData, setQualityArtifactData] = useState<Record<string, unknown> | null>(
     null
   );
-  const [assetProvenanceData, setAssetProvenanceData] = useState<Record<string, unknown> | null>(
+  const [effectiveProvenance, setEffectiveProvenance] = useState<Record<string, unknown> | null>(null);
+  const [assetProvenanceData, setAssetProvenanceData] =useState<Record<string, unknown> | null>(
     null
   );
 
@@ -887,7 +888,13 @@ export default function ProductionRun({
     : null;
 
   const normalizedAssetProvenance = activeProduction
-    ? normalizeAssetProvenance(activeProduction, assetProvenanceData, pilotEvidenceData)
+    ? normalizeAssetProvenance(
+        effectiveProvenance
+          ? { ...activeProduction, asset_provenance: effectiveProvenance as ProductionRecord['asset_provenance'] }
+          : activeProduction,
+        assetProvenanceData,
+        pilotEvidenceData
+      )
     : null;
 
   const normalizedWordTimings = activeProduction
@@ -1904,7 +1911,12 @@ export default function ProductionRun({
           )}
 
           {normalizedAssetProvenance && (
-            <AssetProvenancePanel assetProvenance={normalizedAssetProvenance} />
+            <AssetProvenancePanel
+              assetProvenance={normalizedAssetProvenance}
+              connection={connection}
+              productionId={activeProduction?.id}
+              onEffectiveProvenance={setEffectiveProvenance}
+            />
           )}
 
           {videoArtifact && normalizedWordTimings && (

@@ -1,10 +1,61 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ApiError } from '../../services/api';
+import type { Connection } from '../../services/api';
 import type { NormalizedAssetProvenance } from '../../services/production';
+import { getLicenseReviews } from '../../services/licenseReviews';
+import type { LicenseReview } from '../../services/licenseReviews';
+import { describeLicenseReviewError } from '../../services/licenseReviews';
+import AssetReviewForm from './AssetReviewForm';
 
 export default function AssetProvenancePanel({
   assetProvenance,
+  connection,
+  productionId,
+  onEffectiveProvenance,
 }: {
   assetProvenance: NormalizedAssetProvenance;
+  connection?: Connection | null;
+  productionId?: string;
+  onEffectiveProvenance?: (effective: Record<string, unknown> | null) => void;
 }) {
+  const [history, setHistory] = useState<LicenseReview[]>([]);
+  const [canReview, setCanReview] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const report = useRef(onEffectiveProvenance);
+  report.current = onEffectiveProvenance;
+
+  const load = useCallback(
+    async (signal?: AbortSignal) => {
+      if (!connection || !productionId) return;
+      try {
+        const data = await getLicenseReviews(connection, productionId, signal);
+        if (signal?.aborted) return;
+        setHistory(data.history);
+        setCanReview(data.effective_provenance !== null);
+        setLoadError('');
+        report.current?.(data.effective_provenance);
+      } catch (reason) {
+        if (signal?.aborted) return;
+        setCanReview(false);
+        setLoadError(
+          reason instanceof ApiError
+            ? describeLicenseReviewError(reason, reason.status)
+            : describeLicenseReviewError(reason)
+        );
+      }
+    },
+    [connection, productionId]
+  );
+
+  useEffect(() => {
+    setHistory([]);
+    setCanReview(false);
+    report.current?.(null);
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => controller.abort();
+  }, [load]);
+
   return (
     <div
       className="fact-item"
@@ -215,6 +266,46 @@ export default function AssetProvenancePanel({
           </table>
         </div>
       )}
+
+      <div className="blocker-item warning" role="note" aria-label="Aviso de publicação">
+        <span className="eyebrow warn">APROVAÇÃO DE LICENÇA NÃO TORNA O VÍDEO PUBLICÁVEL</span>
+        <p className="muted">
+          A decisão humana apenas registra o estado da licença do asset. O vídeo permanece{' '}
+          <code>publishable: false</code> (demonstração) independentemente de qualquer verificação.
+        </p>
+      </div>
+
+      <div
+        role="region"
+        aria-label="Verificação humana de licença por asset"
+        style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}
+      >
+        <span className="eyebrow accent">VERIFICAÇÃO HUMANA POR ASSET</span>
+        {loadError && (
+          <p className="error" role="status">
+            {loadError}
+          </p>
+        )}
+        {!connection || !productionId ? (
+          <p className="muted">Sem conexão com o backend: a verificação humana não está disponível.</p>
+        ) : !canReview ? (
+          <p className="muted">
+            A API não devolveu proveniência efetiva para esta produção; sem <code>asset-provenance.json</code>{' '}
+            válido não é possível registrar decisões.
+          </p>
+        ) : (
+          assetProvenance.assets.map(asset => (
+            <AssetReviewForm
+              key={asset.assetId}
+              asset={asset}
+              productionId={productionId}
+              connection={connection}
+              history={history}
+              onSaved={() => load()}
+            />
+          ))
+        )}
+      </div>
     </div>
   );
 }
