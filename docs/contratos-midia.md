@@ -57,20 +57,20 @@ Extensão compatível (HOR-054), campos opcionais: `words[].timing` (`measured` 
 
 ## 3.1 Revisão humana de licença por asset (HOR-097) — contrato da API
 
-Estado: **contrato (Fase A); implementação na Fase B** (`license_reviews.py`, migração v8, rotas em `api.py`). O `asset-provenance.json` registrado **nunca é reescrito**: a decisão humana vive em tabela própria e é combinada em leitura.
+Estado: **implementado e testado** (`license_reviews.py`, migração v8, rotas em `api.py`, `apply_license_reviews` em `media_contracts.py`; testes em `test_license_reviews.py`). Sem interface ainda. O `asset-provenance.json` registrado **nunca é reescrito**: a decisão humana vive em tabela própria e é combinada em leitura.
 
 **Rotas** (auth Bearer local como as demais; ambas sob `/v1/productions/{id}`):
 
-- `GET /v1/productions/{id}/license-reviews` → `{production_id, current:[review], history:[review], publishable:false}`. `current` = decisão vigente por `asset_id` (a mais recente); `history` = todas, da mais antiga à mais nova (append-only). Produção inexistente: 404. Produção sem `asset-provenance.json` válido: listas vazias (o que já foi gravado continua visível).
+- `GET /v1/productions/{id}/license-reviews` → `{production_id, current:[review], history:[review], effective_provenance, publishable:false}`; `effective_provenance` é a visão combinada (`apply_license_reviews`), ou `null` se a proveniência registrada estiver ausente/inválida. `current` = decisão vigente por `asset_id` (a mais recente); `history` = todas, da mais antiga à mais nova (append-only). Produção inexistente: 404. Produção sem `asset-provenance.json` válido: listas vazias (o que já foi gravado continua visível).
 - `POST /v1/productions/{id}/license-reviews`, cabeçalho `Idempotency-Key` (1..128, obrigatório), corpo estrito (`extra=forbid`):
   `{asset_id, asset_sha256, decision: "verified"|"rejected", license:{id, name, url, commercial_use: "allowed"|"restricted", attribution_required: bool}, evidence: str 1..2000, reviewed_by: "human"}`.
-  Resposta `201` com a revisão criada (`200` na repetição idêntica da mesma chave): `{id, production_id, asset_id, asset_sha256, decision, license, evidence, reviewed_by:"human", reviewed_at, supersedes: <id|null>, idempotency_key_hash}`. `reviewed_at` é do servidor (UTC), nunca do cliente.
+  Resposta `201` com a revisão criada (`200` na repetição idêntica da mesma chave): `{id, production_id, asset_id, asset_sha256, decision, license, evidence, reviewed_by:"human", reviewed_at, supersedes: <id|null>}`. `reviewed_at` é do servidor (UTC), nunca do cliente.
 
 **Regras de validação**
 
 - `asset_id` e `asset_sha256` precisam existir, juntos, no `asset-provenance.json` **registrado e validado** da produção (hash do arquivo conferido com o artefato registrado, `validate_asset_provenance` com os hashes de entrada). Asset ausente, hash divergente ou proveniência ausente/inválida: `409`.
-- `commercial_use` aceita só `allowed|restricted`: `unknown` nunca é `verified` (e não é aceito no pedido); `attribution_required` é booleano obrigatório. `license.id/name/url` obrigatórios; `url` https, sem credenciais. Para `origin` `stock_pexels`/`stock_pixabay`, `license.url` deve ser https do host oficial (`pexels.com`/`pixabay.com` ou subdomínio).
-- `decision=rejected` aceita `commercial_use=restricted|allowed`; é registro de que o uso foi recusado.
+- `commercial_use` aceita `allowed|restricted|unknown`, mas `decision=verified` com `unknown` é `409` (nunca verified); `attribution_required` é booleano obrigatório. `license.id/name/url` obrigatórios; `url` https, sem credenciais. Para `origin` `stock_pexels`/`stock_pixabay`, `license.url` deve ser https do host oficial (`pexels.com`/`pixabay.com` ou subdomínio); nas demais origens, https sem credenciais (`409` se violar).
+- `decision=rejected` aceita qualquer `commercial_use` (inclusive `unknown`); é registro de que o uso foi recusado.
 - `reviewed_by` só `"human"`; `evidence` sem controles (exceto quebra de linha/tab), 1..2000 caracteres após validação estrita. A evidência é texto do operador (ex.: link da página de termos, captura anotada); o sistema não a verifica por rede.
 - Erros: `401` sem token; `404` produção inexistente; `409` asset/hash/proveniência, ou `Idempotency-Key` já usada com corpo diferente; `422` corpo inválido (sem eco do conteúdo).
 - Idempotência: mesma chave + mesmo corpo → mesma revisão, sem novo registro; mesma chave + corpo diferente → `409`. Decisão nova (chave nova) para o mesmo asset **substitui a vigente** e grava `supersedes`; nada é apagado ou alterado (gatilhos SQLite recusam `UPDATE`/`DELETE`).
