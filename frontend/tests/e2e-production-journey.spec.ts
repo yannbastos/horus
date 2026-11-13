@@ -280,7 +280,8 @@ test.describe('Jornada de produção — backend real', () => {
       await shot(page, '13-producao-kokoro');
     });
 
-    await expect(page.getByText(/kokoro/i).first()).toBeVisible();
-    await expect(page.getByText(/pf_dora/).first()).toBeVisible();
+    // Só elementos visíveis: o seletor de voz (J-01) contém <option> com o mesmo texto, que não conta como visível.
+    await expect(page.locator('text=/kokoro/i >> visible=true').first()).toBeVisible();
+    await expect(page.locator('text=/pf_dora/ >> visible=true').first()).toBeVisible();
   });
 });
