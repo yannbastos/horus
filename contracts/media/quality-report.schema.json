@@ -1,0 +1,284 @@
+{
+  "$defs": {
+    "QualityCheck": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "enum": [
+            "integrity",
+            "duration",
+            "audio",
+            "sync",
+            "subtitles",
+            "provenance",
+            "visual"
+          ],
+          "title": "Category",
+          "type": "string"
+        },
+        "detail": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Detail",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[a-z][a-z0-9_]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "measured": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "maxProperties": 50,
+          "title": "Measured",
+          "type": "object"
+        },
+        "method": {
+          "enum": [
+            "measured",
+            "declared",
+            "estimated"
+          ],
+          "title": "Method",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "pass",
+            "warn",
+            "fail",
+            "skipped"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "threshold": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "maxProperties": 50,
+          "title": "Threshold",
+          "type": "object"
+        },
+        "timecode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Timecode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "id",
+        "category",
+        "status",
+        "method",
+        "detail"
+      ],
+      "title": "QualityCheck",
+      "type": "object"
+    },
+    "QualityTool": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "version": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "version"
+      ],
+      "title": "QualityTool",
+      "type": "object"
+    },
+    "Timecode": {
+      "additionalProperties": false,
+      "properties": {
+        "end": {
+          "maximum": 86400.0,
+          "minimum": 0,
+          "title": "End",
+          "type": "number"
+        },
+        "start": {
+          "maximum": 86400.0,
+          "minimum": 0,
+          "title": "Start",
+          "type": "number"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "title": "Timecode",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "blocking_errors": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{0,63}$",
+        "type": "string"
+      },
+      "maxItems": 200,
+      "title": "Blocking Errors",
+      "type": "array"
+    },
+    "checks": {
+      "items": {
+        "$ref": "#/$defs/QualityCheck"
+      },
+      "maxItems": 200,
+      "title": "Checks",
+      "type": "array"
+    },
+    "generated_at": {
+      "title": "Generated At",
+      "type": "string"
+    },
+    "production_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$",
+      "title": "Production Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "status": {
+      "enum": [
+        "pass",
+        "warn",
+        "fail",
+        "not_run"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "tool": {
+      "$ref": "#/$defs/QualityTool"
+    },
+    "video_sha256": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Video Sha256",
+      "type": "string"
+    },
+    "warnings": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{0,63}$",
+        "type": "string"
+      },
+      "maxItems": 200,
+      "title": "Warnings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "production_id",
+    "video_sha256",
+    "generated_at",
+    "tool",
+    "status",
+    "checks",
+    "blocking_errors",
+    "warnings"
+  ],
+  "title": "QualityReport",
+  "type": "object"
+}

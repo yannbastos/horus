@@ -10,7 +10,7 @@ Escopo: validar a evidência de um piloto local com voz Windows SAPI pt-BR, PNG 
 | `inspect_pilot_files(root, evidence)` (hash de assets, duração/pico/clipping/silêncio do WAV PCM 16 bits, confinada a `root`) | Implementado e testado com WAV sintético em `tmp_path` |
 | Inspeção do MP4 real (dimensões, duração, frames, áudio, legendas queimadas) | **Pendente**: checklist abaixo, manual/após a entrega do Codex |
 | Alinhamento por palavra | **Não implementado**; sinalizado como `not_checked` e aviso |
-| Loudness (LUFS), inteligibilidade, qualidade da voz | **Não medidos** |
+| Loudness (LUFS), quadros pretos/congelados, silêncio longo, sincronia legenda×seções | Medidos por `av_quality.run_quality` (ver [contratos-midia.md](contratos-midia.md)); inteligibilidade e qualidade da voz **não medidas** |
 | Licença da voz do Windows / publicação | **Não concluída**; `publishable` é sempre `false` |
 | Integração com API/worker/UI | Fora do escopo desta entrega |
 
