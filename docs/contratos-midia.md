@@ -1,6 +1,6 @@
 # Contratos de mídia e QC audiovisual (HOR-089 / HOR-097 / HOR-055)
 
-Estado: **contratos implementados e testados (Fase 1)**; módulo de QC que produz `quality-report.json`, revisão por timecode e exposição na API **ainda não implementados** (ver tabela). Tudo é demonstração (`demo_only=true`); nada aqui autoriza publicação, e `publishable` é sempre `false`.
+Estado: **contratos (Fase 1) e módulo de QC `av_quality.py` (Fase 2) implementados e testados**; revisão por timecode e exposição na API **ainda não implementadas** (ver tabela). Tudo é demonstração (`demo_only=true`); nada aqui autoriza publicação, e `publishable` é sempre `false`.
 
 Código: `backend/src/horus_backend/media_contracts.py`. Testes: `backend/tests/test_media_contracts.py`. JSON Schemas exportados: `contracts/media/*.schema.json` (regenerar com `backend/.venv/Scripts/python.exe contracts/media/generate_schemas.py`; um teste falha se divergirem dos modelos).
 
@@ -8,7 +8,7 @@ Código: `backend/src/horus_backend/media_contracts.py`. Testes: `backend/tests/
 |---|---|
 | Modelos Pydantic estritos + `validate_word_timings/quality_report/asset_provenance` | Implementado e testado |
 | JSON Schema exportado e teste de sincronia | Implementado |
-| Módulo de QC (`av_quality.py`), `quality-report.json` gerado de arquivos reais | Planejado (Fase 2) |
+| Módulo de QC (`av_quality.py`): `quality-report.json` a partir dos arquivos reais | Implementado; testes sintéticos e ensaio somente leitura na evidência real (ver seção QC) |
 | `ProductionReviewRequest.notes`, `quality_report`/`speech_aligned`/`asset_provenance` no registro da produção | Planejado (outros arquivos) |
 | Provedores Pexels/Pixabay | Somente valores de `origin` e regras; sem API, chave ou download |
 
@@ -52,6 +52,28 @@ Validação cruzada (`validate_word_timings(data, narration_sha256=, duration_se
 - `relative_path`: relativo e confinável (sem `..`, `.`, `\`, `:`, barra inicial, segmento vazio ou terminado em ponto/espaço); `asset_id` e caminho únicos (sem diferenciar maiúsculas).
 - Cruzamento: `validate_asset_provenance(data, artifacts={relative_path: sha256})` — todo asset declarado deve estar registrado com o mesmo hash (`asset_not_registered`, `hash_mismatch`) e todo artefato de mídia registrado precisa de proveniência (`artifact_without_provenance`). Assets não `verified` geram o aviso `unverified_assets_block_publication`.
 
+## QC audiovisual (`av_quality.py`)
+
+`run_quality(root, *, production_id, ffmpeg=None, ffprobe=None, video_relative=None, timeout=180) -> dict` devolve um `quality-report.json` válido (já passado por `validate_quality_report`; se o próprio QC gerasse algo inválido, levanta `RuntimeError`). `run_quality_async` é a versão cancelável (`Task.cancel()` encerra a árvore do FFmpeg); `run_quality` é segura dentro de um loop em execução. Somente leitura, sem rede; subprocessos pelo `processes.OwnedProcess` (Job Object) com timeout (check `skipped` com o motivo se estourar).
+
+Entradas em `root`: `pilot-evidence.json`, assets de entrada, SRT ao lado da narração, MP4 em `**/render/short-rascunho.mp4` (ou `*.mp4` na raiz), e opcionais `word-timings.json`, `asset-provenance.json`, `plan.json` (texto do roteiro). Sem MP4, o relatório usa o hash sentinela `000…0` e o check `video_present` falha.
+
+| Check | Categoria | Como é medido |
+|---|---|---|
+| `video_present`, `evidence_manifest` (declared), `asset_hashes` | integrity | sistema de arquivos; `validate_pilot_evidence`; sha256 de cada asset de entrada |
+| `audio_clipping`, `audio_level`, `audio_silence` | audio | WAV da narração em Python puro (`pilot_quality.analyze_wav`): pico, RMS, clipping, silêncios ≥ 2 s internos / bordas > 1,5 s (com timecode) |
+| `audio_loudness` | audio | FFmpeg do MP4: `ebur128` se o build tiver; senão análise do `loudnorm` (`source` declara qual). Faixa de aviso −26…−12 LUFS e true peak ≤ −1 dBTP: referência, não requisito do produto |
+| `duration_narration`, `duration_video_audio` | duration | cabeçalho `wave` (concatenado e seções × cenas) e `ffprobe` (vídeo = narração + 0,8 s ± 0,15; faixas de áudio/vídeo presentes) |
+| `subtitles_vs_sections` | subtitles | cues do SRT × cenas (seções medidas): ordem, sem sobreposição, dentro da cena |
+| `script_coverage` | subtitles | palavras de `plan.json` presentes, em ordem, nas cues; `skipped` sem `plan.json` |
+| `word_timings`, `subtitles_vs_words` | sync | `validate_word_timings` com hash, duração, roteiro e seções reais; desvio máximo/médio por cue. `skipped` com motivo se `word-timings.json` ausente; `method=estimated` se a fonte é `estimated` |
+| `visual_black_frames`, `visual_freeze` | visual | miniaturas em cinza 64×112 a 10 fps extraídas pelo FFmpeg (scale+format+PNG via pipe) e analisadas em Python; preto = luma < 16 por ≥ 0,5 s; congelado = diferença média < 0,05 por ≥ 4 s (aviso: cena estática pode ser intencional) |
+| `asset_provenance` | provenance | `asset-provenance.json` cruzado com os hashes; sem o arquivo, `declared` a partir do manifesto (aviso se houver licença não verificada) |
+
+**Regra de proveniência:** o cruzamento cobre só os assets de **entrada** (PNGs de cena, WAVs de seção e narração concatenada). Saídas derivadas (MP4, `render/audio-review.wav`, quadros de inspeção) não exigem proveniência própria.
+
+Limitações: o FFmpeg da sandbox da fábrica (build do Remotion) não tem `ebur128`, `blackdetect`, `freezedetect`, `fps` nem muxer `rawvideo`; por isso loudness usa `loudnorm` e a análise visual é feita em Python. Silêncio e clipping vêm do WAV de narração, não da mixagem final do MP4 (a loudness vem do MP4). Só WAV PCM 16 bits é analisado (outro formato → `skipped`). Inteligibilidade e qualidade da voz não são medidas. Um relatório sem falhas não significa vídeo bom nem publicável.
+
 ## Pendente / fora desta entrega
 
-Itens 4 e 5 do esboço (notas por timecode em `ProductionReviewRequest`; `quality_report`, `speech_aligned` e `asset_provenance` em `GET /v1/productions/{id}`) pertencem a `production*.py`/`api.py`, de outros responsáveis. Os contratos acima são a API que esses módulos devem importar. Não foram validados contra WAV/MP4 reais; a Fase 2 fará isso.
+Itens 4 e 5 do esboço (notas por timecode em `ProductionReviewRequest`; `quality_report`, `speech_aligned` e `asset_provenance` em `GET /v1/productions/{id}`) pertencem a `production*.py`/`api.py`, de outros responsáveis. Os contratos acima são a API que esses módulos devem importar. 
