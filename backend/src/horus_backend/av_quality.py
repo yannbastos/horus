@@ -170,7 +170,7 @@ def _load(ctx: _Context) -> None:
         ctx.inputs[asset["relative_path"]] = digest or ""
         if digest != asset["sha256"]:
             ctx.hash_errors.append(f"{asset['id']}: sha256 difere do manifesto")
-        if asset["sha256"] == narration_sha and asset["origin"] == "system_voice":
+        if asset['sha256'] == narration_sha and asset['origin'] in {'system_voice','local_tts_model'}:
             ctx.narration, ctx.narration_sha = path, asset["relative_path"]
         match = re.fullmatch(r"section-(\d+)", asset["id"])
         if match:

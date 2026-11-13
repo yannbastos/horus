@@ -6,6 +6,9 @@ import sys
 from pathlib import Path
 from typing import Protocol
 
+# Registro de origens dos motores locais; novos adaptadores declaram aqui sua origem.
+PRODUCTION_ORIGINS = {'windows_sapi': 'system_voice', 'piper': 'local_tts_model'}
+
 
 class NarrationError(Exception):
     def __init__(self, code, status=503):
@@ -30,6 +33,7 @@ def voice(ident, name, language, preview='local'):
 def run(command, payload=None, text=None):
     env = {k: v for k, v in os.environ.items() if k.upper() in {'PATH', 'SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP'}}
     env['PYTHONUTF8'] = '1'
+    env['PYTHONPATH'] = str(Path(__file__).resolve().parents[2])
     try:
         return subprocess.run(command, input=json.dumps(payload) if payload else text,
                               capture_output=True, text=True, encoding='utf-8', env=env, timeout=60, check=True).stdout
@@ -84,8 +88,15 @@ class Piper(LocalProvider):
         root = Path(self.models).resolve()
         model = (root / voice_id).resolve()
         if not model.is_relative_to(root): raise NarrationError('voice_not_found', 422)
+        import hashlib
+        with model.open('rb') as stream:
+            model_hash = hashlib.file_digest(stream, 'sha256').hexdigest()
         run([str(self.executable), '--model', str(model), '--output_file', str(output)], text=text)
-        return {'speech_aligned': False, 'publishable': False, 'demo_only': True}
+        with model.open('rb') as stream:
+            if hashlib.file_digest(stream, 'sha256').hexdigest() != model_hash:
+                raise NarrationError('narration_model_changed')
+        return {'speech_aligned': False, 'publishable': False, 'demo_only': True,
+                'model': {'id': voice_id, 'sha256': model_hash, 'version': 'sha256:' + model_hash}}
 
 
 class ElevenLabs(LocalProvider):

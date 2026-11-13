@@ -22,8 +22,15 @@ from .workflows import WorkflowConflict, digest, encode
 from .processes import OwnedProcess
 
 
+class NarrationSelection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    provider: str = Field(min_length=1, max_length=80)
+    voice_id: str = Field(min_length=1, max_length=1000)
+
+
 class ProductionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    narration: NarrationSelection | None = None
     expected_version: int = Field(ge=1, strict=True)
     mode: Literal["simulated", "local_demo", "local_pilot"]
     render_quality: Literal["draft", "final"] = "draft"
@@ -32,6 +39,8 @@ class ProductionRequest(BaseModel):
     def quality_mode(self):
         if self.render_quality == "final" and self.mode != "local_pilot":
             raise ValueError("render final requer local_pilot")
+        if self.narration is not None and self.mode != "local_pilot":
+            raise ValueError("narração requer local_pilot")
         return self
 
 
@@ -154,6 +163,30 @@ class ProductionService:
 
     async def create(self, script_id, request, key):
         body = request.model_dump()
+        selection = None
+        default_selection = False
+        if request.mode == 'local_pilot':
+            if request.narration:
+                selection = request.narration.model_dump()
+            else:
+                preference = self.settings.data_dir / 'narration-preference.json'
+                if preference.exists():
+                    try:
+                        selection = NarrationSelection.model_validate_json(preference.read_text(encoding='utf-8')).model_dump()
+                    except (OSError, ValueError):
+                        raise WorkflowConflict('Preferência de narração inválida; revise Ajustes.') from None
+                else:
+                    default_selection = True
+                    from .narration.providers import WindowsSapi, NarrationError
+                    try:
+                        voices = await asyncio.to_thread(WindowsSapi().voices)
+                    except NarrationError:
+                        voices = []
+                    voice = next((v['id'] for v in voices if v['language'].lower() == 'pt-br'), 'default_pt_BR')
+                    selection = {'provider': 'windows_sapi', 'voice_id': voice}
+            body['narration'] = selection
+        else:
+            body.pop('narration')
         if request.render_quality == "draft":
             body.pop("render_quality")  # preserva recibos anteriores ao preset explicito
         scope, encoded = f"create:{script_id}", encode(body)
@@ -161,13 +194,18 @@ class ProductionService:
             db.execute("BEGIN IMMEDIATE")
             receipt = db.execute("SELECT * FROM production_receipts WHERE scope=? AND idempotency_key=?", (scope, key)).fetchone()
             if receipt:
-                if receipt["request"] != encoded:
+                previous = json.loads(receipt['request'])
+                compared = body
+                # Recibos anteriores à seleção continuam recuperáveis pelo pedido padrão.
+                if default_selection and 'narration' not in previous:
+                    compared = {k:v for k,v in body.items() if k != 'narration'}
+                if receipt["request"] != encode(compared):
                     raise WorkflowConflict("Chave de idempotência usada com outro pedido.")
                 return self.record(db, self.require(db, receipt["production_id"])), False
             script, document = self.approved(db, script_id, request.expected_version)
             content_hash = digest(document)
             plan = build_production_plan(ScriptDocument.model_validate(document), script_id=script_id,
-                script_version=script["version"], script_content_hash=content_hash, mode=request.mode, render_quality=request.render_quality)
+                script_version=script["version"], script_content_hash=content_hash, mode=request.mode, render_quality=request.render_quality, narration=selection)
             production_id, job_id, timestamp = uuid.uuid4().hex, uuid.uuid4().hex, now()
             payload = encode({"operation": "production.run", "production_id": production_id})
             db.execute("INSERT INTO jobs(id,idempotency_key,payload,status,created_at,updated_at) VALUES(?,?,?,'queued',?,?)",
@@ -234,9 +272,11 @@ class ProductionService:
                 if digest(document) != row["script_content_hash"] or script["review"] != row["script_review"]:
                     raise WorkflowConflict("Roteiro/aprovação mudou após submissão.")
                 plan = row["plan"]
+                saved = json.loads(plan)
                 expected_plan = build_production_plan(ScriptDocument.model_validate(document), script_id=row["script_id"],
                     script_version=row["script_version"], script_content_hash=row["script_content_hash"], mode=row["mode"],
-                    render_quality=json.loads(plan).get("render_quality", "draft"))
+                    render_quality=saved.get("render_quality", "draft"),
+                    narration={k:saved['audio'][k] for k in ('provider','voice_id') if saved['audio'].get(k) is not None})
                 if digest(ProductionPlan.model_validate_json(plan).model_dump(mode="json")) != digest(expected_plan.model_dump(mode="json")):
                     raise WorkflowConflict("Plano não corresponde ao roteiro aprovado.")
             if getattr(sys, "frozen", False):
@@ -263,6 +303,10 @@ class ProductionService:
                 env["HORUS_FFMPEG"] = str(self.settings.ffmpeg.resolve())
             if row["mode"] == "local_pilot" and self.settings.subtitle_font:
                 env["HORUS_SUBTITLE_FONT"] = str(self.settings.subtitle_font.resolve())
+            if row["mode"] == "local_pilot":
+                for name, value in (("HORUS_PIPER_EXECUTABLE", self.settings.piper_executable),
+                                    ("HORUS_PIPER_MODELS", self.settings.piper_models)):
+                    if value: env[name] = str(value.resolve())
             manager.active_process = await OwnedProcess.start(command, env=env, cwd=root)
             process = manager.active_process.process
             if self.store.get_job(job_id)["status"] == "cancel_requested":
