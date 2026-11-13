@@ -403,6 +403,17 @@ def _coverage(cues: list[dict], script_tokens: list[str] | None) -> dict:
                   {"warn_below": COVERAGE_WARN, "fail_below": COVERAGE_FAIL})
 
 
+def _alignment_reason(report) -> str | None:
+    """Motivo registrado pelo piloto (`alignment-report.json`) para a fala não estar alinhada; nunca inventa um."""
+    if not isinstance(report, dict):
+        return None
+    reason = report.get("reason")
+    if not isinstance(reason, str) or not reason.strip():
+        return None
+    prefix = "alinhamento acústico não executado: " if report.get("executed") is False else "alinhamento acústico abaixo do critério: "
+    return prefix + reason.strip()[:300]
+
+
 def _word_checks(ctx: _Context, stats, cues, script_tokens) -> list[dict]:
     raw = ctx.read_json("word-timings.json")
     declared = raw.get("source") if isinstance(raw, dict) else None
@@ -428,6 +439,8 @@ def _word_checks(ctx: _Context, stats, cues, script_tokens) -> list[dict]:
     detail = f"fonte {value['source']}; speech_aligned={verdict['speech_aligned']}"
     if verdict["warnings"]:
         detail += "; contexto parcial: " + ", ".join(verdict["warnings"])
+    if not verdict["speech_aligned"] and (why := _alignment_reason(ctx.read_json("alignment-report.json"))):
+        detail += "; " + why
     checks = [_check("word_timings", "sync", "pass" if verdict["speech_aligned"] else "warn", method, detail,
                      {"source": "media_contracts.validate_word_timings", "timing_source": value["source"],
                       "speech_aligned": verdict["speech_aligned"], "words": len(value["words"])})]

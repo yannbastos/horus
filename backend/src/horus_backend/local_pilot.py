@@ -20,6 +20,7 @@ import time
 import wave
 
 from .processes import OwnedProcess
+from .media_contracts import MAX_INTERPOLATED_RUN_SECONDS, MIN_MATCH_RATE
 from .narration.providers import PRODUCTION_ORIGINS
 
 def narration_disclosure(provider, voice):
@@ -243,7 +244,7 @@ def align_narration(wav, script_text, *, sections, engine, model_dir):
 
 def prepare(root, folder, plan, *, alignment_model=None, progress=None):
     """Produz insumos medidos, preservando plan.json aprovado como estimativa original."""
-    sections = [{'n':line['n'], 'text':line['narracao'], 'heading':scene['heading'],
+    sections = [{'n':line['n'], 'text':' '.join(line['narracao'].split()), 'heading':scene['heading'],
                  'summary':' '.join(line['narracao'].split()[:32])}
                 for scene,line in zip(plan['scenes'],plan['roteiro']['linhas'])]
     if any(re.search(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', section['text']) for section in sections):
@@ -358,7 +359,12 @@ def prepare(root, folder, plan, *, alignment_model=None, progress=None):
             sections=[{'section':s['n'],'start':l['inicio'],'end':l['fim']} for s,l in zip(sections,lines)])
         if not checked['ok']:
             raise ValueError('Contrato do alinhamento acústico inválido.')
-    write(root/'alignment-report.json', {k:v for k,v in alignment.items() if k != 'document'})
+    report = {k:v for k,v in alignment.items() if k != 'document'}
+    if alignment['executed'] and not checked['speech_aligned']:
+        info = checked['value'].get('alignment') or {}
+        report['reason'] = (f"taxa de casamento {info.get('match_rate')} (mínimo {MIN_MATCH_RATE}) e maior trecho interpolado "
+                            f"{info.get('longest_interpolated_seconds')} s (máximo {MAX_INTERPOLATED_RUN_SECONDS} s)")
+    write(root/'alignment-report.json', report)
     paths.append({'kind':'manifest','relative_path':'alignment-report.json'})
     write(root/'word-timings.json',checked['value'])
     if checked['speech_aligned']:
@@ -486,6 +492,7 @@ def registered_json(root, artifacts, relative):
 def confirmed_media(root, artifacts, production_id):
     """Deriva metadados dos contratos registrados, nunca de flags devolvidas pelo worker."""
     from .media_contracts import validate_quality_report, validate_word_timings, validate_asset_provenance, PILOT_INPUT_PATH
+    from .speech_alignment import join_script
     prefix = 'canais/demo/videos/fixture/'
     inputs = {a['relative_path']:a['sha256'] for a in artifacts if PILOT_INPUT_PATH.fullmatch(a['relative_path'])}
     provenance = validate_asset_provenance(registered_json(root,artifacts,'asset-provenance.json'),artifacts=inputs)
@@ -513,7 +520,7 @@ def confirmed_media(root, artifacts, production_id):
             if abs(cursor-duration) > .001:
                 raise ValueError('Duração concatenada diverge das seções medidas.')
             word_result = validate_word_timings(word_data,narration_sha256=audio_hash,
-                duration_seconds=duration,script_text='\n'.join(l['narracao'] for l in lines),
+                duration_seconds=duration,script_text=join_script([l['narracao'] for l in lines]),
                 sections=measured_sections)
         except (OSError, ValueError, TypeError, KeyError, wave.Error, EOFError):
             word_result = {'speech_aligned':False}

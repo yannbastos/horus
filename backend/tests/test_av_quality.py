@@ -333,3 +333,16 @@ def test_invalid_estimated_word_timings_fail_check_keeps_estimated_method(tmp_pa
     check = next(c for c in report["checks"] if c["id"] == "word_timings")
     assert check["status"] == "fail" and check["method"] == "estimated"
     assert mc.validate_quality_report(report, word_timings_source="estimated")["ok"]
+
+
+def test_unaligned_word_timings_expose_alignment_reason(tmp_path):
+    """J-12: o QC diz POR QUE a fala não foi alinhada, não só 'contexto parcial'."""
+    root, _ = build(tmp_path, words=word_doc(source="estimated"))
+    (root / "alignment-report.json").write_text(json.dumps(
+        {"executed": False, "reason": "o roteiro deve ter uma linha por seção medida.", "report": None}), encoding="utf-8")
+    _, checks = run(root)
+    assert "alinhamento acústico não executado: o roteiro deve ter uma linha por seção medida." in checks["word_timings"]["detail"]
+    (root / "alignment-report.json").write_text(json.dumps(
+        {"executed": True, "reason": "taxa de casamento 0.5 abaixo do mínimo 0.85", "report": {}}), encoding="utf-8")
+    _, checks = run(root)
+    assert "taxa de casamento 0.5 abaixo do mínimo 0.85" in checks["word_timings"]["detail"]

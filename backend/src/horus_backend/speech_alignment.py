@@ -201,6 +201,15 @@ def _match_subwords(script: list[tuple[str, int]], asr: list[tuple[str, int]], w
 
 # ------------------------------------------------------------------------------ alinhamento (puro)
 
+def join_script(texts: Sequence[str]) -> str:
+    """Texto do roteiro com exatamente uma linha por seção: espaços e quebras internas viram um espaço.
+
+    Sem isso, um `\n` dentro da narração de uma seção faz o alinhamento recusar o roteiro. Os tokens (sem espaços) e os
+    `char_offset` das palavras são os do texto devolvido; quem valida os tempos deve usar este mesmo texto.
+    """
+    return chr(10).join(" ".join(str(text).split()) for text in texts)
+
+
 def align_script(script_text: str, asr_words: Sequence[Mapping[str, Any]], *, sections: Sequence[Mapping],
                  narration_sha256: str, duration_seconds: float, engine: Mapping[str, str],
                  asr_engine: str = ASR_ENGINE_DEFAULT) -> dict:

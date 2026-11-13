@@ -39,7 +39,8 @@ def simulate_script(proposal, feedback, allowed_source_ids):
         {"id": "hook", "kind": "hook", "heading": "Abertura simulada",
          "narration": f"Roteiro simulado: {proposal['title']}", "source_ids": []},
         {"id": "body", "kind": "body", "heading": "Desenvolvimento simulado",
-         "narration": f"Simulação baseada na proposta aprovada: {premise[:5000]}\nAjustes da revisão anterior: {feedback}",
+         "narration": f"Simulação baseada na proposta aprovada: {premise[:5000]}" + (
+             f"\nAjustes da revisão anterior: {feedback.strip()}" if (feedback or "").strip() else ""),
          "source_ids": sorted(allowed_source_ids)[:50]},
         {"id": "conclusion", "kind": "conclusion", "heading": "Conclusão simulada",
          "narration": "Encerramento simulado. A aprovação deste roteiro não autoriza produção ou publicação.", "source_ids": []}]}
