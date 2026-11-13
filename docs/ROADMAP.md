@@ -4,6 +4,12 @@ Síntese contextual datada da evolução, sem datas prometidas. A fonte operacio
 
 Revisão documental em 2026-11-11. Os ensaios abaixo são registros anteriores, não testes executados nesta reorganização. Este roadmap não concede autorização para implementar, gastar, publicar, instalar, fazer commit ou push.
 
+## Incremento M3 — 12/11/2026
+
+Roteiros estruturados simulados implementados e integrados: proposta aprovada → roteiro v1 → solicitação de alterações → v2 aprovada, com histórico persistente após reinício. Contrato estrito e referências do snapshot, APIs autenticadas, idempotência e revisão humana por versão estão cobertos por testes. Aprovar não inicia render ou publicação. A retenção mantém a política M2 para derivados editoriais e bloqueia nova geração/solicitação de alterações após redação do Radar. Detalhes em [roteiros simulados](roteiros-simulados.md).
+
+M4 permanece em preparação: adaptar roteiro aprovado à fábrica independente, acompanhar execução no JobManager e validar vídeo demonstrativo local. Voz paga, inferência real, upload e publicação continuam desabilitados. O CLI existente possui render short, legendas e manifesto; dependências e demonstração real ainda precisam de validação nesta máquina.
+
 ## Como interpretar os estados
 
 - **Implementado:** existe código para a capacidade delimitada; não significa validação completa.
