@@ -188,7 +188,7 @@ class ScriptService:
             if manual:
                 # Texto do usuário é dado: não é interpretado nem enviado a nenhum executor.
                 allowed = set() if redacted else self._allowed_sources(db, workflow_id, proposal, request.expected_revision)
-                document = validate_script(request.document, allowed)
+                document = validate_script(request.document, allowed, "human")
             else:
                 allowed = self._allowed_sources(db, workflow_id, proposal, request.expected_revision)
                 feedback = json.loads(previous["review"])["feedback"] if previous else ""
@@ -219,7 +219,7 @@ class ScriptService:
             artifact, proposal = self._artifact(db, row["proposal_artifact_id"], row["workflow_id"], row["workflow_revision"], "proposal")
             allowed = (set() if radar_redacted(json.loads(workflow["payload"]))
                        else self._allowed_sources(db, row["workflow_id"], proposal, row["workflow_revision"]))
-            document = validate_script(request.document, allowed)
+            document = validate_script(request.document, allowed, "human")
             record = self._insert(db, scope, key, encoded, row["workflow_id"], row["workflow_revision"], artifact,
                                   row["version"] + 1, document.model_dump(mode="json"), "human")
             return record, True

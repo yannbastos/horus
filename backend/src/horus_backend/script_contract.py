@@ -38,7 +38,7 @@ class ScriptSection(_StrictInput):
 
 class ScriptDocument(_StrictInput):
     schema_version: Literal[1] = 1
-    simulated: Literal[True] = True
+    simulated: bool = True  # coerente com a origem: simulated => true, human => false (validate_script)
     title: str = Field(min_length=1, max_length=200)
     sections: list[ScriptSection] = Field(min_length=MIN_SECTIONS, max_length=MAX_SECTIONS)
 
@@ -48,8 +48,8 @@ class ScriptDocument(_StrictInput):
         # Literal compara por igualdade: 1.0 e True seriam aceitos como 1; 1 como True.
         if info.field_name == "schema_version" and not (type(value) is int and value == 1):
             raise ValueError("schema_version deve ser o inteiro 1.")
-        if info.field_name == "simulated" and value is not True:
-            raise ValueError("simulated deve ser true.")
+        if info.field_name == "simulated" and type(value) is not bool:
+            raise ValueError("simulated deve ser booleano.")
         return value
 
     @model_validator(mode="after")
@@ -69,15 +69,25 @@ class ScriptDocument(_StrictInput):
         return self
 
 
-def validate_script(document: dict | ScriptDocument, allowed_source_ids: set[str]) -> ScriptDocument:
-    """Valida estrutura e referências; devolve um modelo novo. Levanta ValidationError/ValueError."""
+def validate_script(document: dict | ScriptDocument, allowed_source_ids: set[str],
+                    origin: Literal["simulated", "human"] = "simulated") -> ScriptDocument:
+    """Valida estrutura e referências; devolve um modelo novo. Levanta ValidationError/ValueError.
+
+    `simulated` acompanha a origem: simulated => true (padrão legado), human => false (omitido vira false).
+    """
+    if origin not in ("simulated", "human"):
+        raise ValueError("origem de roteiro desconhecida.")
     if isinstance(document, ScriptDocument):
         document = document.model_dump()  # revalida: instância pode ter sido alterada após a construção
     elif not isinstance(document, dict):
         raise ValueError("documento de roteiro deve ser um objeto.")
     if not isinstance(allowed_source_ids, (set, frozenset)):
         raise ValueError("allowed_source_ids deve ser um conjunto de ids.")
+    if origin == "human" and isinstance(document, dict) and "simulated" not in document:
+        document = {**document, "simulated": False}
     script = ScriptDocument.model_validate(document)
+    if script.simulated is not (origin == "simulated"):
+        raise ValueError(f"simulated incoerente com a origem {origin}.")
     unknown = sorted({ref for section in script.sections for ref in section.source_ids} - set(allowed_source_ids))
     if unknown:
         raise ValueError(f"source_ids fora do snapshot permitido: {', '.join(unknown)}")

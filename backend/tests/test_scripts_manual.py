@@ -37,6 +37,7 @@ def test_first_manual_script_then_human_versions_history_and_restart(settings):
         assert first.status_code == 201, first.text
         first = first.json()
         assert (first["origin"], first["authored_by"], first["version"], first["status"]) == ("human", "human", 1, "awaiting_review")
+        assert first["document"]["simulated"] is False  # texto do usuário não é simulação
         assert first["review"] is None and first["document"]["title"] == "Meu primeiro vídeo"
         assert manual(client, workflow).json() == first and manual(client, workflow).status_code == 200
         assert manual(client, workflow, key="again").status_code == 409  # já há roteiro em revisão
@@ -70,6 +71,7 @@ def test_simulated_origin_is_preserved_and_human_version_follows_changes_request
         workflow = approved(client)
         simulated = generate(client, workflow).json()
         assert (simulated["origin"], simulated["authored_by"]) == ("simulated", "simulated")
+        assert simulated["document"]["simulated"] is True  # legado inalterado
         human = version(client, simulated, key="edit")
         assert human.status_code == 201 and human.json()["origin"] == "human"
         # A versão simulada ficou obsoleta: só a mais recente pode ser revisada ou editada.
@@ -145,7 +147,8 @@ DELETE = object()
     mutate(["sections", 0, "source_ids"], ["inventada"]),     # fonte fora do snapshot
     mutate(["sections", 0, "source_ids"], "x"),
     mutate(["schema_version"], 2),
-    mutate(["simulated"], False),
+    mutate(["simulated"], True),                              # incoerente com origin=human
+    mutate(["simulated"], 0),
     mutate(["sections", 1, "narration"], 5),                  # sem coerção
     {"title": "sem seções"},
     {"sections": doc()["sections"]},                          # sem título
@@ -215,6 +218,7 @@ def test_human_script_approval_and_simulated_production(settings):
         item = finished(client, response.json())
         assert item["status"] == "succeeded", item
         assert item["demo_only"] and not item["real_voice"]
+        assert approved_script["document"]["simulated"] is False
         assert item["script_version"] == 2
         assert start(client, approved_script).json()["id"] == item["id"]
     with client_for(settings) as client:
@@ -242,3 +246,27 @@ def test_migration_v9_marks_existing_scripts_as_simulated(settings, monkeypatch)
         with pytest.raises(sqlite3.IntegrityError):
             db.execute("UPDATE scripts SET origin='ai'")
     assert len(list(path.parent.glob("horus.backup-v8-*.sqlite3"))) == 1
+
+
+def test_simulated_flag_must_match_origin(settings):
+    with client_for(settings) as client:
+        workflow = approved(client)
+        for index, flag in enumerate((True, 1, "false", None)):
+            assert manual(client, workflow, doc(simulated=flag), key=f"bad{index}").status_code == 422
+        first = manual(client, workflow, doc(simulated=False), key="explicit")
+        assert first.status_code == 201 and first.json()["document"]["simulated"] is False
+        assert version(client, first.json(), doc(simulated=True), key="incoherent").status_code == 422
+        assert client.get(f"/v1/workflows/{workflow['id']}/scripts").json()["items"][0]["version"] == 1
+
+
+def test_contract_origin_coherence():
+    from horus_backend.script_contract import ScriptDocument, validate_script
+    assert validate_script(doc(), set(), "human").simulated is False
+    assert validate_script(doc(simulated=False), set(), "human").simulated is False
+    assert validate_script(doc(), set()).simulated is True and validate_script(doc(simulated=True), set(), "simulated")
+    for value, origin in ((True, "human"), (False, "simulated"), (1, "human"), (None, "simulated")):
+        with pytest.raises(ValueError):
+            validate_script(doc(simulated=value), set(), origin)
+    with pytest.raises(ValueError):
+        validate_script(doc(), set(), "ai")
+    assert ScriptDocument.model_validate({**doc(), "simulated": False}).simulated is False

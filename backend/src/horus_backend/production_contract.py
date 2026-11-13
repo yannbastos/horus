@@ -154,7 +154,8 @@ def build_production_plan(script: ScriptDocument, *, script_id: str, script_vers
     """
     if not isinstance(script, ScriptDocument):
         raise ValueError("script deve ser um ScriptDocument.")
-    document = validate_script(script, {ref for item in script.sections for ref in item.source_ids})
+    document = validate_script(script, {ref for item in script.sections for ref in item.source_ids},
+                               "simulated" if script.simulated else "human")
     lines, scenes, cursor = [], [], 0.0
     for index, section in enumerate(document.sections, start=1):
         seconds = line_seconds(section.narration)
