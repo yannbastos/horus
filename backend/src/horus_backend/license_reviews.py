@@ -9,13 +9,13 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from .media_contracts import STOCK_HOSTS, _url_problem, apply_license_reviews, validate_asset_provenance
+from .media_contracts import PILOT_INPUT_PATH, STOCK_HOSTS, _url_problem, apply_license_reviews, validate_asset_provenance
 from .storage import now
 from .workflows import WorkflowConflict
 
 _FIELDS = ("id", "production_id", "asset_id", "asset_sha256", "decision", "license", "evidence",
            "reviewed_by", "reviewed_at", "supersedes")
-_INPUTS = re.compile(r"canais/demo/videos/fixture/(?:scene-\d+\.png|section-\d+\.wav|fixture\.wav)")
+_INPUTS = PILOT_INPUT_PATH
 _CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
 
 

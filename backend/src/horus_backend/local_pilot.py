@@ -485,10 +485,9 @@ def registered_json(root, artifacts, relative):
 
 def confirmed_media(root, artifacts, production_id):
     """Deriva metadados dos contratos registrados, nunca de flags devolvidas pelo worker."""
-    from .media_contracts import validate_quality_report, validate_word_timings, validate_asset_provenance
+    from .media_contracts import validate_quality_report, validate_word_timings, validate_asset_provenance, PILOT_INPUT_PATH
     prefix = 'canais/demo/videos/fixture/'
-    inputs = {a['relative_path']:a['sha256'] for a in artifacts if
-              re.fullmatch(re.escape(prefix)+r'(?:scene-\d+\.png|section-\d+\.wav|fixture\.wav|fonts/[A-Za-z0-9_-]+\.ttf)',a['relative_path'])}
+    inputs = {a['relative_path']:a['sha256'] for a in artifacts if PILOT_INPUT_PATH.fullmatch(a['relative_path'])}
     provenance = validate_asset_provenance(registered_json(root,artifacts,'asset-provenance.json'),artifacts=inputs)
     word_data = registered_json(root,artifacts,'word-timings.json')
     word_result = validate_word_timings(word_data)

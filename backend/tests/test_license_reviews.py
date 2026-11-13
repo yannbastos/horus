@@ -243,3 +243,33 @@ def test_migration_v8_failure_rolls_back(settings, monkeypatch):
         assert db.execute('PRAGMA user_version').fetchone()[0] == 7
         assert not db.execute("SELECT name FROM sqlite_master WHERE name LIKE 'license_reviews%'").fetchall()
         assert [tuple(r) for r in db.execute('SELECT * FROM productions ORDER BY 1')] == tables['productions']
+
+
+def test_font_input_registered_by_libass_overlay_is_accepted(production):
+    """J-13: a fonte copiada para fonts/ pela legenda libass faz parte das entradas; sem ela a proveniência some."""
+    client, pid, root = production
+    font = PREFIX + 'fonts/ArchivoExpanded-SemiBold.ttf'
+    data = provenance()
+    ofl = {'id': 'OFL-1.1', 'name': 'SIL Open Font License 1.1', 'url': 'https://openfontlicense.org/open-font-license-official-text/',
+           'commercial_use': 'unknown', 'attribution_required': None, 'verified_by': None, 'verified_at': None}
+    data['assets'].append({'asset_id': 'subtitle-font', 'relative_path': font, 'sha256': 'c' * 64, 'kind': 'font',
+                           'origin': 'licensed_manual', 'source_url': 'https://github.com/Omnibus-Type/Archivo',
+                           'author': 'Omnibus-Type', 'license': ofl, 'status': 'unverified', 'notes': ''})
+    text = json.dumps(data)
+    (root / 'asset-provenance.json').write_text(text, encoding='utf-8')
+    with client.app.state.store.connect() as db:
+        artifacts = json.loads(db.execute('SELECT artifacts FROM productions WHERE id=?', (pid,)).fetchone()['artifacts'])
+        artifacts[0]['sha256'] = hashlib.sha256(text.encode()).hexdigest()
+        artifacts.append({'kind': 'font', 'relative_path': font, 'sha256': 'c' * 64})
+        db.execute('UPDATE productions SET artifacts=? WHERE id=?', (json.dumps(artifacts), pid))
+    listing = client.get(f'/v1/productions/{pid}/license-reviews').json()
+    assert listing['effective_provenance'] is not None
+    assert 'subtitle-font' in [a['asset_id'] for a in listing['effective_provenance']['assets']]
+    # saída derivada continua fora das entradas
+    assert not _inputs().fullmatch(PREFIX + 'short-rascunho.mp4')
+    assert not _inputs().fullmatch(PREFIX + 'fonts/../x.ttf')
+
+
+def _inputs():
+    from horus_backend.media_contracts import PILOT_INPUT_PATH
+    return PILOT_INPUT_PATH
