@@ -302,6 +302,10 @@ def main():
         artifact('render/audio-review.wav', 'audio')
         artifact('render/subtitles-frame.png', 'scene')
         artifact('render/narration-signal.json', 'manifest')
+        stage('quality')
+        from horus_backend.local_pilot import quality_report
+        quality_report(root,folder,root.name,ffmpeg=Path(ffmpeg),ffprobe=Path(ffprobe))
+        artifacts.append({'kind':'manifest','relative_path':'quality-report.json'})
     else:
         metadata = {'narration_kind':'fixture_tone','narration_disclosure':'Tom sintetico local; sem narracao.'}
     stage('review')
