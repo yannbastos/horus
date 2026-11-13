@@ -3,6 +3,7 @@ import { api } from '../services/api';
 import type { Connection, HermesStatus } from '../services/api';
 import { connectDesktop, nativeDesktop } from '../platform/desktop';
 import PrivacySecurity from './PrivacySecurity';
+import NarrationSettings from './narration/NarrationSettings';
 
 export type Theme = 'system' | 'light' | 'dark';
 export type SettingsSection = 'general' | 'privacy';
@@ -114,6 +115,7 @@ export default function Settings({ theme, setTheme, connect, connection, hermes,
         </section>
         <HermesIntegration connection={connection} report={hermes} onStatus={onHermesStatus} />
         {connection && <EnvironmentDiagnostics connection={connection} />}
+        <NarrationSettings connection={connection} />
       </div>
     ) : (
       <div id="panel-privacy" role="tabpanel" aria-labelledby="tab-privacy" className="settings-panel">
