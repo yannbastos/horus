@@ -6,10 +6,12 @@ import type {
   ProductionArtifact,
   ProductionArtifactKind,
   ProductionMode,
+  ProductionNarrationSelection,
   ProductionRecord,
   ProductionReviewDecision,
   ProductionReviewNote,
   ProductionStage,
+  RenderQuality,
   SrtSegment,
 } from '../services/production';
 import {
@@ -34,6 +36,7 @@ import {
   summarizeJsonArtifact,
 } from '../services/production';
 import AssetProvenancePanel from './production/AssetProvenancePanel';
+import ProductionLaunchOptions from './production/ProductionLaunchOptions';
 import QualityReportPanel from './production/QualityReportPanel';
 import TimecodeReviewWorkspace from './production/TimecodeReviewWorkspace';
 
@@ -131,6 +134,8 @@ export default function ProductionRun({
   const [productions, setProductions] = useState<ProductionRecord[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mode, setMode] = useState<ProductionMode>('simulated');
+  const [renderQuality, setRenderQuality] = useState<RenderQuality>('draft');
+  const [voice, setVoice] = useState<ProductionNarrationSelection | null>(null);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -681,7 +686,11 @@ export default function ProductionRun({
 
     cancelPendingInspect();
     const targetScriptId = latestScript.id;
-    const signature = `create:${targetScriptId}:${latestScript.version}:${mode}:${productions.length}`;
+    const pilotOptions =
+      mode === 'local_pilot'
+        ? { render_quality: renderQuality, ...(voice ? { narration: voice } : {}) }
+        : {};
+    const signature = `create:${targetScriptId}:${latestScript.version}:${mode}:${productions.length}:${JSON.stringify(pilotOptions)}`;
     const idempotencyKey = getOrCreateIdempotencyKey(signature);
 
     inFlightRef.current = true;
@@ -695,6 +704,7 @@ export default function ProductionRun({
         {
           expected_version: latestScript.version,
           mode,
+          ...pilotOptions,
         },
         idempotencyKey
       );
@@ -1156,6 +1166,16 @@ export default function ProductionRun({
               )}
             </div>
           </div>
+
+          {mode === 'local_pilot' && (
+            <ProductionLaunchOptions
+              connection={connection}
+              disabled={submitting || hasActiveRun}
+              quality={renderQuality}
+              onQualityChange={setRenderQuality}
+              onVoiceChange={setVoice}
+            />
+          )}
 
           <small className="muted">
             {mode === 'simulated'

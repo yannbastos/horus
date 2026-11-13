@@ -224,9 +224,17 @@ export type ProductionListResponse = {
   items: ProductionRecord[];
 };
 
+export type RenderQuality = 'draft' | 'final';
+
+export type ProductionNarrationSelection = { provider: string; voice_id: string };
+
 export type CreateProductionPayload = {
   expected_version: number;
   mode: ProductionMode;
+  /** Somente local_pilot: voz escolhida (GET /v1/narration/providers). */
+  narration?: ProductionNarrationSelection;
+  /** Somente local_pilot aceita 'final'; omitido, o backend usa 'draft'. */
+  render_quality?: RenderQuality;
 };
 
 export type ReviewProductionPayload = {
@@ -2185,6 +2193,8 @@ export async function createScriptProduction(
       body: JSON.stringify({
         expected_version: payload.expected_version,
         mode: payload.mode,
+        ...(payload.narration ? { narration: payload.narration } : {}),
+        ...(payload.render_quality ? { render_quality: payload.render_quality } : {}),
       }),
       signal,
     }
