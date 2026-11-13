@@ -356,9 +356,14 @@ function createDemoArtifactsWithVideo() {
 }
 
 function getDemoVideoBuffer(): Buffer {
+  const realPilotMp4 =
+    'C:/Users/yannf/AppData/Local/Temp/hp3/test_real_local_pilot_render_r0/data/productions/7b718dedaf5740508d13a3b967b0d678/canais/demo/videos/fixture/render/short-rascunho.mp4';
   const realDemoMp4 =
     'C:/Users/yannf/AppData/Local/Temp/horus-m4/backend-demo-evidence/data/productions/80ac60c169bd47949399c6bba97438d5/canais/demo/videos/fixture/render/short-rascunho.mp4';
   try {
+    if (fs.existsSync(realPilotMp4)) {
+      return fs.readFileSync(realPilotMp4);
+    }
     if (fs.existsSync(realDemoMp4)) {
       return fs.readFileSync(realDemoMp4);
     }
@@ -1161,5 +1166,1006 @@ test.describe('M4 — Interface de Produção Técnica Local e Revisão Final (H
     await expect(detailRegion.getByText('Não verificado (ausente; nunca inferir alinhamento real)')).toBeVisible();
     await expect(detailRegion.getByRole('button', { name: 'Tentar novamente', exact: true })).toHaveCount(0);
     await expect(detailRegion.getByRole('button', { name: 'Criar nova produção após conciliação', exact: true })).toBeDisabled();
+  });
+
+  test('Modo Piloto Local com Narração (local_pilot): compatibilidade com backend antigo (422), bloqueio real sem inferir capacidade pelo modo pedido, e diferenciação entre TTS local sintético, tom de fixture e quality_report não verificado via pilot-evidence.json', async ({
+    page,
+  }) => {
+    const currentWf = createWorkflowFixture();
+    const scriptV2 = createScriptRecordFixture(2, 'approved');
+    const PROD_PILOT_BLOCKED_ID = 'ccccddddeeeeffff0000111122223333';
+    const PROD_PILOT_OK_ID = 'ddddeeeeffff00001111222233334444';
+    const JOB_PILOT_BLOCKED_ID = 'job_pilot_blocked_01';
+    const JOB_PILOT_OK_ID = 'job_pilot_ok_02';
+    const PILOT_EVIDENCE_ID = 'e1e2e3e4f1f2f3f4a1a2a3a4b1b2b3b4';
+    const PILOT_SECTION_1_AUDIO_ID = '10101010202020203030303040404041';
+    const PILOT_SECTION_2_AUDIO_ID = '10101010202020203030303040404042';
+    const PILOT_SECTION_3_AUDIO_ID = '10101010202020203030303040404043';
+    const PILOT_AUDIO_ID = 'a1a2a3a4b1b2b3b4c1c2c3c4d1d2d3d4';
+    const PILOT_AUDIO_REVIEW_ID = '10101010202020203030303040404049';
+
+    let postStage: 'old_backend_422' | 'blocked_missing_tts' | 'succeeded_pilot' = 'old_backend_422';
+    let evidenceFetchMode: '401' | 'unknown_hash' | 'ok' = '401';
+    let omitEvidenceArtifact = false;
+    let productionsList: Record<string, unknown>[] = [];
+
+    const mockPilotEvidence = {
+      schema_version: 1,
+      demo_only: true,
+      alignment_method: 'measured_sections',
+      narration: {
+        kind: 'local_tts',
+        engine: 'windows_sapi',
+        voice: 'Microsoft Maria Desktop - Portuguese(Brazil)',
+        duration_seconds: 16.0,
+        sha256: '2fc4667c7fb878d946f116b688ea7c94c90077d778e55affb27150c3e57bfa4a',
+      },
+      scenes: [
+        { id: 'hook', start: 0.0, end: 5.2, asset_id: 'scene-1' },
+        { id: 'body', start: 5.2, end: 10.8, asset_id: 'scene-2' },
+        { id: 'conclusion', start: 10.8, end: 16.0, asset_id: 'scene-3' },
+      ],
+      subtitles: [
+        { start: 0.0, end: 5.2, text: 'Como garantir que cada artefato corresponde ao roteiro aprovado?' },
+        { start: 5.2, end: 10.8, text: 'O plano gera cenas demonstrativas e narração TTS local sintética.' },
+        { start: 10.8, end: 16.0, text: 'O render técnico exige revisão humana vinculada ao SHA-256.' },
+      ],
+      assets: [
+        {
+          id: 'scene-1',
+          relative_path: 'canais/demo/videos/fixture/scene-1.png',
+          sha256: 'dbd285b4763b75888790bd3bfac1e38865377bf9d58f50d37f84487db70b3e58',
+          origin: 'original_local',
+          license: 'original',
+          attribution: 'Cena informativa original gerada localmente a partir do roteiro aprovado.',
+          generated_at: '2026-11-13T13:04:49Z',
+        },
+        {
+          id: 'narration',
+          relative_path: 'canais/demo/videos/fixture/fixture.wav',
+          sha256: '2fc4667c7fb878d946f116b688ea7c94c90077d778e55affb27150c3e57bfa4a',
+          origin: 'system_voice',
+          license: 'unverified',
+          attribution:
+            'Microsoft Maria Desktop - Portuguese(Brazil); Narração sintética local Windows SAPI (pt-BR); não é voz humana ou clonada; licença não verificada.',
+          generated_at: '2026-11-13T13:04:49Z',
+        },
+      ],
+      video: {
+        duration_seconds: 16.8,
+        width: 540,
+        height: 960,
+        frames: 504,
+      },
+    };
+
+    const pilotArtifacts = [
+      {
+        id: 'art_plan_pilot',
+        kind: 'plan' as const,
+        relative_path: 'plan.json',
+        size_bytes: 1420,
+        sha256: 'aaaa1111222233334444555566667777888899990000aaaabbbbccccddddeeee',
+      },
+      {
+        id: PILOT_SECTION_1_AUDIO_ID,
+        kind: 'audio' as const,
+        relative_path: 'canais/demo/videos/fixture/section-1.wav',
+        size_bytes: 10240,
+        sha256: 'a242cb549dbb7f35a2643c94c1d7be59225bc33aba513754da3af2fec5a3bd1b',
+      },
+      {
+        id: PILOT_SECTION_2_AUDIO_ID,
+        kind: 'audio' as const,
+        relative_path: 'canais/demo/videos/fixture/section-2.wav',
+        size_bytes: 11240,
+        sha256: '5d0361f1049795aa78ebb84c8630577ffa6f7ad6172b9e1b67b0941aa81be023',
+      },
+      {
+        id: PILOT_SECTION_3_AUDIO_ID,
+        kind: 'audio' as const,
+        relative_path: 'canais/demo/videos/fixture/section-3.wav',
+        size_bytes: 10564,
+        sha256: '70176a894ce4fd841a25ef1d985fae982ddac135ba5e625b1e881cadc9038c42',
+      },
+      {
+        id: PILOT_AUDIO_ID,
+        kind: 'audio' as const,
+        relative_path: 'canais/demo/videos/fixture/fixture.wav',
+        size_bytes: 32044,
+        sha256: '2fc4667c7fb878d946f116b688ea7c94c90077d778e55affb27150c3e57bfa4a',
+      },
+      {
+        id: PILOT_AUDIO_REVIEW_ID,
+        kind: 'audio' as const,
+        relative_path: 'canais/demo/videos/fixture/render/audio-review.wav',
+        size_bytes: 33120,
+        sha256: '9999888877776666555544443333222211110000aaaabbbbccccddddeeeeffff',
+      },
+      {
+        id: 'art_scene_pilot_1',
+        kind: 'scene' as const,
+        relative_path: 'canais/demo/videos/fixture/scene-1.png',
+        size_bytes: 680,
+        sha256: 'bbbb1111222233334444555566667777888899990000aaaabbbbccccddddeeee',
+      },
+      {
+        id: 'art_subs_pilot',
+        kind: 'subtitles' as const,
+        relative_path: 'canais/demo/videos/fixture/fixture.srt',
+        size_bytes: 312,
+        sha256: 'cccc1111222233334444555566667777888899990000aaaabbbbccccddddeeee',
+      },
+      {
+        id: PILOT_EVIDENCE_ID,
+        kind: 'manifest' as const,
+        relative_path: 'pilot-evidence.json',
+        size_bytes: 640,
+        sha256: 'f0f01111222233334444555566667777888899990000aaaabbbbccccddddeeee',
+      },
+      {
+        id: VIDEO_ARTIFACT_ID,
+        kind: 'video' as const,
+        relative_path: 'canais/demo/videos/fixture/render/short-rascunho.mp4',
+        size_bytes: 96902,
+        sha256: VIDEO_SHA256,
+      },
+    ];
+
+    await page.route('http://127.0.0.1:8765/**', async route => {
+      const request = route.request();
+      const pathUrl = new URL(request.url()).pathname;
+      if (request.method() === 'OPTIONS') {
+        await route.fulfill({ status: 204, headers: corsHeaders });
+        return;
+      }
+      if (pathUrl === '/health') {
+        await route.fulfill({ status: 200, headers: corsHeaders, json: { status: 'ready' } });
+        return;
+      }
+      if (pathUrl === '/v1/hermes') {
+        await route.fulfill({
+          status: 200,
+          headers: corsHeaders,
+          json: { state: 'ready', connected: true, cli_available: true, configured: true, features: [] },
+        });
+        return;
+      }
+      if (pathUrl === '/v1/jobs') {
+        await route.fulfill({ status: 200, headers: corsHeaders, json: [] });
+        return;
+      }
+      if (pathUrl === '/v1/workflows') {
+        await route.fulfill({ status: 200, headers: corsHeaders, json: [currentWf] });
+        return;
+      }
+      if (pathUrl === `/v1/workflows/${WORKFLOW_ID}`) {
+        await route.fulfill({ status: 200, headers: corsHeaders, json: currentWf });
+        return;
+      }
+      if (pathUrl === `/v1/workflows/${WORKFLOW_ID}/scripts` && request.method() === 'GET') {
+        await route.fulfill({ status: 200, headers: corsHeaders, json: { items: [scriptV2] } });
+        return;
+      }
+      if (pathUrl === `/v1/scripts/${SCRIPT_V2_ID}/productions` && request.method() === 'GET') {
+        await route.fulfill({ status: 200, headers: corsHeaders, json: { items: productionsList } });
+        return;
+      }
+      if (pathUrl === `/v1/scripts/${SCRIPT_V2_ID}/productions` && request.method() === 'POST') {
+        const body = request.postDataJSON();
+        expect(body).toEqual({ expected_version: 2, mode: 'local_pilot' });
+
+        if (postStage === 'old_backend_422') {
+          await route.fulfill({
+            status: 422,
+            headers: corsHeaders,
+            json: { detail: 'Input should be simulated or local_demo' },
+          });
+          return;
+        }
+
+        if (postStage === 'blocked_missing_tts') {
+          const blockedRecord = {
+            id: PROD_PILOT_BLOCKED_ID,
+            script_id: SCRIPT_V2_ID,
+            script_version: 2,
+            script_content_hash: SCRIPT_V2_HASH,
+            job_id: JOB_PILOT_BLOCKED_ID,
+            mode: 'local_pilot',
+            stage: 'narration',
+            status: 'blocked',
+            error:
+              'Bloqueado no piloto local: sintetizador TTS local offline ausente ou não configurado; nenhum áudio ou vídeo falso foi gerado.',
+            created_at: '2026-11-13T10:00:00Z',
+            updated_at: '2026-11-13T10:00:02Z',
+            artifacts: [],
+            review: null,
+            demo_only: true,
+            real_voice: false,
+            speech_aligned: false,
+            narration_kind: null,
+            narration_disclosure: null,
+            alignment_method: null,
+            publishable: false,
+          };
+          productionsList = [blockedRecord];
+          await route.fulfill({ status: 201, headers: corsHeaders, json: blockedRecord });
+          return;
+        }
+
+        const okRecord = {
+          id: PROD_PILOT_OK_ID,
+          script_id: SCRIPT_V2_ID,
+          script_version: 2,
+          script_content_hash: SCRIPT_V2_HASH,
+          job_id: JOB_PILOT_OK_ID,
+          mode: 'local_pilot',
+          stage: 'review',
+          status: 'succeeded',
+          error: null,
+          created_at: '2026-11-13T10:05:00Z',
+          updated_at: '2026-11-13T10:05:10Z',
+          artifacts: pilotArtifacts,
+          review: null,
+          demo_only: true,
+          real_voice: false,
+          speech_aligned: false,
+          narration_kind: 'local_tts',
+          narration_disclosure:
+            'Narração sintética local Windows SAPI (pt-BR); não é voz humana ou clonada; licença não verificada.',
+          alignment_method: 'measured_sections',
+          publishable: false,
+        };
+        productionsList = [okRecord, ...productionsList];
+        await route.fulfill({ status: 201, headers: corsHeaders, json: okRecord });
+        return;
+      }
+      if (pathUrl === `/v1/productions/${PROD_PILOT_BLOCKED_ID}` && request.method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          headers: corsHeaders,
+          json: productionsList.find(p => p.id === PROD_PILOT_BLOCKED_ID),
+        });
+        return;
+      }
+      if (pathUrl === `/v1/productions/${PROD_PILOT_OK_ID}` && request.method() === 'GET') {
+        const baseProd = productionsList.find(p => p.id === PROD_PILOT_OK_ID) as
+          | Record<string, unknown>
+          | undefined;
+        await route.fulfill({
+          status: 200,
+          headers: corsHeaders,
+          json:
+            baseProd && omitEvidenceArtifact
+              ? {
+                  ...baseProd,
+                  artifacts: pilotArtifacts.filter(a => a.id !== PILOT_EVIDENCE_ID),
+                }
+              : baseProd,
+        });
+        return;
+      }
+      if (
+        (pathUrl === `/v1/jobs/${JOB_PILOT_BLOCKED_ID}/events` ||
+          pathUrl === `/v1/jobs/${JOB_PILOT_OK_ID}/events`) &&
+        request.method() === 'GET'
+      ) {
+        const isOk = pathUrl.includes(JOB_PILOT_OK_ID);
+        await route.fulfill({
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/x-ndjson' },
+          body:
+            JSON.stringify({
+              sequence: 1,
+              kind: 'stage',
+              message: isOk ? 'review' : 'narration',
+            }) + '\n',
+        });
+        return;
+      }
+      if (
+        pathUrl === `/v1/productions/${PROD_PILOT_OK_ID}/artifacts/${PILOT_EVIDENCE_ID}` &&
+        request.method() === 'GET'
+      ) {
+        expect(request.headers()['authorization']).toBe(`Bearer ${SESSION_TOKEN}`);
+        if (evidenceFetchMode === '401') {
+          await route.fulfill({
+            status: 401,
+            headers: corsHeaders,
+            json: { detail: 'Token expirado ao ler pilot-evidence.json.' },
+          });
+          return;
+        }
+        if (evidenceFetchMode === 'unknown_hash') {
+          await route.fulfill({
+            status: 200,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ...mockPilotEvidence,
+              narration: {
+                ...mockPilotEvidence.narration,
+                sha256: 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef',
+              },
+            }),
+          });
+          return;
+        }
+        await new Promise(resolve => setTimeout(resolve, 200));
+        await route.fulfill({
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          body: JSON.stringify(mockPilotEvidence),
+        });
+        return;
+      }
+      await route.fulfill({ status: 404, headers: corsHeaders, json: { detail: 'Não encontrado' } });
+    });
+
+    await connectSession(page);
+    await page.getByRole('button', { name: 'ESCURO', exact: true }).click();
+    await page.getByRole('button', { name: 'Produção', exact: true }).click();
+
+    const prodRegion = page.getByRole('region', { name: 'Produção técnica local e revisão final' });
+    const modeSelect = prodRegion.getByLabel('Modo de execução da produção');
+
+    // Select 'local_pilot' ('Piloto local com narração')
+    await modeSelect.selectOption('local_pilot');
+    await expect(prodRegion.getByText('PILOTO LOCAL COM NARRAÇÃO').first()).toBeVisible();
+    await expect(
+      prodRegion.getByText(/Não promete ferramenta instalada: se motor de voz\/render faltar/i)
+    ).toBeVisible();
+
+    const startPilotBtn = prodRegion.getByRole('button', {
+      name: 'Iniciar piloto local com narração',
+      exact: true,
+    });
+    await expect(startPilotBtn).toBeEnabled();
+
+    // 1. Against older backend returning 422, shows explicit 422 and never infers success
+    await startPilotBtn.click();
+    await expect(prodRegion.getByRole('alert')).toContainText(
+      'Contrato ou payload inválido (422): Input should be simulated or local_demo'
+    );
+    await expect(prodRegion.getByRole('region', { name: /^Detalhes da produção / })).toHaveCount(0);
+
+    // 2. Missing TTS / voice dependency blocks the job: UI must NOT infer TTS or aligned subtitles from mode='local_pilot'
+    postStage = 'blocked_missing_tts';
+    await startPilotBtn.click();
+
+    const blockedDetail = prodRegion.getByRole('region', {
+      name: `Detalhes da produção ${PROD_PILOT_BLOCKED_ID}`,
+    });
+    await expect(blockedDetail).toBeVisible();
+    await expect(blockedDetail.getByRole('alert', { name: 'Produção bloqueada' })).toContainText(
+      'sintetizador TTS local offline ausente ou não configurado'
+    );
+    // Provenance must reflect unverified state since narration_kind/alignment_method are null and no artifacts were produced
+    await expect(
+      blockedDetail.getByText(
+        'Não verificado (sem evidência de áudio/TTS no resultado; nunca inferir do modo pedido)'
+      )
+    ).toBeVisible();
+    await expect(
+      blockedDetail.getByText(
+        'Não verificado (sem legenda SRT registrada; alinhamento de fala não verificado)'
+      )
+    ).toBeVisible();
+    await expect(
+      blockedDetail.getByText('Não verificado (sem cenas registradas nos artefatos)')
+    ).toBeVisible();
+    await expect(
+      blockedDetail.getByText('Não verificado (relatório de qualidade indisponível)')
+    ).toBeVisible();
+    await expect(
+      blockedDetail.getByText('Não verificado (pilot-evidence.json ausente nos artefatos)')
+    ).toBeVisible();
+
+    await blockedDetail.scrollIntoViewIfNeeded();
+    await page.evaluate(() => document.fonts.ready);
+    await page.screenshot({ path: path.join(artifactDir, 'production-pilot-blocked-dark.png') });
+
+    // 3. Reconcile explicitly and start succeeded local_pilot run with pilot-evidence.json
+    postStage = 'succeeded_pilot';
+    evidenceFetchMode = '401';
+    await blockedDetail.getByLabel('Conferi os artefatos e os efeitos da tentativa anterior').check();
+    await blockedDetail
+      .getByRole('button', { name: 'Criar nova produção após conciliação', exact: true })
+      .click();
+
+    const okDetail = prodRegion.getByRole('region', {
+      name: `Detalhes da produção ${PROD_PILOT_OK_ID}`,
+    });
+    await expect(okDetail).toBeVisible();
+
+    // First, pilot-evidence.json returns 401 -> surfaces explicit 401 alert while preserving known production state
+    // and does NOT expose the complete narration shortcut button (avoiding picking section-1.wav)
+    const evidenceErrorAlert = okDetail.getByRole('alert', {
+      name: 'Erro ao carregar evidência do piloto',
+    });
+    await expect(evidenceErrorAlert).toContainText(
+      'Sessão não autorizada (401): Token expirado ao ler pilot-evidence.json.'
+    );
+    const okQuickBar = okDetail.getByRole('region', {
+      name: 'Acesso rápido de insumos para revisão',
+    });
+    await expect(
+      okQuickBar.getByRole('button', { name: 'Áudio / narração WAV', exact: true })
+    ).toHaveCount(0);
+    await expect(
+      okQuickBar.getByText(
+        'Narração completa não verificada (falha ao ler pilot-evidence.json · use a tabela para faixas individuais)'
+      )
+    ).toBeVisible();
+
+    // Negative case: pilot-evidence.json loads with an unknown/unmatched narration.sha256 -> shortcut stays disabled/hidden with explicit hash mismatch badge
+    evidenceFetchMode = 'unknown_hash';
+    await evidenceErrorAlert
+      .getByRole('button', { name: 'Recarregar evidência do piloto', exact: true })
+      .click();
+    await expect(evidenceErrorAlert).toHaveCount(0);
+    await expect(
+      okQuickBar.getByRole('button', { name: 'Áudio / narração WAV', exact: true })
+    ).toHaveCount(0);
+    await expect(
+      okQuickBar.getByText(
+        'Narração completa não verificada (narration.sha256 ausente ou sem correspondência nos artefatos · use a tabela para faixas individuais)'
+      )
+    ).toBeVisible();
+
+    // Negative case: pilot-evidence.json absent from artifacts -> shortcut stays hidden with explicit missing-evidence badge
+    omitEvidenceArtifact = true;
+    await prodRegion.getByRole('button', { name: 'Recarregar produção atual', exact: true }).click();
+    await expect(
+      okQuickBar.getByRole('button', { name: 'Áudio / narração WAV', exact: true })
+    ).toHaveCount(0);
+    await expect(
+      okQuickBar.getByText(
+        'Narração completa não verificada (pilot-evidence.json ausente · use a tabela para faixas individuais)'
+      )
+    ).toBeVisible();
+
+    // Reload pilot-evidence.json with matching narration.sha256 -> shows loading badge while in-flight, then enables shortcut and populates full provenance while keeping quality_report as unverified
+    omitEvidenceArtifact = false;
+    evidenceFetchMode = 'ok';
+    await prodRegion.getByRole('button', { name: 'Recarregar produção atual', exact: true }).click();
+    await expect(
+      okQuickBar.getByText('Verificando narração completa em pilot-evidence.json…')
+    ).toBeVisible();
+    await expect(
+      okQuickBar.getByRole('button', { name: 'Áudio / narração WAV', exact: true })
+    ).toBeVisible();
+
+    const provRegion = okDetail.getByLabel('Avisos de proveniência e escopo de demonstração');
+    await expect(
+      provRegion.getByText(
+        'TTS local sintético (local_tts · não é voz humana nem clone · real_voice: false · motor: windows_sapi (Microsoft Maria Desktop - Portuguese(Brazil)))'
+      )
+    ).toBeVisible();
+    await expect(
+      provRegion.getByText(
+        'Legenda segmentada local (.srt · measured_sections) · Alinhamento de fala não verificado (speech_aligned: false · sem alinhamento fino por palavra)'
+      )
+    ).toBeVisible();
+    await expect(
+      provRegion.getByText('Cenas demonstrativas locais (original_local · 1 arquivo(s) PNG · sem assets externos)')
+    ).toBeVisible();
+    await expect(
+      provRegion.getByText('Não verificado (relatório de qualidade indisponível)')
+    ).toBeVisible();
+    await expect(
+      provRegion.getByText('pilot-evidence.json (Evidência carregada)')
+    ).toBeVisible();
+    await expect(
+      provRegion.getByText(/1 asset\(s\) system_voice \(license: unverified — voz SAPI não comprova licença comercial nem publicabilidade\)/)
+    ).toBeVisible();
+  });
+
+  test('Modo Piloto Local: preview autenticado de vídeo/SRT/áudio/evidência com QC parcial (not_checked), revogação de Blob URL ao trocar/fechar, preservação do estado em erro 401/rede na prévia e rejeição/aprovação por hash sem implicar publicabilidade', async ({
+    page,
+  }) => {
+    const currentWf = createWorkflowFixture();
+    const scriptV2 = createScriptRecordFixture(2, 'approved');
+    const PROD_PILOT_ID = 'eeeeffff000011112222333344445555';
+    const JOB_PILOT_ID = 'job_pilot_review_01';
+    const PILOT_EVIDENCE_ID = 'e1e2e3e4f1f2f3f4a1a2a3a4b1b2b3b4';
+    const PILOT_SECTION_1_AUDIO_ID = '20202020303030304040404050505051';
+    const PILOT_SECTION_2_AUDIO_ID = '20202020303030304040404050505052';
+    const PILOT_SECTION_3_AUDIO_ID = '20202020303030304040404050505053';
+    const PILOT_AUDIO_ID = 'a1a2a3a4b1b2b3b4c1c2c3c4d1d2d3d4';
+    const PILOT_AUDIO_REVIEW_ID = '20202020303030304040404050505059';
+    const PILOT_SUBS_ID = 'b1b2b3b4c1c2c3c4d1d2d3c4e1e2e3e4';
+
+    let srtFetchFailure: 'none' | '401' | 'network' = 'none';
+    const externalRequests: string[] = [];
+    const requestedAudioArtifactIds: string[] = [];
+
+    const mockPilotEvidence = {
+      schema_version: 1,
+      demo_only: true,
+      alignment_method: 'measured_sections',
+      narration: {
+        kind: 'local_tts',
+        engine: 'windows_sapi',
+        voice: 'Microsoft Maria Desktop - Portuguese(Brazil)',
+        duration_seconds: 47.912925,
+        sha256: '2fc4667c7fb878d946f116b688ea7c94c90077d778e55affb27150c3e57bfa4a',
+      },
+      scenes: [
+        { id: 'hook', start: 0.0, end: 14.87, asset_id: 'scene-1' },
+        { id: 'body', start: 14.87, end: 31.28, asset_id: 'scene-2' },
+        { id: 'conclusion', start: 31.28, end: 47.91, asset_id: 'scene-3' },
+      ],
+      subtitles: [
+        { start: 0.0, end: 1.85, text: 'No bairro fictício Jardim Aurora' },
+        { start: 14.87, end: 16.84, text: 'A proposta começa com um reservatório fechado.' },
+        { start: 31.28, end: 33.06, text: 'O resultado precisa de revisão humana.' },
+      ],
+      assets: [
+        {
+          id: 'scene-1',
+          relative_path: 'canais/demo/videos/fixture/scene-1.png',
+          sha256: 'dbd285b4763b75888790bd3bfac1e38865377bf9d58f50d37f84487db70b3e58',
+          origin: 'original_local',
+          license: 'original',
+          attribution: 'Cena informativa original gerada localmente a partir do roteiro aprovado.',
+          generated_at: '2026-11-13T13:04:49Z',
+        },
+        {
+          id: 'narration',
+          relative_path: 'canais/demo/videos/fixture/fixture.wav',
+          sha256: '2fc4667c7fb878d946f116b688ea7c94c90077d778e55affb27150c3e57bfa4a',
+          origin: 'system_voice',
+          license: 'unverified',
+          attribution:
+            'Microsoft Maria Desktop - Portuguese(Brazil); Narração sintética local Windows SAPI (pt-BR); não é voz humana ou clonada; licença não verificada.',
+          generated_at: '2026-11-13T13:04:49Z',
+        },
+      ],
+      video: {
+        duration_seconds: 48.733333,
+        width: 540,
+        height: 960,
+        frames: 1462,
+      },
+      // Sonnet QC schema v1: checks pass/fail/not_checked, warnings, publishable=false
+      quality_report: {
+        schema_version: 1,
+        checks: [
+          { id: 'schema', status: 'pass', detail: 'Schema válido.' },
+          { id: 'narration', status: 'pass', detail: 'TTS local registrado.' },
+          { id: 'provenance_licenses', status: 'not_checked', detail: 'Voz SAPI com license=unverified.' },
+          { id: 'acoustic_evidence', status: 'not_checked', detail: 'Loudness e inteligibilidade não medidos.' },
+          { id: 'word_alignment', status: 'not_checked', detail: 'Alinhamento fino por palavra não medido.' },
+          { id: 'publishability', status: 'not_checked', detail: 'Publicação bloqueada para piloto local.' },
+        ],
+        blocking_errors: [],
+        warnings: ['Resolução 540x960 diferente de 1080x1920', 'Voz SAPI possui licença unverified'],
+        publishable: false,
+      },
+    };
+
+    let prodState: Record<string, unknown> = {
+      id: PROD_PILOT_ID,
+      script_id: SCRIPT_V2_ID,
+      script_version: 2,
+      script_content_hash: SCRIPT_V2_HASH,
+      job_id: JOB_PILOT_ID,
+      mode: 'local_pilot',
+      stage: 'review',
+      status: 'succeeded',
+      error: null,
+      created_at: '2026-11-13T10:15:00Z',
+      updated_at: '2026-11-13T10:15:10Z',
+      artifacts: [
+        {
+          id: 'art_plan_pilot',
+          kind: 'plan' as const,
+          relative_path: 'plan.json',
+          size_bytes: 1420,
+          sha256: 'aaaa1111222233334444555566667777888899990000aaaabbbbccccddddeeee',
+        },
+        {
+          id: PILOT_SECTION_1_AUDIO_ID,
+          kind: 'audio' as const,
+          relative_path: 'canais/demo/videos/fixture/section-1.wav',
+          size_bytes: 10240,
+          sha256: 'a242cb549dbb7f35a2643c94c1d7be59225bc33aba513754da3af2fec5a3bd1b',
+        },
+        {
+          id: PILOT_SECTION_2_AUDIO_ID,
+          kind: 'audio' as const,
+          relative_path: 'canais/demo/videos/fixture/section-2.wav',
+          size_bytes: 11240,
+          sha256: '5d0361f1049795aa78ebb84c8630577ffa6f7ad6172b9e1b67b0941aa81be023',
+        },
+        {
+          id: PILOT_SECTION_3_AUDIO_ID,
+          kind: 'audio' as const,
+          relative_path: 'canais/demo/videos/fixture/section-3.wav',
+          size_bytes: 10564,
+          sha256: '70176a894ce4fd841a25ef1d985fae982ddac135ba5e625b1e881cadc9038c42',
+        },
+        {
+          id: PILOT_AUDIO_ID,
+          kind: 'audio' as const,
+          relative_path: 'canais/demo/videos/fixture/fixture.wav',
+          size_bytes: 32044,
+          sha256: '2fc4667c7fb878d946f116b688ea7c94c90077d778e55affb27150c3e57bfa4a',
+        },
+        {
+          id: PILOT_AUDIO_REVIEW_ID,
+          kind: 'audio' as const,
+          relative_path: 'canais/demo/videos/fixture/render/audio-review.wav',
+          size_bytes: 33120,
+          sha256: '9999888877776666555544443333222211110000aaaabbbbccccddddeeeeffff',
+        },
+        {
+          id: PILOT_SUBS_ID,
+          kind: 'subtitles' as const,
+          relative_path: 'canais/demo/videos/fixture/fixture.srt',
+          size_bytes: 312,
+          sha256: 'cccc1111222233334444555566667777888899990000aaaabbbbccccddddeeee',
+        },
+        {
+          id: PILOT_EVIDENCE_ID,
+          kind: 'manifest' as const,
+          relative_path: 'pilot-evidence.json',
+          size_bytes: 640,
+          sha256: 'f0f01111222233334444555566667777888899990000aaaabbbbccccddddeeee',
+        },
+        {
+          id: VIDEO_ARTIFACT_ID,
+          kind: 'video' as const,
+          relative_path: 'canais/demo/videos/fixture/render/short-rascunho.mp4',
+          size_bytes: 96902,
+          sha256: VIDEO_SHA256,
+        },
+      ],
+      review: null,
+      demo_only: true,
+      real_voice: false,
+      speech_aligned: false,
+      narration_kind: 'local_tts',
+      narration_disclosure:
+        'Narração sintética local Windows SAPI (pt-BR); não é voz humana ou clonada; licença não verificada.',
+      alignment_method: 'measured_sections',
+      publishable: false,
+    };
+
+    await page.addInitScript(() => {
+      const origRevoke = URL.revokeObjectURL.bind(URL);
+      (window as unknown as { __revokedBlobUrls: string[] }).__revokedBlobUrls = [];
+      URL.revokeObjectURL = (url: string) => {
+        (window as unknown as { __revokedBlobUrls: string[] }).__revokedBlobUrls.push(url);
+        return origRevoke(url);
+      };
+    });
+
+    page.on('request', req => {
+      const url = req.url();
+      if (!url.startsWith('http://127.0.0.1:') && !url.startsWith('blob:') && !url.startsWith('data:')) {
+        externalRequests.push(url);
+      }
+    });
+
+    await page.route('http://127.0.0.1:8765/**', async route => {
+      const request = route.request();
+      const pathUrl = new URL(request.url()).pathname;
+      if (request.method() === 'OPTIONS') {
+        await route.fulfill({ status: 204, headers: corsHeaders });
+        return;
+      }
+      if (pathUrl === '/health') {
+        await route.fulfill({ status: 200, headers: corsHeaders, json: { status: 'ready' } });
+        return;
+      }
+      if (pathUrl === '/v1/hermes') {
+        await route.fulfill({
+          status: 200,
+          headers: corsHeaders,
+          json: { state: 'ready', connected: true, cli_available: true, configured: true, features: [] },
+        });
+        return;
+      }
+      if (pathUrl === '/v1/jobs') {
+        await route.fulfill({ status: 200, headers: corsHeaders, json: [] });
+        return;
+      }
+      if (pathUrl === '/v1/workflows') {
+        await route.fulfill({ status: 200, headers: corsHeaders, json: [currentWf] });
+        return;
+      }
+      if (pathUrl === `/v1/workflows/${WORKFLOW_ID}`) {
+        await route.fulfill({ status: 200, headers: corsHeaders, json: currentWf });
+        return;
+      }
+      if (pathUrl === `/v1/workflows/${WORKFLOW_ID}/scripts` && request.method() === 'GET') {
+        await route.fulfill({ status: 200, headers: corsHeaders, json: { items: [scriptV2] } });
+        return;
+      }
+      if (pathUrl === `/v1/scripts/${SCRIPT_V2_ID}/productions` && request.method() === 'GET') {
+        await route.fulfill({ status: 200, headers: corsHeaders, json: { items: [prodState] } });
+        return;
+      }
+      if (pathUrl === `/v1/productions/${PROD_PILOT_ID}` && request.method() === 'GET') {
+        await route.fulfill({ status: 200, headers: corsHeaders, json: prodState });
+        return;
+      }
+      if (pathUrl === `/v1/jobs/${JOB_PILOT_ID}/events`) {
+        await route.fulfill({
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/x-ndjson' },
+          body: JSON.stringify({ sequence: 1, kind: 'stage', message: 'review' }) + '\n',
+        });
+        return;
+      }
+      if (pathUrl.endsWith(`/artifacts/${VIDEO_ARTIFACT_ID}`) && request.method() === 'GET') {
+        expect(request.headers()['authorization']).toBe(`Bearer ${SESSION_TOKEN}`);
+        await route.fulfill({
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'video/mp4' },
+          body: getDemoVideoBuffer(),
+        });
+        return;
+      }
+      if (
+        (pathUrl.endsWith(`/artifacts/${PILOT_AUDIO_ID}`) ||
+          pathUrl.endsWith(`/artifacts/${PILOT_SECTION_1_AUDIO_ID}`) ||
+          pathUrl.endsWith(`/artifacts/${PILOT_SECTION_2_AUDIO_ID}`) ||
+          pathUrl.endsWith(`/artifacts/${PILOT_SECTION_3_AUDIO_ID}`) ||
+          pathUrl.endsWith(`/artifacts/${PILOT_AUDIO_REVIEW_ID}`)) &&
+        request.method() === 'GET'
+      ) {
+        expect(request.headers()['authorization']).toBe(`Bearer ${SESSION_TOKEN}`);
+        const requestedId = pathUrl.split('/').pop()!;
+        requestedAudioArtifactIds.push(requestedId);
+        await route.fulfill({
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'audio/wav' },
+          body: getDemoVideoBuffer(),
+        });
+        return;
+      }
+      if (pathUrl.endsWith(`/artifacts/${PILOT_SUBS_ID}`) && request.method() === 'GET') {
+        expect(request.headers()['authorization']).toBe(`Bearer ${SESSION_TOKEN}`);
+        if (srtFetchFailure === '401') {
+          await route.fulfill({
+            status: 401,
+            headers: corsHeaders,
+            json: { detail: 'Sessão inválida ao abrir legenda SRT.' },
+          });
+          return;
+        }
+        if (srtFetchFailure === 'network') {
+          await route.abort('failed');
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'text/plain; charset=utf-8' },
+          body: mockSrtContent,
+        });
+        return;
+      }
+      if (pathUrl.endsWith(`/artifacts/${PILOT_EVIDENCE_ID}`) && request.method() === 'GET') {
+        expect(request.headers()['authorization']).toBe(`Bearer ${SESSION_TOKEN}`);
+        await route.fulfill({
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          body: JSON.stringify(mockPilotEvidence),
+        });
+        return;
+      }
+      if (pathUrl === `/v1/productions/${PROD_PILOT_ID}/review` && request.method() === 'POST') {
+        const body = request.postDataJSON();
+        expect(body).toEqual({
+          decision: 'reject',
+          artifact_sha256: VIDEO_SHA256,
+        });
+        prodState = {
+          ...prodState,
+          review: {
+            decision: 'reject',
+            artifact_sha256: VIDEO_SHA256,
+            reviewed_at: '2026-11-13T10:20:00Z',
+          },
+        };
+        await route.fulfill({ status: 200, headers: corsHeaders, json: prodState });
+        return;
+      }
+      await route.fulfill({ status: 404, headers: corsHeaders, json: { detail: 'Não encontrado' } });
+    });
+
+    await connectSession(page);
+    await page.getByRole('button', { name: 'ESCURO', exact: true }).click();
+    await page.getByRole('button', { name: 'Produção', exact: true }).click();
+
+    const prodRegion = page.getByRole('region', { name: 'Produção técnica local e revisão final' });
+    const detailRegion = prodRegion.getByRole('region', {
+      name: `Detalhes da produção ${PROD_PILOT_ID}`,
+    });
+    await expect(detailRegion).toBeVisible();
+
+    // Verify QC schema v1 partial status (never claiming all checks passed when not_checked items exist)
+    await expect(
+      detailRegion
+        .getByLabel('Avisos de proveniência e escopo de demonstração')
+        .getByText(
+          'QC parcial (2 pass, 0 fail, 4 not_checked: provenance_licenses, acoustic_evidence, word_alignment, publishability) · 2 aviso(s) · publishable: false (não equivale a aprovação total)'
+        )
+    ).toBeVisible();
+
+    const quickReviewBar = detailRegion.getByRole('region', {
+      name: 'Acesso rápido de insumos para revisão',
+    });
+    await expect(quickReviewBar).toBeVisible();
+
+    // 1. Open video preview via quick-access bar
+    await quickReviewBar.getByRole('button', { name: 'Prévia de vídeo (MP4)', exact: true }).click();
+    const videoPlayer = detailRegion.getByLabel(
+      'Player de vídeo canais/demo/videos/fixture/render/short-rascunho.mp4'
+    );
+    await expect(videoPlayer).toBeVisible();
+    const videoBlobUrl = await videoPlayer.getAttribute('src');
+    expect(videoBlobUrl).toMatch(/^blob:/);
+
+    // 2. Switching to SRT when 401 or network error occurs surfaces explicit message AND preserves open video preview
+    srtFetchFailure = '401';
+    await quickReviewBar
+      .getByRole('button', { name: 'Legendas / transcrição SRT', exact: true })
+      .click();
+    await expect(detailRegion.getByRole('alert')).toContainText(
+      'Sessão não autorizada (401): Sessão inválida ao abrir legenda SRT.'
+    );
+    await expect(videoPlayer).toBeVisible();
+
+    srtFetchFailure = 'network';
+    await quickReviewBar
+      .getByRole('button', { name: 'Legendas / transcrição SRT', exact: true })
+      .click();
+    await expect(detailRegion.getByRole('alert')).toContainText(
+      'Falha de rede ao comunicar com o backend local'
+    );
+    await expect(videoPlayer).toBeVisible();
+
+    // 3. Switching to SRT when network recovers revokes the video blob URL immediately and renders segmented SRT
+    srtFetchFailure = 'none';
+    await quickReviewBar
+      .getByRole('button', { name: 'Legendas / transcrição SRT', exact: true })
+      .click();
+
+    const revokedAfterSwitchToSrt = await page.evaluate(
+      () => (window as unknown as { __revokedBlobUrls: string[] }).__revokedBlobUrls
+    );
+    expect(revokedAfterSwitchToSrt).toContain(videoBlobUrl);
+
+    const srtSegmentsRegion = detailRegion.getByRole('region', {
+      name: 'Segmentos de legenda SRT',
+    });
+    await expect(srtSegmentsRegion).toBeVisible();
+    await expect(srtSegmentsRegion).toContainText('TRANSCRIÇÃO / LEGENDA SEGMENTADA (3 TRECHO(S))');
+    await expect(srtSegmentsRegion).toContainText(
+      'Limites medidos por seção (measured_sections) · Alinhamento fino por palavra não verificado'
+    );
+    await expect(srtSegmentsRegion).toContainText('#1 · 00:00:00,000 → 00:00:05,200');
+
+    const srtPreviewCard = detailRegion.getByRole('region', {
+      name: 'Prévia do artefato canais/demo/videos/fixture/fixture.srt',
+    });
+    await srtPreviewCard.scrollIntoViewIfNeeded();
+    await page.evaluate(() => document.fonts.ready);
+    await page.screenshot({ path: path.join(artifactDir, 'production-pilot-srt-preview-dark.png') });
+
+    // 4. Switch to audio preview via quick-access bar -> must select ONLY the complete narration WAV matching narration.sha256 (PILOT_AUDIO_ID), never section-1/2/3.wav or render/audio-review.wav
+    await quickReviewBar
+      .getByRole('button', { name: 'Áudio / narração WAV', exact: true })
+      .click();
+    expect(requestedAudioArtifactIds).toEqual([PILOT_AUDIO_ID]);
+    const audioPlayer = detailRegion.getByLabel(
+      'Player de áudio canais/demo/videos/fixture/fixture.wav'
+    );
+    await expect(audioPlayer).toBeVisible();
+    const audioBlobUrl = await audioPlayer.getAttribute('src');
+    expect(audioBlobUrl).toMatch(/^blob:/);
+    await expect(
+      detailRegion.getByText('Áudio de TTS local sintético — não é voz humana nem clone de voz')
+    ).toBeVisible();
+    await expect(
+      detailRegion.getByText('SHA-256: 2fc4667c7fb878d946f116b688ea7c94c90077d778e55affb27150c3e57bfa4a')
+    ).toBeVisible();
+
+    // Individual section audio remains accessible in the artifacts table with an honest non-complete caption
+    const artifactsTable = detailRegion.getByRole('table', {
+      name: 'Tabela de artefatos da produção',
+    });
+    const section1Row = artifactsTable.locator('tr', {
+      hasText: 'canais/demo/videos/fixture/section-1.wav',
+    });
+    await section1Row.getByRole('button', { name: 'Ouvir áudio', exact: true }).click();
+    expect(requestedAudioArtifactIds).toEqual([PILOT_AUDIO_ID, PILOT_SECTION_1_AUDIO_ID]);
+    const section1Player = detailRegion.getByLabel(
+      'Player de áudio canais/demo/videos/fixture/section-1.wav'
+    );
+    await expect(section1Player).toBeVisible();
+    const section1BlobUrl = await section1Player.getAttribute('src');
+    expect(section1BlobUrl).toMatch(/^blob:/);
+    await expect(
+      detailRegion.getByText(
+        'Faixa de áudio individual ou auxiliar — completude de narração não inferida fora do narration.sha256 de pilot-evidence.json (não é voz humana nem clone de voz).'
+      )
+    ).toBeVisible();
+
+    await quickReviewBar
+      .getByRole('button', {
+        name: 'Proveniência / qualidade (pilot-evidence.json)',
+        exact: true,
+      })
+      .click();
+
+    const metadataSummaryRegion = detailRegion.getByRole('region', {
+      name: 'Resumo de metadados do artefato',
+    });
+    await expect(metadataSummaryRegion).toBeVisible();
+    await expect(metadataSummaryRegion).toContainText('local_tts (windows_sapi)');
+    await expect(metadataSummaryRegion).toContainText('measured_sections · 3 segmento(s)');
+    await expect(metadataSummaryRegion).toContainText('2 pass, 0 fail, 4 not_checked · publishable: false');
+
+    const revokedAfterSwitchToJson = await page.evaluate(
+      () => (window as unknown as { __revokedBlobUrls: string[] }).__revokedBlobUrls
+    );
+    expect(revokedAfterSwitchToJson).toContain(audioBlobUrl);
+    expect(revokedAfterSwitchToJson).toContain(section1BlobUrl);
+
+    const evidencePreviewCard = detailRegion.getByRole('region', {
+      name: 'Prévia do artefato pilot-evidence.json',
+    });
+    await evidencePreviewCard.scrollIntoViewIfNeeded();
+    await page.evaluate(() => document.fonts.ready);
+    await page.screenshot({
+      path: path.join(artifactDir, 'production-pilot-evidence-preview-dark.png'),
+    });
+
+    // 5. Reject production in Final Human Review bound to VIDEO_SHA256
+    const reviewRegion = detailRegion.getByRole('region', {
+      name: 'Revisão humana final da produção',
+    });
+    await expect(reviewRegion).toBeVisible();
+    await expect(reviewRegion).toContainText(
+      'TTS local sintético (não é voz humana nem clone)'
+    );
+    await expect(reviewRegion).toContainText(
+      'não implica licença ou publicabilidade'
+    );
+
+    await reviewRegion.getByRole('button', { name: 'Rejeitar produção', exact: true }).click();
+
+    const recordedReview = detailRegion.getByRole('region', {
+      name: 'Decisão de revisão final registrada',
+    });
+    await expect(recordedReview).toBeVisible();
+    await expect(recordedReview.getByText('Rejeitado na revisão final')).toBeVisible();
+    await expect(recordedReview.getByText(VIDEO_SHA256)).toBeVisible();
+    await expect(recordedReview).toContainText(
+      'Decisão vinculada ao hash não implica licença/publicabilidade, não realiza upload/publicação e não forja marcador da fábrica'
+    );
+
+    // Verify zero external requests were made
+    expect(externalRequests).toEqual([]);
+
+    // Switch to Light theme at 1040x680 and capture screenshot
+    await page.getByRole('button', { name: 'Ajustes', exact: true }).click();
+    await page.getByRole('button', { name: 'CLARO', exact: true }).click();
+    await page.setViewportSize({ width: 1040, height: 680 });
+    await page.getByRole('button', { name: 'Produção', exact: true }).click();
+
+    await expect(recordedReview).toBeVisible();
+    await recordedReview.scrollIntoViewIfNeeded();
+    await page.evaluate(() => document.fonts.ready);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+      true
+    );
+    await page.screenshot({
+      path: path.join(artifactDir, 'production-pilot-rejected-light-1040.png'),
+    });
   });
 });
