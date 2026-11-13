@@ -156,7 +156,11 @@ def test_estimated_words_provenance_quality_and_registered_hashes(tmp_path,monke
     assert all(a['status']=='unverified' and a['license']['commercial_use']=='unknown' for a in metadata['asset_provenance']['assets'])
     assert all(c['method']=='estimated' for c in metadata['quality_report']['checks'] if c['category']=='sync')
     # Somente fixture do contrato: nenhuma inferência acústica real é alegada neste teste.
-    declared_alignment=json.loads(json.dumps(words))|{'source':'forced_alignment'}
+    declared_alignment=json.loads(json.dumps(words))|{'source':'forced_alignment','alignment':{
+        'method':'asr_sequence_match','asr_engine':'fixture','matched_words':len(words['words']),
+        'interpolated_words':0,'match_rate':1.0,'longest_interpolated_seconds':0.0}}
+    for item in declared_alignment['words']:
+        item['timing']='measured'   # extensão HOR-054: forced_alignment declara o tipo de tempo de cada palavra
     pilot.write(tmp_path/'word-timings.json',declared_alignment)
     refreshed=[inspect_artifact(tmp_path,p['relative_path'],p['kind']) for p in paths]
     assert pilot.confirmed_media(tmp_path,refreshed,'unit-production')['speech_aligned'] is True
