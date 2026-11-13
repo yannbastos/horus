@@ -17,6 +17,26 @@ def script_for(client):
     return script
 
 
+def test_render_quality_is_explicit_validated_and_part_of_plan(settings):
+    from horus_backend.production import ProductionRequest
+    from pydantic import ValidationError
+    assert ProductionRequest(expected_version=1,mode='local_pilot').render_quality == 'draft'
+    for mode in ('simulated','local_demo'):
+        with pytest.raises(ValidationError):
+            ProductionRequest(expected_version=1,mode=mode,render_quality='final')
+    with client_for(settings) as client:
+        script = script_for(client)
+        assert start(client,script,render_quality='final').status_code == 422
+        assert start(client,script,mode='local_pilot',render_quality='other').status_code == 422
+        response = start(client,script,mode='local_pilot',render_quality='final')
+        assert response.status_code == 201
+        with client.app.state.store.connect() as db:
+            plan = json.loads(db.execute('SELECT plan FROM productions WHERE id=?',
+                (response.json()['id'],)).fetchone()['plan'])
+        assert plan['render_quality'] == 'final'
+        assert start(client,script,mode='local_pilot',render_quality='draft').status_code == 409
+
+
 def start(client, script, key='production', mode='simulated', **extra):
     return client.post(f"/v1/scripts/{script['id']}/productions", headers={'Idempotency-Key': key},
         json={'expected_version': script['version'], 'mode': mode, **extra})

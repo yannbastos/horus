@@ -14,7 +14,9 @@ import math
 import os
 from pathlib import Path
 import re
+import shutil
 import sys
+import time
 import wave
 
 from .processes import OwnedProcess
@@ -123,6 +125,96 @@ def subtitle_words(words, fps=30):
     return cues
 
 
+def measured_subtitle_words(words):
+    """Cues com bordas acústicas medidas; as pausas entre grupos ficam sem texto."""
+    groups = []
+    for word in words:
+        if not groups or len(groups[-1]) == 3 or groups[-1][0]['section'] != word['section']:
+            groups.append([])
+        groups[-1].append(word)
+    return [{'start':round(group[0]['start'],3), 'end':round(group[-1]['end'],3),
+             'text':' '.join(w['text'] for w in group)} for group in groups]
+
+
+def video_name(plan):
+    return 'short.mp4' if plan.get('render_quality','draft') == 'final' else 'short-rascunho.mp4'
+
+
+async def owned_tool(command, *, cwd, timeout=1800):
+    """Execução local com posse, ambiente mínimo, timeout e encerramento da árvore."""
+    env = {k:v for k,v in os.environ.items() if k.upper() in
+           {'PATH','SYSTEMROOT','WINDIR','TEMP','TMP','COMSPEC','PATHEXT'}}
+    owned = await OwnedProcess.start([str(arg) for arg in command], cwd=cwd, env=env)
+    try:
+        stdout, stderr = await asyncio.wait_for(owned.process.communicate(), timeout=timeout)
+        if owned.process.returncode:
+            raise ValueError('Ferramenta local falhou: '+stderr.decode('utf-8',errors='replace')[-2000:])
+        return stdout + stderr
+    finally:
+        await owned.stop()
+        owned.close()
+
+
+def configure_caption_overlay(root, folder):
+    executable = os.environ.get('HORUS_FFMPEG')
+    if not executable:
+        return None  # fallback fiel à regra da fábrica, inclusive sua falha temporal de QC
+    executable = Path(executable).resolve(strict=True)
+    filters = asyncio.run(owned_tool([executable,'-hide_banner','-filters'],cwd=root,timeout=30))
+    if not re.search(rb'\bsubtitles\s', filters):
+        raise ValueError('HORUS_FFMPEG precisa do filtro subtitles/libass preparado fora do job.')
+    configured_font = os.environ.get('HORUS_SUBTITLE_FONT')
+    local = next((p/'frontend/public/fonts/ArchivoExpanded-SemiBold.ttf' for p in Path(__file__).resolve().parents
+                  if (p/'frontend/public/fonts/ArchivoExpanded-SemiBold.ttf').is_file()),None)
+    font = Path(configured_font) if configured_font else local
+    if font is None:
+        font = Path(os.environ.get('WINDIR','C:/Windows'))/'Fonts/ariblk.ttf'
+    font = font.resolve(strict=True)
+    if font.name not in {'ArchivoExpanded-SemiBold.ttf','ariblk.ttf'}:
+        raise ValueError('Fonte sem metadados locais conhecidos; configure ArchivoExpanded-SemiBold.ttf ou ariblk.ttf.')
+    fonts = folder/'fonts'
+    fonts.mkdir()
+    copied = fonts/font.name
+    shutil.copy2(font,copied)
+    ofl = font.name == 'ArchivoExpanded-SemiBold.ttf'
+    return {'method':'ffmpeg_libass_srt', 'executable':str(executable), 'font_path':str(copied),
+            'font_source':str(font), 'font_sha256':sha(copied),
+            'font_family':'Archivo Expanded' if ofl else 'Arial Black',
+            'font_author':'Omnibus-Type' if ofl else 'Microsoft Corporation',
+            'font_source_url':'https://github.com/Omnibus-Type/Archivo' if ofl else 'https://learn.microsoft.com/en-us/typography/font-list/arial-black',
+            'font_license':{'id':'OFL-1.1' if ofl else 'Microsoft-Windows-font',
+                'name':'SIL Open Font License 1.1' if ofl else 'Microsoft Windows supplied font; licença não verificada',
+                'url':'https://openfontlicense.org/open-font-license-official-text/' if ofl else 'https://learn.microsoft.com/en-us/typography/fonts/font-faq',
+                'commercial_use':'unknown','attribution_required':None,'verified_by':None,'verified_at':None}}
+
+
+def overlay_subtitles(root, folder, video, plan):
+    config_path = root/'caption-overlay.json'
+    if not config_path.is_file():
+        return None
+    config = json.loads(config_path.read_text(encoding='utf-8'))
+    original = video.with_name(video.stem+'-without-subtitles.mp4')
+    video.rename(original)
+    # Nomes relativos fixos evitam escapes de drive/aspas na linguagem de filtros.
+    style = ('FontName='+config['font_family']+',FontSize=12,Bold=-1,PrimaryColour=&H00FFFFFF,'
+             'OutlineColour=&H00000000,BorderStyle=1,Outline=1,Shadow=1,Alignment=2,'
+             'MarginL=23,MarginR=58,MarginV=86')
+    command = [config['executable'],'-hide_banner','-v','error','-i',str(original),
+        '-map','0:v:0','-map','0:a:0','-vf',"subtitles=fixture.srt:fontsdir=fonts:force_style='"+style+"'",
+        '-c:v','libx264','-crf','20' if plan.get('render_quality')=='final' else '30',
+        '-pix_fmt','yuv420p','-c:a','copy','-movflags','+faststart',str(video)]
+    started = time.monotonic()
+    asyncio.run(owned_tool(command,cwd=folder))
+    result = {**config,'srt_sha256':sha(folder/'fixture.srt'),
+              'alignment_sha256':sha(folder/'alinhamento.json'),
+              'intermediate_sha256':sha(original),'final_sha256':sha(video),
+              'overlay_seconds':round(time.monotonic()-started,3),
+              'audio':'stream_copy','video_encodes_after_factory':1,
+              'style':style,'timing':'SRT medido; quantização libass/frame sem estender pausas'}
+    write(folder/'render/caption-overlay.json', result)
+    return result
+
+
 def align_narration(wav, script_text, *, sections, engine, model_dir):
     """Alinhamento antes do render, timeout/posse no módulo ASR; nenhum download."""
     if not model_dir:
@@ -143,7 +235,9 @@ def prepare(root, folder, plan, *, alignment_model=None, progress=None):
     if any(re.search(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', section['text']) for section in sections):
         raise ValueError('Texto contém controle incompatível com fala integral SAPI.')
     request = root / 'sapi-input.json'
-    write(request, {'folder':str(folder), 'sections':sections})
+    size = [1080,1920] if plan.get('render_quality','draft') == 'final' else [540,960]
+    write(request, {'folder':str(folder), 'sections':sections, 'scene_size':size})
+    overlay = configure_caption_overlay(root,folder)
     asyncio.run(synthesize(request))
     voice = json.loads((folder/'voice.json').read_text(encoding='utf-8-sig'))
     if voice['culture'] != 'pt-BR' or not voice['voice']:
@@ -243,7 +337,7 @@ def prepare(root, folder, plan, *, alignment_model=None, progress=None):
     paths.append({'kind':'manifest','relative_path':'alignment-report.json'})
     write(root/'word-timings.json',checked['value'])
     if checked['speech_aligned']:
-        subtitles = subtitle_words(checked['value']['words'])
+        subtitles = (measured_subtitle_words if overlay else subtitle_words)(checked['value']['words'])
         write(folder/'alinhamento.json', {'audio':'fixture.wav','duracao_audio':measured,
             'motor':'forced_alignment','palavras':[
                 {'texto':w['text'],'inicio':w['start'],'fim':w['end'],'linha':w['section']}
@@ -264,6 +358,22 @@ def prepare(root, folder, plan, *, alignment_model=None, progress=None):
                     'name':None,'url':None,'commercial_use':'unknown','attribution_required':None,
                     'verified_by':None,'verified_at':None},
          'status':'unverified','notes':a['attribution']} for a in evidence_assets]}
+    if overlay:
+        font = Path(overlay['font_path'])
+        relative = font.relative_to(root).as_posix()
+        evidence = json.loads((root/'pilot-measurements.json').read_text(encoding='utf-8'))
+        evidence['assets'].append({'id':'subtitle-font','relative_path':relative,'sha256':sha(font),
+            'origin':'licensed_manual','license':'unverified','attribution':overlay['font_author']+'; '+overlay['font_license']['name'],
+            'generated_at':generated})
+        write(root/'pilot-measurements.json',evidence)
+        evidence_assets = evidence['assets']
+        provenance['assets'].append({'asset_id':'subtitle-font','relative_path':relative,'sha256':sha(font),
+            'kind':'font','origin':'licensed_manual','source_url':overlay['font_source_url'],
+            'author':overlay['font_author'],'license':overlay['font_license'],'status':'unverified',
+            'notes':'Arquivo local: '+overlay['font_source']+'; sem licença/aceite humano presumidos.'})
+        paths.append({'kind':'font','relative_path':relative})
+        write(root/'caption-overlay.json',overlay)
+        paths.append({'kind':'manifest','relative_path':'caption-overlay.json'})
     checked = validate_asset_provenance(provenance,artifacts={a['relative_path']:a['sha256'] for a in evidence_assets})
     if not checked['ok']:
         raise ValueError('Contrato de proveniência inválido.')
@@ -277,7 +387,8 @@ def finalize(root, folder):
     evidence = json.loads((root/'pilot-measurements.json').read_text(encoding='utf-8'))
     validation = json.loads((folder/'render/validation.json').read_text(encoding='utf-8'))
     stream = validation['stream']
-    if not (folder/'render/short-rascunho.mp4').is_file():
+    plan = json.loads((root/'plan.json').read_text(encoding='utf-8')) if (root/'plan.json').is_file() else {}
+    if not (folder/'render'/video_name(plan)).is_file():
         raise ValueError('Evidence exige MP4 real.')
     write(folder/'render/narration-signal.json', signal_measurements(folder/'render/audio-review.wav'))
     evidence['video'] = {'duration_seconds':float(stream['duration']),'width':int(stream['width']),
@@ -321,7 +432,7 @@ def quality_report(root, folder, production_id, *, ffmpeg=None, ffprobe=None):
     from .media_contracts import validate_quality_report
     report = run_quality(root,production_id=production_id,ffmpeg=ffmpeg,ffprobe=ffprobe)
     words = json.loads((root/'word-timings.json').read_text(encoding='utf-8'))
-    checked = validate_quality_report(report,video_sha256=sha(folder/'render/short-rascunho.mp4'),
+    checked = validate_quality_report(report,video_sha256=sha(folder/'render'/video_name(json.loads((root/'plan.json').read_text(encoding='utf-8')))),
         production_id=production_id,word_timings_source=words['source'])
     if not checked['ok']:
         raise ValueError('Contrato do relatório QC inválido: '+str(checked['errors']))
@@ -347,7 +458,7 @@ def confirmed_media(root, artifacts, production_id):
     from .media_contracts import validate_quality_report, validate_word_timings, validate_asset_provenance
     prefix = 'canais/demo/videos/fixture/'
     inputs = {a['relative_path']:a['sha256'] for a in artifacts if
-              re.fullmatch(re.escape(prefix)+r'(?:scene-\d+\.png|section-\d+\.wav|fixture\.wav)',a['relative_path'])}
+              re.fullmatch(re.escape(prefix)+r'(?:scene-\d+\.png|section-\d+\.wav|fixture\.wav|fonts/[A-Za-z0-9_-]+\.ttf)',a['relative_path'])}
     provenance = validate_asset_provenance(registered_json(root,artifacts,'asset-provenance.json'),artifacts=inputs)
     word_data = registered_json(root,artifacts,'word-timings.json')
     word_result = validate_word_timings(word_data)

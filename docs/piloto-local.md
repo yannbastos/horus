@@ -1,4 +1,56 @@
-# Piloto audiovisual local — HOR-054
+# Piloto audiovisual local — HOR-054 / HOR-056
+
+## Legenda medida e preset final — 13/11/2026
+
+O pedido de produção aceita `render_quality: "draft" | "final"`. O padrão permanece `draft` (540×960); `final` (1080×1920) é aceito somente em `local_pilot`. A opção fica no plano JSON persistido, sem migração de banco; planos e recibos antigos continuam interpretados como `draft`. Exemplo de corpo para `POST /v1/scripts/{id}/productions`: `{"expected_version":1,"mode":"local_pilot","render_quality":"final"}`. A seleção ainda não foi acrescentada à interface.
+
+As cenas PNG são geradas na resolução escolhida. Regiões, fontes e bounds são recalculados proporcionalmente e conferidos durante a geração para os quatro sentidos do Ken Burns. O preset final existente da fábrica usa H.264 CRF 20, AAC 192 kb/s, 30 fps, sem `scale=0.5`, e produz `render/short.mp4`; draft mantém `render/short-rascunho.mp4`, CRF 30 e AAC 128 kb/s.
+
+Com `Settings.ffmpeg` / `HORUS_FFMPEG` configurado para um executável local com `subtitles`/libass, o Hórus fornece `palavras=[]` nas props da composição. A fonte da fábrica e o `alinhamento.json` medido permanecem intactos. Depois aplica o `fixture.srt` por libass: grupos de até três palavras da mesma seção, início da primeira e fim da última palavra medidos, arredondados a milissegundos. Não prolonga o grupo até a próxima fala; a rasterização tem a quantização própria de libass e dos frames de 30 fps. Sem alinhamento válido, as cues continuam estimadas por seção e `speech_aligned=false`.
+
+Há somente uma reencodificação de vídeo após a fábrica (CRF 20 final / 30 draft), com `-c:a copy`. O worker compara resolução, fps, número de frames, duração e os hashes/tempos de todos os pacotes AAC antes e depois; divergência bloqueia a entrega. `render/caption-overlay.json` e `render/validation.json` registram método, SRT, fonte, alinhamento, hashes intermediário/final e tempos monotônicos. O MP4 sem legenda é preservado localmente para auditoria, sem ser registrado como vídeo de revisão. `short.insumos.json` passa a apontar para o hash final, com os dados da sobreposição. As extrações `subtitles-compare-1.png` a `-3.png` documentam três instantes para inspeção visual.
+
+Sem `HORUS_FFMPEG`, permanece a legenda embutida e seu QC temporal honesto, inclusive a falha conhecida nas pausas. Executável explicitamente configurado mas ausente ou sem libass bloqueia a produção; nenhum job baixa dependências. A verificação de filtros (30 s) e a sobreposição (1800 s) usam `OwnedProcess`, ambiente mínimo e encerramento em timeout/cancelamento; continuam dentro da árvore possuída do worker, cujo limite é 3600 s.
+
+### Ferramenta e fonte preparadas separadamente
+
+No ensaio foi instalado, sem alterar PATH global, o build GPL BtbN **n8.1.3-35-gf1acb0a266 win64-gpl-8.1**, release fixada `autobuild-2026-11-13-12-43`. A release consultada não oferecia n7.x. Arquivo: **194055132 bytes**, SHA-256 **`096d0596ba87ee534c6357797dc68882e714b53aac76859fca4be9c012a6a91c`**, conferido contra o checksum publicado antes da extração. [Arquivo oficial](https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/autobuild-2026-11-13-12-43/ffmpeg-n8.1.3-35-gf1acb0a266-win64-gpl-8.1.zip), [checksums publicados](https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/autobuild-2026-11-13-12-43/checksums.sha256). Uso local como ferramenta separada GPL; não foi incluído em instalador nem distribuído.
+
+O FFmpeg do lock Remotion permanece instalado para render/probe/QC; não contém `subtitles`, `ass` ou `drawtext`. O executável completo é usado explicitamente para a sobreposição. Caminho local: `%LOCALAPPDATA%/Horus/tools/ffmpeg/n8.1.3-35-gf1acb0a266/ffmpeg-n8.1.3-35-gf1acb0a266-win64-gpl-8.1/bin/ffmpeg.exe`.
+
+SHA-256 do executável extraído: `486aeb53e82512f81319b228eeefb14376dd85413f6f753a4e166b59502ed943` (o checksum publicado refere-se ao ZIP). Os filtros `ass`, `subtitles` e `drawtext` foram confirmados pela listagem do binário preparado.
+
+Nenhuma fonte OFL foi encontrada na sandbox da fábrica. Usa-se a fonte aberta já presente em `frontend/public/fonts/ArchivoExpanded-SemiBold.ttf` (somente leitura, copiada para a produção), da Omnibus-Type / The Archivo Project Authors. SHA-256 **`477294342b225706dc0e52f2eaa0e2da2114ca38fb3131bf34466abbc9cdf9a0`**; licença declarada [SIL OFL 1.1](https://openfontlicense.org/open-font-license-official-text/), origem [Archivo](https://github.com/Omnibus-Type/Archivo), texto local `frontend/public/fonts/OFL-Archivo.txt`. A fonte consta como `kind=font`, `origin=licensed_manual`, `license.id=OFL-1.1`, `status=unverified` e licença legada `unverified`, sem presumir revisão humana. `Settings.subtitle_font` / `HORUS_SUBTITLE_FONT` permite apontar para esse arquivo preparado. Na ausência da fonte local, o fallback é Arial Black do Windows (`ariblk.ttf`), com termos Microsoft declarados e uso comercial desconhecido. Não há download de fonte no job. O estilo é próximo ao da fábrica (texto claro, contorno escuro, região segura), sem identidade visual idêntica nem destaque amarelo por palavra.
+
+```powershell
+$env:HORUS_PILOT_FACTORY = "$env:TEMP/horus-m4/backend-factory-demo"
+$env:HORUS_ALIGNMENT_MODEL = "$env:LOCALAPPDATA/Horus/models/whisper"
+$env:HORUS_FFMPEG = "$env:LOCALAPPDATA/Horus/tools/ffmpeg/n8.1.3-35-gf1acb0a266/ffmpeg-n8.1.3-35-gf1acb0a266-win64-gpl-8.1/bin/ffmpeg.exe"
+$env:HORUS_PILOT_QUALITY = 'final' # somente o ensaio: no produto, escolha no pedido
+& backend/.venv/Scripts/python.exe -m pytest backend/tests/test_local_pilot.py::test_real_local_pilot_render_review_and_restart -q -s --basetemp "$env:TEMP/hf-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+```
+
+### Evidência do ensaio final
+
+Basetemp novo `%TEMP%/hf-a3b39ef7`, produção `a907a32699a74f529ae220ba30933218`: **1 passed em 154,96 s** (teste integral com cancelamento de produção anterior, render, revisão fictícia `reject` e reinício). MP4 **1080×1920 / 30 fps / 1462 frames / 48,733333 s**, H.264/AAC, SHA-256 **`0098ba2d7dc5e6f9d14b4af554a5593b4267ea967d2080d1327329f15df0709b`**. Intermediário: `469b25aac44acfac3c94513c4a8d4c22355346de5746f5d20acd47d2de244dbe`.
+
+Medições por `time.monotonic` em `validation.json`: fábrica **101,828 s**, sobreposição **6,828 s**, render + verificações/extrações **116,703 s**. ASR: **8,75 s**, **77/77 palavras casadas**, nenhuma interpolada. São medições desta máquina/execução, sem garantia de tempo para outros roteiros.
+
+QC completo persistido: **`warn`**, **`blocking_errors=[]`**. `subtitles_vs_words`: **pass / measured**, média e máximo **0,000 s**, 27 cues casadas, nenhuma sem correspondência. Contenção `subtitles_vs_sections`: **pass / measured**, manutenção máxima **0,000 s**; cobertura **77/77**. Integridade, hashes dos 8 assets (incluindo fonte), clipping, nível, silêncio, duração, LUFS/true peak, quadros pretos e congelamento passaram; o único aviso foi proveniência ainda não verificada por humano. Não há aviso de resolução no `validate_pilot_evidence` para 1080×1920. Os três PNGs extraídos foram inspecionados visualmente: legenda legível e sem recorte. Essa inspeção não equivale a escuta ou aceite humano.
+
+Artefatos preservados localmente em `%TEMP%/hf-a3b39ef7/test_real_local_pilot_render_r0/data/productions/a907a32699a74f529ae220ba30933218/`, incluindo `quality-report.json`, `pilot-evidence.json` e `canais/demo/videos/fixture/render/short.mp4`. Nenhum upload, serviço pago ou inferência Hermes. `publishable=false`, `demo_only=true` e revisão humana permanecem. Não foram ensaiados frontend, instalador, Linux nem voz humana.
+
+Auditoria física adicional em `%TEMP%/hf-a3b39ef7/audit-caption-visibility.json`: frames RGB decodificados da região de legenda `(0,1190,1080,400)`, comparados com o intermediário sem texto. Antes da maior pausa (12,57 s), 19459 pixels claros adicionais; no centro da pausa de 1,18 s (14,33 s), **zero**; na fala seguinte (15,61 s), 12483. O intermediário teve zero nos três pontos. São três amostras físicas, não uma medição exaustiva de todos os frames; complementam o QC de SRT contra palavras medidas.
+
+Regressão dos módulos afetados e contratos relacionados, sem ferramentas reais habilitadas: `& backend/.venv/Scripts/python.exe -m pytest backend/tests/test_local_pilot.py backend/tests/test_production.py backend/tests/test_production_contract.py backend/tests/test_speech_alignment.py backend/tests/test_av_quality.py backend/tests/test_pilot_quality.py backend/tests/test_media_contracts.py -q`: **349 passed, 8 skipped em 24,69 s**. Os skips são condicionais de fábrica/MP4 real não configurados nessa invocação; ensaios reais são registrados separadamente. Inclui os dois tamanhos de PNG, bounds contínuos do Ken Burns, geração GDI, compatibilidade do plano legado, validação/idempotência de qualidade, término em timeout/cancelamento e ambiente mínimo da ferramenta.
+
+O fallback `draft` também foi ensaiado sem `HORUS_FFMPEG`, com alinhamento configurado, em basetemp novo `%TEMP%/hd-0e539f8d`: **2 passed em 113,01 s**, incluindo hash da fonte da fábrica. MP4 **540×960 / 48,733333 s**, SHA-256 `f086094a563f2425ef4a2f04de47a33190d6a5bce43928e06c8a26c272600828`, produção `94911fba750a4194b308e214f83d4d04`. O teste confirmou **QC fail esperado**, desvio máximo **1,193 s** e médio **0,191 s**, sem afrouxar limiares para o fallback; a aprovação continua exigindo ciência explícita dos erros. O teste aprovado confirma esse comportamento, não a qualidade editorial do fallback.
+
+Repetição final com o código de `b7aaad236456426d3154d2fa7111ac5e328a07db` e asserções adicionais do aviso de resolução: **2 passed em 139,10 s**, incluindo detecção de deriva da fábrica. Basetemp novo `%TEMP%/hf-0f9f9bfe`, produção `43975ca29778409bbf219c1e7e48b2bd`; MP4 com o **mesmo SHA-256 `0098ba2d7dc5e6f9d14b4af554a5593b4267ea967d2080d1327329f15df0709b`**, 1080×1920 e 48,733333 s. Fábrica **96,828 s**, sobreposição **11,906 s**, render + verificações/extrações **117,125 s**, ASR **7,56 s**. QC novamente `warn`, sem bloqueios, único aviso `asset_provenance`; sincronização e contenção aprovadas por medição. O SHA da fonte `LegendaPalavra.tsx` continuou `aa4688a4affa70d607ae246ebaf47fe01dae102c604ad050fa87d886b4d04e2c`.
+
+## Histórico anterior / fallback sem libass
+
+As seções seguintes preservam evidências anteriores. A regra de permanência da fábrica descrita abaixo continua aplicável quando `HORUS_FFMPEG` não está configurado; a sobreposição acima corrige esse limite sem modificar a fábrica.
 
 ## Alinhamento acústico no worker — 13/11/2026
 
