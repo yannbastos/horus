@@ -305,7 +305,7 @@ test.describe('Verificação humana de licença por asset — HOR-097', () => {
     const history = asset.getByRole('region', { name: 'Histórico de decisões do asset scene-1' });
     await expect(history.getByText('VERIFICADA')).toBeVisible();
     await expect(history.getByText('por humano')).toBeVisible();
-    await expect(history.getByText('2026-11-13T12:00:00Z')).toBeVisible();
+    await expect(history.getByText(new Date('2026-11-13T12:00:00Z').toLocaleString('pt-BR'))).toBeVisible();
     await expect(history.getByText('Evidência: Arquivo gerado localmente pelo operador.')).toBeVisible();
 
     expect(state.posts).toHaveLength(1);

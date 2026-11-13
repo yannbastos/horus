@@ -869,6 +869,12 @@ const ASSET_KIND_LABELS: Record<string, string> = {
   font: 'Fonte (font)',
 };
 
+/** Data/hora no formato local já usado na interface (pt-BR); texto não-data é devolvido como veio. */
+export function formatLocalDateTime(iso: string): string {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? iso : date.toLocaleString('pt-BR');
+}
+
 const ENGINE_NAMES: Record<string, string> = {
   windows_sapi: 'Windows SAPI',
   piper: 'Piper',
@@ -1006,7 +1012,7 @@ export function normalizeAssetProvenance(
       rawVerifiedBy === 'human' && verifiedAt !== null ? 'human' : null;
     const verificationLabel =
       verifiedBy === 'human'
-        ? `Verificado por humano (${verifiedAt})`
+        ? `Verificado por humano (${formatLocalDateTime(verifiedAt!)})`
         : 'Não verificado por humano (verified_by: null)';
 
     const rawStatus = readString(item.status)?.toLowerCase() ?? 'unverified';

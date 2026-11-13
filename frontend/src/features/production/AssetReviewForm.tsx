@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { ApiError } from '../../services/api';
 import type { Connection } from '../../services/api';
 import type { NormalizedAssetProvenanceItem } from '../../services/production';
+import { formatLocalDateTime } from '../../services/production';
 import {
   EVIDENCE_MAX,
   describeLicenseReviewError,
@@ -261,7 +262,7 @@ export default function AssetReviewForm({
                   <span className={`tag ${r.decision === 'verified' ? 'good' : 'bad'}`}>
                     {r.decision === 'verified' ? 'VERIFICADA' : 'REJEITADA'}
                   </span>{' '}
-                  <time dateTime={r.reviewed_at}>{r.reviewed_at}</time> · por humano
+                  <time dateTime={r.reviewed_at}>{formatLocalDateTime(r.reviewed_at)}</time> · por humano
                 </span>
                 <small>
                   {r.license.name} ({r.license.id}) · uso comercial {r.license.commercial_use} ·{' '}
