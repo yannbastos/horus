@@ -341,3 +341,20 @@ def test_qc_subtitle_deviation_ignores_interpolated_edges_and_reports_them():
     assert check["measured"]["interpolated_words"] == 1
     assert check["measured"]["max_deviation_seconds"] == pytest.approx(0.3)   # só a cue "c d"; a cue "a b" não entra
     assert "interpolad" in check["detail"]
+
+
+# ------------------------------------------------------------------------------ J-12: quebras de linha na seção
+
+def test_join_script_flattens_inner_line_breaks_so_alignment_runs():
+    texts = ["Primeira seção.", "Segunda  seção com pesquisa própria.\nAjustes da revisão anterior: nenhum.", "Fim."]
+    sections = _sections(texts, 4.0)
+    with pytest.raises(ValueError, match="uma linha por seção"):
+        sa.align_with_report("\n".join(texts), [], sections=sections, narration_sha256=SHA, duration_seconds=12.0, engine=ENGINE)
+    script = sa.join_script(texts)
+    assert len(script.split("\n")) == len(texts) and "  " not in script
+    document, report = _align(script, sections=sections, duration=12.0)
+    assert _verdict(document, script, sections, 12.0)["speech_aligned"] is True
+
+
+def test_join_script_is_identity_for_clean_text():
+    assert sa.join_script(SECTION_TEXTS) == _script()

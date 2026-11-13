@@ -291,6 +291,9 @@ AssetOrigin = Literal["original_local", "system_voice", "local_tts_model", "stoc
 CommercialUse = Literal["allowed", "restricted", "unknown"]
 AssetStatus = Literal["verified", "unverified", "rejected"]
 EXTERNAL_ORIGINS = ("stock_pexels", "stock_pixabay", "licensed_manual")
+# Entradas registradas do piloto local (cenas, áudios e a fonte da legenda libass); nunca saídas derivadas.
+PILOT_INPUT_PATH = re.compile(
+    r"canais/demo/videos/fixture/(?:scene-\d+\.png|section-\d+\.wav|fixture\.wav|fonts/[A-Za-z0-9_-]+\.ttf)")
 STOCK_HOSTS = {"stock_pexels": "pexels.com", "stock_pixabay": "pixabay.com"}
 
 

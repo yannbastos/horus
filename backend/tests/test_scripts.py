@@ -288,3 +288,12 @@ def test_review_rollback_preserves_pending_state(settings):
             assert db.execute("SELECT COUNT(*) FROM workflow_events WHERE kind='script.reviewed'").fetchone()[0] == 0
             db.execute('DROP TRIGGER fail_review')
         assert decide(client, script).json()['status'] == 'approved'
+
+
+def test_simulated_script_omits_adjustments_label_without_feedback():
+    from horus_backend.scripts import simulate_script
+    proposal = {"title": "T", "recommendation": {"premise": "Premissa."}}
+    empty = simulate_script(proposal, "", set())["sections"][1]["narration"]
+    assert "Ajustes" not in empty and "\n" not in empty
+    with_feedback = simulate_script(proposal, "Mais exemplos", set())["sections"][1]["narration"]
+    assert with_feedback.endswith("Ajustes da revisão anterior: Mais exemplos")

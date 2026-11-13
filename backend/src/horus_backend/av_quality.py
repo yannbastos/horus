@@ -33,6 +33,7 @@ TOOL = {"name": "horus-av-quality", "version": "1"}
 NO_VIDEO_HASH = "0" * 64        # sentinela: relatório sem MP4 localizado (check `video_present` falha)
 SUBPROCESS_TIMEOUT = 180.0
 LONG_SILENCE_SECONDS = 2.0      # silêncio interno acima disso gera aviso
+LUFS_TARGET = -16.0              # alvo sugerido na orientação do aviso; não altera a faixa nem o limiar
 LUFS_RANGE = (-26.0, -12.0)     # faixa de aviso para fala; referência de plataforma, não requisito do produto
 TRUE_PEAK_MAX = -1.0            # dBTP
 SUBTITLE_TOLERANCE = 0.05       # cue dentro da cena medida
@@ -403,6 +404,17 @@ def _coverage(cues: list[dict], script_tokens: list[str] | None) -> dict:
                   {"warn_below": COVERAGE_WARN, "fail_below": COVERAGE_FAIL})
 
 
+def _alignment_reason(report) -> str | None:
+    """Motivo registrado pelo piloto (`alignment-report.json`) para a fala não estar alinhada; nunca inventa um."""
+    if not isinstance(report, dict):
+        return None
+    reason = report.get("reason")
+    if not isinstance(reason, str) or not reason.strip():
+        return None
+    prefix = "alinhamento acústico não executado: " if report.get("executed") is False else "alinhamento acústico abaixo do critério: "
+    return prefix + reason.strip()[:300]
+
+
 def _word_checks(ctx: _Context, stats, cues, script_tokens) -> list[dict]:
     raw = ctx.read_json("word-timings.json")
     declared = raw.get("source") if isinstance(raw, dict) else None
@@ -428,6 +440,8 @@ def _word_checks(ctx: _Context, stats, cues, script_tokens) -> list[dict]:
     detail = f"fonte {value['source']}; speech_aligned={verdict['speech_aligned']}"
     if verdict["warnings"]:
         detail += "; contexto parcial: " + ", ".join(verdict["warnings"])
+    if not verdict["speech_aligned"] and (why := _alignment_reason(ctx.read_json("alignment-report.json"))):
+        detail += "; " + why
     checks = [_check("word_timings", "sync", "pass" if verdict["speech_aligned"] else "warn", method, detail,
                      {"source": "media_contracts.validate_word_timings", "timing_source": value["source"],
                       "speech_aligned": verdict["speech_aligned"], "words": len(value["words"])})]
@@ -529,17 +543,22 @@ async def _loudness(ffmpeg: Path, video: Path, timeout: float) -> dict:
     if lufs is None:
         return _skip("audio_loudness", "audio", "FFmpeg sem filtro de loudness utilizável (ebur128/loudnorm): "
                      + (err.strip()[-120:] or "sem saída"))
-    value, true_peak = _num(lufs), _num(peak)
+    return _loudness_check(_num(lufs), _num(peak), _num(lra), source)
+
+
+def _loudness_check(value, true_peak, lra, source) -> dict:
     problems = []
     if value is None:
         problems.append("áudio sem energia mensurável (-inf LUFS)")
     elif not LUFS_RANGE[0] <= value <= LUFS_RANGE[1]:
-        problems.append(f"loudness integrada {value:.1f} LUFS fora de {LUFS_RANGE[0]:.0f}..{LUFS_RANGE[1]:.0f}")
+        direction = "aumente o ganho" if value < LUFS_RANGE[0] else "reduza o ganho"
+        problems.append(f"loudness integrada {value:.1f} LUFS fora de {LUFS_RANGE[0]:.0f}..{LUFS_RANGE[1]:.0f}; "
+                        f"{direction} e normalize a narração para cerca de {LUFS_TARGET:.0f} LUFS antes de renderizar")
     if true_peak is not None and true_peak > TRUE_PEAK_MAX:
-        problems.append(f"true peak {true_peak:.1f} dBTP acima de {TRUE_PEAK_MAX:.0f}")
+        problems.append(f"true peak {true_peak:.1f} dBTP acima de {TRUE_PEAK_MAX:.0f}; reduza o ganho ou aplique limitador de pico")
     return _check("audio_loudness", "audio", "warn" if problems else "pass", "measured",
                   "; ".join(problems) if problems else "Loudness integrada e true peak dentro da faixa de referência.",
-                  {"source": source, "integrated_lufs": value, "true_peak_dbtp": true_peak, "lra_lu": _num(lra)},
+                  {"source": source, "integrated_lufs": value, "true_peak_dbtp": true_peak, "lra_lu": lra},
                   {"integrated_lufs_range": list(LUFS_RANGE), "true_peak_max_dbtp": TRUE_PEAK_MAX})
 
 

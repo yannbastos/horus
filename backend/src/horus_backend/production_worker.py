@@ -207,6 +207,29 @@ def render(root, source):
                'speech_aligned': False, 'sha256': hashlib.sha256(video.read_bytes()).hexdigest()})
 
 
+def unavailable_message(error):
+    """Causa real de uma falha de SO/tempo no piloto local; nunca atribui tudo à voz SAPI nem expõe caminhos."""
+    if isinstance(error, TimeoutError):
+        return 'Piloto local indisponivel: tempo limite esgotado em uma etapa local (síntese, alinhamento ou FFmpeg).'
+    detail = (error.strerror or '').strip() if isinstance(error, OSError) else ''
+    return ('Piloto local indisponivel: falha de sistema em uma etapa local (' + type(error).__name__
+            + (': ' + detail[:120] if detail else '') + '); confira HORUS_FFMPEG, HORUS_ALIGNMENT_MODEL e a voz escolhida.')
+
+
+def factory_missing(source, python, browser, ffprobe, ffmpeg):
+    """Pré-condições do render ausentes, cada uma com a própria causa."""
+    if not source:
+        return ['fábrica não configurada: defina FABRICA_HOME (HORUS_PILOT_FACTORY é aceita como alias)']
+    missing = []
+    if not python or not python.is_file(): missing.append('Python da fábrica em scripts/.venv')
+    if not (source / 'remotion/node_modules/.bin/remotion.cmd').is_file() and not (source / 'remotion/node_modules/.bin/remotion').is_file():
+        missing.append('Remotion instalado pelos locks em sandbox')
+    if not browser: missing.append('browser local preparado')
+    if not ffmpeg: missing.append('ffmpeg local para validar frames/duração')
+    if not ffprobe: missing.append('ffprobe local para validar frames/duração')
+    return missing
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('root', type=Path)
@@ -233,8 +256,8 @@ def main():
         except ValueError as error:
             write_json(root / 'result.json', {'blocked': True, 'error': 'Piloto local bloqueado: ' + str(error), 'artifacts': artifacts})
             return
-        except (OSError, TimeoutError):
-            write_json(root / 'result.json', {'blocked': True, 'error': 'Piloto local indisponivel: confirme Windows SAPI pt-BR e WAV PCM valido; nenhum tom substitui voz.', 'artifacts': artifacts})
+        except (OSError, TimeoutError) as error:
+            write_json(root / 'result.json', {'blocked': True, 'error': unavailable_message(error), 'artifacts': artifacts})
             return
     else:
         rate = 16000
@@ -284,11 +307,7 @@ def main():
                     return str(matches[0])
             return None
         ffprobe, ffmpeg = tool('ffprobe'), tool('ffmpeg')
-        missing = []
-        if not python or not python.is_file(): missing.append('Python da fábrica em scripts/.venv')
-        if not source or not (source / 'remotion/node_modules/.bin/remotion.cmd').is_file() and not (source / 'remotion/node_modules/.bin/remotion').is_file(): missing.append('Remotion instalado pelos locks em sandbox')
-        if not browser: missing.append('browser local preparado')
-        if not ffprobe or not ffmpeg: missing.append('FFmpeg e ffprobe locais para validar frames/duração')
+        missing = factory_missing(source, python, browser, ffprobe, ffmpeg)
         if missing:
             write_json(root / 'result.json', {'blocked': True, 'error': 'Prepare separadamente, sem downloads no job: ' + '; '.join(missing), 'artifacts': artifacts})
             return
