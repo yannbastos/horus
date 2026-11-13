@@ -14,6 +14,7 @@ import {
   reviewScript,
   sortScriptsDesc,
 } from '../services/scripts';
+import ProductionRun from './ProductionRun';
 
 const SCRIPT_STATUS_LABELS: Record<ScriptStatus, string> = {
   awaiting_review: 'Aguardando revisão',
@@ -688,6 +689,8 @@ export default function ScriptReview({
           })}
         </div>
       )}
+
+      <ProductionRun connection={connection} latestScript={latestScript} />
     </article>
   );
 }
