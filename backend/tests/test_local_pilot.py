@@ -16,17 +16,18 @@ from horus_backend.local_pilot import subtitle_sections, wav_info, signal_measur
 from horus_backend.migrations import migrate, MIGRATIONS
 
 
-def test_scene_regions_survive_original_ken_burns_and_caption_reserve():
-    from horus_backend.local_pilot_windows import SCENE_REGIONS, transformed_bounds
+@pytest.mark.parametrize('width,height', [(540,960),(1080,1920)])
+def test_scene_regions_survive_original_ken_burns_and_caption_reserve(width,height):
+    from horus_backend.local_pilot_windows import scene_regions, transformed_bounds
     for direction in ('esquerda','direita','cima','baixo'):
         for step in range(101):
-            for name,bounds in SCENE_REGIONS.items():
-                left,top,right,bottom = transformed_bounds(bounds,step/100,direction)
-                assert 0 < left < right < 1080 and 0 < top < bottom < 1920
+            for name,bounds in scene_regions(width,height).items():
+                left,top,right,bottom = transformed_bounds(bounds,step/100,direction,width,height)
+                assert 0 < left < right < width and 0 < top < bottom < height
                 if name == 'disclosure':
-                    assert top >= 1620  # legenda existente termina em y=1596 no 9:16
+                    assert top >= 1620*height/1920  # legenda existente termina em y=1596 no 9:16
                 else:
-                    assert bottom < 1220  # região reservada acima das legendas
+                    assert bottom < 1220*height/1920  # região reservada acima das legendas
 
 
 def test_measured_wrap_keeps_accented_text_and_long_tokens():
@@ -39,19 +40,21 @@ def test_measured_wrap_keeps_accented_text_and_long_tokens():
 
 
 @pytest.mark.skipif(os.name != 'nt',reason='Medição GDI nativa do Windows.')
-def test_native_scene_measures_all_text_and_records_safe_bounds(tmp_path):
-    from horus_backend.local_pilot_windows import scene,SCENE_REGIONS
+@pytest.mark.parametrize('width,height', [(540,960),(1080,1920)])
+def test_native_scene_measures_all_text_and_records_safe_bounds(tmp_path,width,height):
+    from horus_backend.local_pilot_windows import scene,scene_regions
     section = {'n':1,'heading':'Água e ação no bairro fictício: revisão com informação original',
                'summary':' '.join(['Informação']*32)}
     path = tmp_path/'scene.png'
-    scene(path,section)
+    scene(path,section,width,height)
+    assert struct.unpack('>II',path.read_bytes()[16:24]) == (width,height)
     layout = json.loads(path.with_suffix('.layout.json').read_text(encoding='utf-8'))
     for key in ('heading','summary'):
         assert ' '.join(layout[key]['lines']) == section[key]
     assert ' '.join(layout['disclosure']['lines']) == 'VOZ SINTÉTICA LOCAL | LICENÇA NÃO VERIFICADA'
     for key,item in layout.items():
         left,top,right,bottom = item['bounds']
-        x0,y0,x1,y1 = SCENE_REGIONS[key]
+        x0,y0,x1,y1 = scene_regions(width,height)[key]
         assert x0 <= left < right <= x1 and y0 <= top < bottom <= y1
 
 
@@ -275,6 +278,8 @@ def test_real_local_pilot_render_review_and_restart(settings):
     from dataclasses import replace
     from test_scripts import approved, generate, decide
     settings = replace(settings,factory_root=Path(os.environ['HORUS_PILOT_FACTORY']))
+    quality = os.environ.get('HORUS_PILOT_QUALITY','draft')
+    overlay = bool(settings.ffmpeg)
     with client_for(settings) as client:
         script = generate(client,approved(client)).json()
         # Conteúdo fictício escrito antes da aprovação M3 do teste; sem editar snapshot aprovado.
@@ -299,7 +304,7 @@ def test_real_local_pilot_render_review_and_restart(settings):
         assert finished(client,cancelled)['status'] == 'cancelled'
         assert not (cancel_root/'pilot-evidence.json').exists()
         # Artefatos parciais conciliados pelo teste: saída preservada, nova produção explícita.
-        response = start(client,script,mode='local_pilot')
+        response = start(client,script,mode='local_pilot',render_quality=quality)
         assert response.status_code == 201,response.text
         initial = response.json()
         assert initial['narration_kind'] is None
@@ -314,19 +319,28 @@ def test_real_local_pilot_render_review_and_restart(settings):
         aligned = bool(settings.alignment_model)
         assert item['alignment_method'] == ('forced_alignment' if aligned else 'measured_sections')
         assert not item['real_voice'] and item['speech_aligned'] is aligned and not item['publishable']
-        assert item['quality_report']['status']==('fail' if aligned else 'warn')
+        assert item['quality_report']['status']==('fail' if aligned and not overlay else 'warn')
         assert item['quality_report']['video_sha256']==next(a['sha256'] for a in item['artifacts'] if a['kind']=='video')
-        assert item['quality_acknowledgement_required'] is aligned
+        assert item['quality_acknowledgement_required'] is (aligned and not overlay)
         assert item['asset_provenance'] is not None
         root = settings.data_dir/'productions'/item['id']
         evidence = json.loads((root/'pilot-evidence.json').read_text(encoding='utf-8'))
         assert evidence['narration']['voice'] and evidence['narration']['duration_seconds']>0
         assert evidence['video']['duration_seconds'] >= evidence['narration']['duration_seconds']
         assert evidence['video']['frames']>2
+        assert (evidence['video']['width'],evidence['video']['height']) == ((1080,1920) if quality=='final' else (540,960))
+        if quality=='final':
+            assert not any('resolu' in str(c.get('detail','')) for c in item['quality_report']['checks'] if c['status']=='warn')
         for name in ('word-timings.json','asset-provenance.json','quality-report.json'):
             artifact=next(a for a in item['artifacts'] if a['relative_path']==name)
             assert hashlib.sha256((root/name).read_bytes()).hexdigest()==artifact['sha256']
         word_timings=json.loads((root/'word-timings.json').read_text(encoding='utf-8'))
+        if quality == 'final':
+            from horus_backend.pilot_quality import validate_pilot_evidence
+            verdict = validate_pilot_evidence(evidence,word_timings=word_timings)
+            if overlay:
+                assert verdict['blocking_errors'] == []
+            assert not any('resolução' in warning for warning in verdict['warnings'])
         assert word_timings['source']==('forced_alignment' if aligned else 'estimated') and len(word_timings['words'])==77
         if not aligned:
             assert evidence['subtitles'][0]['start']==0
@@ -334,20 +348,30 @@ def test_real_local_pilot_render_review_and_restart(settings):
         else:
             assert word_timings['alignment']['matched_words'] == 77
             assert word_timings['alignment']['interpolated_words'] == 0
-            assert evidence['subtitles'] == __import__('horus_backend.local_pilot',fromlist=['subtitle_words']).subtitle_words(word_timings['words'])
+            from horus_backend.local_pilot import measured_subtitle_words, subtitle_words
+            assert evidence['subtitles'] == (measured_subtitle_words if overlay else subtitle_words)(word_timings['words'])
             sync = next(c for c in item['quality_report']['checks'] if c['id']=='subtitles_vs_words')
-            assert sync['method']=='measured' and sync['status']=='fail'
-            assert sync['measured']['mean_deviation_seconds'] > 0
-            assert sync['measured']['max_deviation_seconds'] > .6
+            assert sync['method']=='measured' and sync['status']==('pass' if overlay else 'fail')
             hold = next(c for c in item['quality_report']['checks'] if c['id']=='subtitles_vs_sections')
-            assert hold['status']=='fail' and hold['measured']['max_hold_seconds'] > .6
+            assert hold['status']==('pass' if overlay else 'fail')
+            if overlay:
+                assert sync['measured']['max_deviation_seconds'] <= .001
+                assert hold['measured']['max_hold_seconds'] <= .001
+                record = json.loads((root/'canais/demo/videos/fixture/render/caption-overlay.json').read_text(encoding='utf-8'))
+                assert record['video_stream_unchanged'] and record['audio_packets_unchanged']
+                assert record['final_sha256'] == item['quality_report']['video_sha256']
+                assert json.loads((root/'canais/demo/videos/fixture/render/props.json').read_text(encoding='utf-8'))['palavras'] == []
+                assert len(json.loads((root/'canais/demo/videos/fixture/alinhamento.json').read_text(encoding='utf-8'))['palavras']) == 77
+            else:
+                assert sync['measured']['max_deviation_seconds'] > .6
+                assert hold['measured']['max_hold_seconds'] > .6
         for asset in evidence['assets']:
             assert hashlib.sha256((root/asset['relative_path']).read_bytes()).hexdigest()==asset['sha256']
         assert {a['license'] for a in evidence['assets'] if a['origin']=='system_voice'}=={'unverified'}
         video = next(a for a in item['artifacts'] if a['kind']=='video')
         route = f"/v1/productions/{item['id']}/artifacts/{video['id']}"
         assert client.get(route).status_code==200
-        assert start(client,script,mode='local_pilot').json()['id']==item['id']
+        assert start(client,script,mode='local_pilot',render_quality=quality).json()['id']==item['id']
         review_route = '/v1/productions/'+item['id']+'/review'
         assert client.post(review_route,json={'decision':'approve','artifact_sha256':'0'*64},headers={'Idempotency-Key':'bad-review'}).status_code==409
         # Decisão fictícia do teste sobre mídia fictícia; não é aceite/licença do operador.
@@ -393,6 +417,68 @@ def test_factory_caption_rule_has_not_drifted():
     if not path.is_file():
         pytest.skip('Fonte da fábrica indisponível para detectar deriva.')
     assert hashlib.sha256(path.read_bytes()).hexdigest() == FACTORY_CAPTION_SHA256
+
+
+def test_measured_caption_cues_end_at_speech_and_leave_pauses():
+    from horus_backend.local_pilot import measured_subtitle_words
+    from horus_backend.pilot_quality import caption_holds
+    words = [{'text':str(i),'section':1 if i < 3 else 2,
+              'start':start,'end':start+.1,'timing':'measured'}
+             for i,start in enumerate((0.1,0.3,0.5,3.0,3.3))]
+    cues = measured_subtitle_words(words)
+    assert cues == [{'start':.1,'end':.6,'text':'0 1 2'},
+                    {'start':3.0,'end':3.4,'text':'3 4'}]
+    assert caption_holds(cues,words,5,[])['errors'] == []
+    assert caption_holds(cues,words,5,[])['max_hold_seconds'] == 0
+
+
+@pytest.mark.parametrize('stop', ['timeout','cancel'])
+def test_caption_tool_owns_process_and_stops_on_timeout_or_cancel(tmp_path, monkeypatch, stop):
+    import asyncio
+    import sys
+    from horus_backend.local_pilot import owned_tool
+    from horus_backend.processes import OwnedProcess
+    processes = []
+    original = OwnedProcess.start
+    monkeypatch.setenv('HORUS_PRIVATE_TEST_SECRET','never-in-tool-env')
+    async def capture(command, **kwargs):
+        assert 'HORUS_PRIVATE_TEST_SECRET' not in kwargs['env']
+        owned = await original(command, **kwargs)
+        processes.append(owned)
+        return owned
+    monkeypatch.setattr(OwnedProcess,'start',capture)
+    async def run():
+        task = asyncio.create_task(owned_tool([sys.executable,'-I','-c','import time; time.sleep(60)'],
+            cwd=tmp_path,timeout=.2 if stop=='timeout' else 10))
+        if stop=='cancel':
+            while not processes:
+                await asyncio.sleep(.01)
+            task.cancel()
+        with pytest.raises(TimeoutError if stop=='timeout' else asyncio.CancelledError):
+            await task
+        assert processes[0].process.returncode is not None
+    asyncio.run(run())
+
+
+def test_no_configured_ffmpeg_keeps_factory_caption_fallback(tmp_path, monkeypatch):
+    from horus_backend.local_pilot import configure_caption_overlay
+    monkeypatch.delenv('HORUS_FFMPEG',raising=False)
+    assert configure_caption_overlay(tmp_path,tmp_path) is None
+
+
+def test_configured_ffmpeg_without_libass_is_not_silently_replaced(tmp_path, monkeypatch):
+    from horus_backend import local_pilot as pilot
+    executable = tmp_path/'ffmpeg.exe'
+    executable.write_bytes(b'local-tool-fixture')
+    monkeypatch.setenv('HORUS_FFMPEG',str(executable))
+    async def filters(command, **kwargs):
+        assert command == [executable,'-hide_banner','-filters']
+        assert kwargs['timeout'] == 30
+        return b'filters: scale loudnorm'
+    monkeypatch.setattr(pilot,'owned_tool',filters)
+    with pytest.raises(ValueError,match='libass'):
+        pilot.configure_caption_overlay(tmp_path,tmp_path)
+    assert not (tmp_path/'fonts').exists()
 
 
 @pytest.mark.parametrize('case', ['missing_model','missing_extra'])

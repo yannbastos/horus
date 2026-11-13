@@ -96,6 +96,9 @@ class Settings:
     # Pasta de modelos preparada pelo operador; nunca baixar durante produção.
     alignment_model: Path | None = field(default_factory=lambda: (
         Path(os.environ["HORUS_ALIGNMENT_MODEL"]).expanduser() if os.environ.get("HORUS_ALIGNMENT_MODEL") else None))
+    # Ferramenta/fonte locais preparadas fora do job; sem instalação ou PATH global.
+    ffmpeg: Path | None = field(default_factory=lambda: Path(os.environ["HORUS_FFMPEG"]).expanduser() if os.environ.get("HORUS_FFMPEG") else None)
+    subtitle_font: Path | None = field(default_factory=lambda: Path(os.environ["HORUS_SUBTITLE_FONT"]).expanduser() if os.environ.get("HORUS_SUBTITLE_FONT") else None)
     # Apenas configuração do operador/testes. Nunca aceitar executável vindo da API.
     factory_command: tuple[str, ...] | None = None
     # Somente testes substituem o subprocesso de transcrição/download.

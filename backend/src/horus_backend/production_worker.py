@@ -12,6 +12,7 @@ import struct
 import subprocess
 import sys
 import threading
+import time
 import wave
 import zlib
 
@@ -142,20 +143,53 @@ def render(root, source):
     # Reutiliza o renderer real. Browser explícito impede download automático;
     # npx só resolve pacote já instalado e npm permanece offline.
     original_run = subprocess.run
+    overlay_enabled = plan['mode']=='local_pilot' and (root/'caption-overlay.json').is_file()
     def offline_run(command, **kwargs):
+        if overlay_enabled:
+            props_path = next(Path(arg.split('=',1)[1]) for arg in command if arg.startswith('--props='))
+            props = json.loads(props_path.read_text(encoding='utf-8'))
+            props['palavras'] = []  # entrada suportada; alinhamento e fonte permanecem intactos
+            write_json(props_path,props)
         command += [f"--browser-executable={os.environ['HORUS_DEMO_BROWSER']}", '--concurrency=1', '--log=error']
         return original_run(command, **kwargs)
     renderer.subprocess.run = offline_run
-    video = renderer.renderizar(roteiro, folder, rascunho=True)
+    started = time.monotonic()
+    video = renderer.renderizar(roteiro, folder, rascunho=plan.get('render_quality','draft') != 'final')
+    factory_seconds = round(time.monotonic()-started,3)
+    overlay_result = None
+    if overlay_enabled:
+        sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+        from horus_backend.local_pilot import overlay_subtitles
+        overlay_result = overlay_subtitles(root,folder,video,plan)
+        insumos = video.with_suffix('.insumos.json')
+        data = json.loads(insumos.read_text(encoding='utf-8'))
+        data.update(video_sha256=overlay_result['final_sha256'],caption_overlay=overlay_result)
+        write_json(insumos,data)
     # Decodificação real + duração/frames, usando ffprobe/ffmpeg já preparados.
     probe = original_run([os.environ['HORUS_DEMO_FFPROBE'], '-v', 'error', '-count_frames', '-select_streams', 'v:0',
-        '-show_entries', 'stream=nb_read_frames,width,height,duration', '-of', 'json', str(video)], capture_output=True, check=True)
+        '-show_entries', 'stream=nb_read_frames,width,height,duration,r_frame_rate', '-of', 'json', str(video)], capture_output=True, check=True)
     stream = json.loads(probe.stdout)['streams'][0]
     if int(stream['nb_read_frames']) < 2 or abs(float(stream['duration']) - (alignment.duracao_audio + .8)) > .2:
         raise ValueError('Vídeo não corresponde à duração/frames esperados.')
     audio_probe = original_run([os.environ['HORUS_DEMO_FFPROBE'], '-v', 'error', '-count_frames', '-select_streams', 'a:0',
         '-show_entries', 'stream=nb_read_frames,duration,codec_name,sample_rate,channels', '-of', 'json', str(video)], capture_output=True, check=True)
     audio_stream = json.loads(audio_probe.stdout)['streams'][0]
+    if overlay_result:
+        intermediate = video.with_name(video.stem+'-without-subtitles.mp4')
+        prior = original_run([os.environ['HORUS_DEMO_FFPROBE'],'-v','error','-count_frames','-select_streams','v:0',
+            '-show_entries','stream=nb_read_frames,width,height,duration,r_frame_rate','-of','json',str(intermediate)],capture_output=True,check=True)
+        if json.loads(prior.stdout)['streams'][0] != stream:
+            raise ValueError('Sobreposição alterou resolução/fps/frames/duração do vídeo.')
+        audio_packets = []
+        for path in (intermediate,video):
+            packet = original_run([os.environ['HORUS_DEMO_FFPROBE'],'-v','error','-select_streams','a:0',
+                '-show_packets','-show_data_hash','sha256','-show_entries','packet=pts_time,duration_time,data_hash',
+                '-of','json',str(path)],capture_output=True,check=True)
+            audio_packets.append(json.loads(packet.stdout))
+        if audio_packets[0] != audio_packets[1]:
+            raise ValueError('Sobreposição alterou pacotes/tempos de áudio.')
+        overlay_result.update(video_stream_unchanged=True,audio_packets_unchanged=True)
+        write_json(folder/'render/caption-overlay.json',overlay_result)
     if int(audio_stream['nb_read_frames']) < 1 or float(audio_stream['duration']) < alignment.duracao_audio - .1:
         raise ValueError('MP4 sem áudio completo decodificável.')
     original_run([os.environ['HORUS_DEMO_FFMPEG'], '-v', 'error', '-i', str(video), '-frames:v', '1',
@@ -163,9 +197,13 @@ def render(root, source):
     if plan['mode'] == 'local_pilot':
         original_run([os.environ['HORUS_DEMO_FFMPEG'], '-v', 'error', '-i', str(video), '-vn', '-ac', '1',
             '-ar', '22050', '-c:a', 'pcm_s16le', str(folder / 'render/audio-review.wav')], capture_output=True, check=True)
+        if overlay_result:
+            for i in range(1,4):
+                original_run([os.environ['HORUS_DEMO_FFMPEG'],'-v','error','-ss',str(alignment.duracao_audio*i/4),
+                    '-i',str(video),'-frames:v','1',str(folder/f'render/subtitles-compare-{i}.png')],capture_output=True,check=True)
         original_run([os.environ['HORUS_DEMO_FFMPEG'], '-v', 'error', '-ss', str(alignment.duracao_audio / 2),
             '-i', str(video), '-frames:v', '1', str(folder / 'render/subtitles-frame.png')], capture_output=True, check=True)
-    write_json(folder / 'render/validation.json', {'stream': stream, 'audio_stream': audio_stream, 'demo_only': True, 'real_voice': False,
+    write_json(folder / 'render/validation.json', {'factory_render_seconds':factory_seconds, 'total_render_seconds':round(time.monotonic()-started,3), 'caption_overlay':overlay_result, 'stream': stream, 'audio_stream': audio_stream, 'demo_only': True, 'real_voice': False,
                'speech_aligned': False, 'sha256': hashlib.sha256(video.read_bytes()).hexdigest()})
 
 
@@ -290,8 +328,13 @@ def main():
             write_json(root / 'result.json', {'error':'Não foi possível validar a auditoria de rede do browser; vídeo não liberado.', 'artifacts':artifacts})
             sys.exit(1)
         artifacts.append({'kind':'manifest', 'relative_path':'network-summary.json'})
-        artifact('render/short-rascunho.mp4', 'video')
-        artifact('render/short-rascunho.insumos.json', 'manifest')
+        name = 'short' if plan.get('render_quality','draft')=='final' else 'short-rascunho'
+        artifact(f'render/{name}.mp4', 'video')
+        artifact(f'render/{name}.insumos.json', 'manifest')
+        if (folder/'render/caption-overlay.json').is_file():
+            artifact('render/caption-overlay.json','manifest')
+            for i in range(1,4):
+                artifact(f'render/subtitles-compare-{i}.png','scene')
         artifact('render/validation.json', 'manifest')
         artifact('render/frame.png', 'scene')
     metadata = {}

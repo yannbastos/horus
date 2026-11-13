@@ -180,7 +180,7 @@ def _load(ctx: _Context) -> None:
 def _find_video(root: Path, explicit: str | None):
     candidates = [explicit] if explicit else []
     if not explicit:
-        for found in sorted(root.glob("**/render/short-rascunho.mp4")) + sorted(root.glob("*.mp4")):
+        for found in sorted(root.glob("**/render/short-rascunho.mp4")) + sorted(root.glob("**/render/short.mp4")) + sorted(root.glob("*.mp4")):
             try:
                 candidates.append(found.relative_to(root).as_posix())
             except ValueError:

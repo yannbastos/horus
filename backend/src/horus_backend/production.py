@@ -12,9 +12,9 @@ import sys
 import uuid
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from .production_contract import build_production_plan
+from .production_contract import ProductionPlan, build_production_plan
 from .script_contract import ScriptDocument
 from .scripts import ScriptService
 from .storage import now
@@ -26,6 +26,13 @@ class ProductionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     expected_version: int = Field(ge=1, strict=True)
     mode: Literal["simulated", "local_demo", "local_pilot"]
+    render_quality: Literal["draft", "final"] = "draft"
+
+    @model_validator(mode="after")
+    def quality_mode(self):
+        if self.render_quality == "final" and self.mode != "local_pilot":
+            raise ValueError("render final requer local_pilot")
+        return self
 
 
 class ProductionReviewNote(BaseModel):
@@ -58,7 +65,7 @@ def confined(root: Path, relative: str) -> Path:
 def inspect_artifact(root, relative, kind):
     path = confined(root, relative)
     suffixes = {"plan": {".json"}, "scene": {".png"}, "audio": {".wav"}, "subtitles": {".srt"},
-                "video": {".mp4"}, "manifest": {".json"}}
+                "video": {".mp4"}, "manifest": {".json"}, "font": {".ttf", ".otf"}}
     if kind not in suffixes or path.suffix not in suffixes[kind] or path.stat().st_size == 0:
         raise WorkflowConflict("Tipo ou conteúdo de artefato inválido.")
     with path.open("rb") as stream:
@@ -146,7 +153,10 @@ class ProductionService:
         return script, document
 
     async def create(self, script_id, request, key):
-        scope, encoded = f"create:{script_id}", encode(request.model_dump())
+        body = request.model_dump()
+        if request.render_quality == "draft":
+            body.pop("render_quality")  # preserva recibos anteriores ao preset explicito
+        scope, encoded = f"create:{script_id}", encode(body)
         with self.store.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             receipt = db.execute("SELECT * FROM production_receipts WHERE scope=? AND idempotency_key=?", (scope, key)).fetchone()
@@ -157,7 +167,7 @@ class ProductionService:
             script, document = self.approved(db, script_id, request.expected_version)
             content_hash = digest(document)
             plan = build_production_plan(ScriptDocument.model_validate(document), script_id=script_id,
-                script_version=script["version"], script_content_hash=content_hash, mode=request.mode)
+                script_version=script["version"], script_content_hash=content_hash, mode=request.mode, render_quality=request.render_quality)
             production_id, job_id, timestamp = uuid.uuid4().hex, uuid.uuid4().hex, now()
             payload = encode({"operation": "production.run", "production_id": production_id})
             db.execute("INSERT INTO jobs(id,idempotency_key,payload,status,created_at,updated_at) VALUES(?,?,?,'queued',?,?)",
@@ -225,8 +235,9 @@ class ProductionService:
                     raise WorkflowConflict("Roteiro/aprovação mudou após submissão.")
                 plan = row["plan"]
                 expected_plan = build_production_plan(ScriptDocument.model_validate(document), script_id=row["script_id"],
-                    script_version=row["script_version"], script_content_hash=row["script_content_hash"], mode=row["mode"])
-                if digest(json.loads(plan)) != digest(expected_plan.model_dump(mode="json")):
+                    script_version=row["script_version"], script_content_hash=row["script_content_hash"], mode=row["mode"],
+                    render_quality=json.loads(plan).get("render_quality", "draft"))
+                if digest(ProductionPlan.model_validate_json(plan).model_dump(mode="json")) != digest(expected_plan.model_dump(mode="json")):
                     raise WorkflowConflict("Plano não corresponde ao roteiro aprovado.")
             if getattr(sys, "frozen", False):
                 raise WorkflowConflict("Worker de produção requer backend Python preparado; empacotamento ainda não homologado.")
@@ -248,6 +259,10 @@ class ProductionService:
             env.update(PYTHONUTF8="1", PYTHONUNBUFFERED="1")
             if row["mode"] == "local_pilot" and self.settings.alignment_model:
                 env["HORUS_ALIGNMENT_MODEL"] = str(self.settings.alignment_model.resolve())
+            if row["mode"] == "local_pilot" and self.settings.ffmpeg:
+                env["HORUS_FFMPEG"] = str(self.settings.ffmpeg.resolve())
+            if row["mode"] == "local_pilot" and self.settings.subtitle_font:
+                env["HORUS_SUBTITLE_FONT"] = str(self.settings.subtitle_font.resolve())
             manager.active_process = await OwnedProcess.start(command, env=env, cwd=root)
             process = manager.active_process.process
             if self.store.get_job(job_id)["status"] == "cancel_requested":

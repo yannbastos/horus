@@ -113,14 +113,19 @@ SCENE_REGIONS = {
 }
 
 
-def transformed_bounds(bounds, progress, direction):
+def scene_regions(width=1080, height=1920):
+    return {key: tuple(round(v * (width/1080 if i % 2 == 0 else height/1920))
+                       for i,v in enumerate(bounds)) for key,bounds in SCENE_REGIONS.items()}
+
+
+def transformed_bounds(bounds, progress, direction, width=1080, height=1920):
     # CSS scale(s) translate(p%): centro + s*(ponto-centro + deslocamento).
     scale = 1 + .15*progress
-    dx,dy = {'esquerda':(-.03*progress*1080,0),'direita':(.03*progress*1080,0),
-             'cima':(0,-.03*progress*1920),'baixo':(0,.03*progress*1920)}[direction]
+    dx,dy = {'esquerda':(-.03*progress*width,0),'direita':(.03*progress*width,0),
+             'cima':(0,-.03*progress*height),'baixo':(0,.03*progress*height)}[direction]
     left,top,right,bottom = bounds
-    return (540+scale*(left-540+dx),960+scale*(top-960+dy),
-            540+scale*(right-540+dx),960+scale*(bottom-960+dy))
+    return (width/2+scale*(left-width/2+dx),height/2+scale*(top-height/2+dy),
+            width/2+scale*(right-width/2+dx),height/2+scale*(bottom-height/2+dy))
 
 
 def wrap_measured(text, measure, width):
@@ -147,8 +152,10 @@ def wrap_measured(text, measure, width):
     return lines
 
 
-def scene(path, section):
+def scene(path, section, width=1080, height=1920):
     """Texto e geometria originais em bitmap local; não é outro motor de vídeo."""
+    regions = scene_regions(width, height)
+    ratio = width/1080
     gdi, user = c.WinDLL('gdi32', use_last_error=True), c.WinDLL('user32', use_last_error=True)
     for name, result, args in [
         ('CreateCompatibleDC',w.HDC,[w.HDC]), ('CreateCompatibleBitmap',w.HBITMAP,[w.HDC,c.c_int,c.c_int]),
@@ -165,7 +172,7 @@ def scene(path, section):
     gdi.GetTextExtentPoint32W.argtypes = [w.HDC,w.LPCWSTR,c.c_int,c.POINTER(w.SIZE)]
     screen = user.GetDC(None)
     dc = gdi.CreateCompatibleDC(screen)
-    bitmap = gdi.CreateCompatibleBitmap(screen,1080,1920)
+    bitmap = gdi.CreateCompatibleBitmap(screen,width,height)
     user.ReleaseDC(None,screen)
     if not dc or not bitmap:
         raise c.WinError(c.get_last_error())
@@ -178,7 +185,8 @@ def scene(path, section):
         return value
     layout = {}
     def text(key, value, preferred, minimum, weight, color):
-        left,top,right,bottom = SCENE_REGIONS[key]
+        left,top,right,bottom = regions[key]
+        preferred, minimum = max(1,round(preferred*ratio)), max(1,round(minimum*ratio))
         for size in range(preferred,minimum-1,-1):
             font = gdi.CreateFontW(-size,0,0,0,weight,0,0,0,1,0,0,4,0,'Arial')
             if not font: raise c.WinError(c.get_last_error())
@@ -199,7 +207,7 @@ def scene(path, section):
                     box = w.RECT(left,top+index*line_height,right,top+(index+1)*line_height)
                     if not user.DrawTextW(dc,line,-1,c.byref(box),0x20|0x800):
                         raise c.WinError(c.get_last_error())
-                layout[key] = {'region':list(SCENE_REGIONS[key]),'font_size':size,'lines':lines,
+                layout[key] = {'region':list(regions[key]),'font_size':size,'lines':lines,
                     'bounds':[left,top,left+max(measure(line) for line in lines),top+len(lines)*line_height]}
                 return
             finally:
@@ -207,38 +215,38 @@ def scene(path, section):
                 gdi.DeleteObject(font)
         raise ValueError('Texto não cabe integralmente na área segura: '+key)
     try:
-        user.FillRect(dc,c.byref(w.RECT(0,0,1080,1920)),brush(0x2a1810))
-        user.FillRect(dc,c.byref(w.RECT(*SCENE_REGIONS['accent'])),brush(0xffa485))
+        user.FillRect(dc,c.byref(w.RECT(0,0,width,height)),brush(0x2a1810))
+        user.FillRect(dc,c.byref(w.RECT(*regions['accent'])),brush(0xffa485))
         gdi.SetBkMode(dc,1)
         text('label',f"PILOTO LOCAL  /  {section['n']}",28,24,400,0xffa485)
         text('heading',section['heading'],56,28,700,0xffffff)
         text('summary',section['summary'],36,26,400,0xffffff)
         text('disclosure','VOZ SINTÉTICA LOCAL | LICENÇA NÃO VERIFICADA',24,22,400,0xffa485)
-        layout['accent'] = {'bounds':list(SCENE_REGIONS['accent'])}
+        layout['accent'] = {'bounds':list(regions['accent'])}
         for item in layout.values():
             for direction in ('esquerda','direita','cima','baixo'):
                 for progress in (0,.25,.5,.75,1):
-                    x0,y0,x1,y1 = transformed_bounds(item['bounds'],progress,direction)
-                    if not (0 <= x0 < x1 <= 1080 and 0 <= y0 < y1 <= 1920):
+                    x0,y0,x1,y1 = transformed_bounds(item['bounds'],progress,direction,width,height)
+                    if not (0 <= x0 < x1 <= width and 0 <= y0 < y1 <= height):
                         raise ValueError('Conteúdo ultrapassa área segura Ken Burns.')
         path.with_suffix('.layout.json').write_text(json.dumps(layout,ensure_ascii=False,indent=2),encoding='utf-8')
         # Cabeçalho BITMAPINFOHEADER, BGRA top-down; converte para PNG RGB stdlib.
-        info = struct.pack('<IiiHHIIiiII',40,1080,-1920,1,32,0,1080*1920*4,0,0,0,0)
-        pixels = (c.c_ubyte * (1080*1920*4))()
+        info = struct.pack('<IiiHHIIiiII',40,width,-height,1,32,0,width*height*4,0,0,0,0)
+        pixels = (c.c_ubyte * (width*height*4))()
         gdi.SelectObject(dc,previous)
-        if gdi.GetDIBits(dc,bitmap,0,1920,pixels,info,0) != 1920:
+        if gdi.GetDIBits(dc,bitmap,0,height,pixels,info,0) != height:
             raise c.WinError(c.get_last_error())
         data = bytes(pixels)
         rows = bytearray()
-        for y in range(1920):
+        for y in range(height):
             rows.append(0)
-            row = data[y*4320:(y+1)*4320]
-            rgb = bytearray(3240)
+            row = data[y*width*4:(y+1)*width*4]
+            rgb = bytearray(width*3)
             rgb[0::3],rgb[1::3],rgb[2::3] = row[2::4],row[1::4],row[0::4]
             rows.extend(rgb)
         def chunk(kind,value):
             return struct.pack('>I',len(value))+kind+value+struct.pack('>I',zlib.crc32(kind+value))
-        path.write_bytes(b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('>IIBBBBB',1080,1920,8,2,0,0,0))+
+        path.write_bytes(b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('>IIBBBBB',width,height,8,2,0,0,0))+
                          chunk(b'IDAT',zlib.compress(rows))+chunk(b'IEND',b''))
     finally:
         gdi.SelectObject(dc,previous)
@@ -285,7 +293,7 @@ def main(input_path):
             finally:
                 stream.invoke('Close')
                 stream.close(); stream = None
-            scene(folder/f"scene-{section['n']}.png",section)
+            scene(folder/f"scene-{section['n']}.png",section, *request.get("scene_size", [1080,1920]))
         (folder/'voice.json').write_text(json.dumps({'voice':name,'culture':'pt-BR'},ensure_ascii=False),encoding='utf-8')
     finally:
         for value in (fmt,stream,token,tokens,voice):

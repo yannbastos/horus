@@ -45,7 +45,7 @@ EDGE_SILENCE_SECONDS = 1.5      # silêncio inicial/final acima disso gera aviso
 _HEX = re.compile(r"[0-9a-f]{64}")
 _ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}")
 _CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
-_ORIGINS, _LICENSES = ("original_local", "system_voice"), ("original", "unverified")
+_ORIGINS, _LICENSES = ("original_local", "system_voice", "licensed_manual"), ("original", "unverified")
 _TOP = {"schema_version", "demo_only", "narration", "scenes", "subtitles", "assets", "video", "alignment_method"}
 _CHECK_IDS = (
     "schema", "demo_flag", "alignment_method", "narration", "video", "assets_structure", "assets_paths",
