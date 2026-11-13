@@ -16,6 +16,7 @@ import {
   retryWorkflow,
   reviewWorkflow,
 } from '../services/api';
+import ScriptReview from './ScriptReview';
 
 const STATUS_LABELS: Record<string, string> = {
   queued: 'Na fila',
@@ -644,6 +645,12 @@ export default function EditorialWorkflows({ connection }: { connection: Connect
                     </div>
                   </article>
                 )}
+
+                <ScriptReview
+                  connection={connection}
+                  workflow={current}
+                  proposalArtifact={proposalArtifact}
+                />
               </>
             )}
           </main>
