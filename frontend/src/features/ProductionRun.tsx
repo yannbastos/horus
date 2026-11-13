@@ -104,6 +104,31 @@ const REVIEW_DECISION_LABELS: Record<ProductionReviewDecision, string> = {
   reject: 'Rejeitado na revisão final',
 };
 
+const LAUNCH_PREFS_KEY = 'horus.production.launchPrefs';
+
+// Preferência local de UI (modo e qualidade); falha de armazenamento nunca impede a tela.
+function readLaunchPrefs(): { mode: ProductionMode; quality: RenderQuality } {
+  const defaults = { mode: 'simulated' as ProductionMode, quality: 'draft' as RenderQuality };
+  try {
+    const raw = JSON.parse(window.localStorage.getItem(LAUNCH_PREFS_KEY) ?? 'null');
+    const modes: ProductionMode[] = ['simulated', 'local_demo', 'local_pilot'];
+    return {
+      mode: modes.includes(raw?.mode) ? raw.mode : defaults.mode,
+      quality: raw?.quality === 'final' ? 'final' : defaults.quality,
+    };
+  } catch {
+    return defaults;
+  }
+}
+
+function writeLaunchPrefs(prefs: { mode: ProductionMode; quality: RenderQuality }) {
+  try {
+    window.localStorage.setItem(LAUNCH_PREFS_KEY, JSON.stringify(prefs));
+  } catch {
+    /* armazenamento indisponível: a escolha vale apenas nesta sessão */
+  }
+}
+
 function formatDate(iso: string | null | undefined): string {
   if (!iso) return '—';
   try {
@@ -135,8 +160,17 @@ export default function ProductionRun({
 }) {
   const [productions, setProductions] = useState<ProductionRecord[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [mode, setMode] = useState<ProductionMode>('simulated');
-  const [renderQuality, setRenderQuality] = useState<RenderQuality>('draft');
+  const [initialPrefs] = useState(readLaunchPrefs);
+  const [mode, setModeState] = useState<ProductionMode>(initialPrefs.mode);
+  const [renderQuality, setRenderQualityState] = useState<RenderQuality>(initialPrefs.quality);
+  const setMode = (next: ProductionMode) => {
+    setModeState(next);
+    writeLaunchPrefs({ mode: next, quality: renderQuality });
+  };
+  const setRenderQuality = (next: RenderQuality) => {
+    setRenderQualityState(next);
+    writeLaunchPrefs({ mode, quality: next });
+  };
   const [voice, setVoice] = useState<ProductionNarrationSelection | null>(null);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
