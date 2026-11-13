@@ -133,7 +133,8 @@ def test_approval_snapshot_hash_is_required(settings):
         assert start(client, script).status_code == 409
 
 
-def test_running_cancel_owns_tree_and_sanitizes_logs(settings, tmp_path, monkeypatch):
+@pytest.mark.parametrize('mode', ['simulated','local_pilot'])
+def test_running_cancel_owns_tree_and_sanitizes_logs(settings, tmp_path, monkeypatch, mode):
     import sys
     from horus_backend.processes import OwnedProcess
     marker = tmp_path / 'heartbeat.txt'
@@ -151,7 +152,7 @@ def test_running_cancel_owns_tree_and_sanitizes_logs(settings, tmp_path, monkeyp
     monkeypatch.setattr(OwnedProcess, 'start', start_test)
     with client_for(settings) as client:
         script = script_for(client)
-        item = start(client, script).json()
+        item = start(client, script, mode=mode).json()
         for _ in range(100):
             if marker.exists(): break
             time.sleep(.02)

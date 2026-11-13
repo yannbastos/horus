@@ -81,6 +81,9 @@ def test_maximum_script_stays_within_total_limit():
 
 def test_mode_is_explicit_and_limited():
     assert build(mode='local_demo').mode == 'local_demo'
+    pilot = build(mode='local_pilot')
+    assert pilot.mode == 'local_pilot' and pilot.audio.kind == 'local_tts'
+    assert not pilot.audio.real_voice and not pilot.license.publishable
     with pytest.raises(ValidationError):
         build(mode='real')
 

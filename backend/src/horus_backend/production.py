@@ -25,7 +25,7 @@ from .processes import OwnedProcess
 class ProductionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     expected_version: int = Field(ge=1, strict=True)
-    mode: Literal["simulated", "local_demo"]
+    mode: Literal["simulated", "local_demo", "local_pilot"]
 
 
 class ProductionReviewRequest(BaseModel):
@@ -93,7 +93,9 @@ class ProductionService:
         return {key: row[key] for key in ("id", "script_id", "script_version", "script_content_hash", "job_id", "mode", "created_at")} | {
             "updated_at": max(job["updated_at"], (json.loads(row["review"]) or {}).get("reviewed_at", "")) if row["review"] else job["updated_at"], "stage": result.get("stage", "prepare"), "status": job["status"],
             "artifacts": json.loads(row["artifacts"]), "review": json.loads(row["review"]) if row["review"] else None,
-            "error": job["error"], "demo_only": True, "real_voice": False, "speech_aligned": False}
+            "error": job["error"], "demo_only": True, "real_voice": False, "speech_aligned": False,
+            "publishable": False, "narration_kind": result.get("narration_kind"),
+            "narration_disclosure": result.get("narration_disclosure"), "alignment_method": result.get("alignment_method")}
 
     def get(self, production_id):
         with self.store.connect() as db:
@@ -176,7 +178,7 @@ class ProductionService:
                     raise WorkflowConflict("Chave de revisão usada com outra decisão.")
                 return self.record(db, row)
             record = self.record(db, row)
-            if record["status"] != "succeeded" or row["mode"] != "local_demo" or row["review"]:
+            if record["status"] != "succeeded" or row["mode"] not in {"local_demo", "local_pilot"} or row["review"]:
                 raise WorkflowConflict("Revisão exige vídeo real concluído e ainda não revisado.")
             video = next((a for a in record["artifacts"] if a["kind"] == "video" and a["sha256"] == request.artifact_sha256), None)
             if video is None:
@@ -217,7 +219,7 @@ class ProductionService:
             self.store.update(job_id, "running", new_attempt=True, result={"stage": "prepare"})
             await manager.emit(job_id, "state", "running")
             command = [sys.executable, str(Path(__file__).with_name("production_worker.py")), str(root)]
-            if row["mode"] == "local_demo" and self.settings.factory_root:
+            if row["mode"] in {"local_demo", "local_pilot"} and self.settings.factory_root:
                 command += ["--factory-source", str(self.settings.factory_root)]
             # Ambiente mínimo: nenhum token, .env, perfil ou credencial de operador.
             env = {k: v for k, v in os.environ.items() if k.upper() in {"PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "COMSPEC", "PATHEXT"}}
@@ -261,11 +263,17 @@ class ProductionService:
                 return
             if row["mode"] == "simulated" and any(a["kind"] == "video" for a in artifacts):
                 raise WorkflowConflict("Simulação não pode registrar vídeo.")
-            if row["mode"] == "local_demo" and not any(a["kind"] == "video" for a in artifacts):
+            if row["mode"] in {"local_demo", "local_pilot"} and not any(a["kind"] == "video" for a in artifacts):
                 raise WorkflowConflict("Render sem vídeo real verificável.")
+            if row["mode"] == "local_pilot":
+                from .local_pilot import confirmed_metadata
+                metadata = confirmed_metadata(root, artifacts)
+            else:
+                metadata = {"narration_kind": "fixture_tone", "narration_disclosure": "Tom sintético local; sem narração."}
             with self.store.connect() as db:
                 db.execute("UPDATE productions SET artifacts=? WHERE id=?", (encode(artifacts), production_id))
-            self.store.update(job_id, "succeeded", result={"stage": "review", "demo_only": True})
+            self.store.update(job_id, "succeeded", result={"stage": "review", "demo_only": True,
+                **metadata})
         except asyncio.CancelledError:
             if manager.active_process:
                 await manager.active_process.stop()

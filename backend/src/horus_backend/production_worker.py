@@ -1,4 +1,4 @@
-"""Worker técnico isolado: fixtures locais; nunca chama CLI de voz/aprovação/publicação."""
+"""Worker isolado: fixtures ou SAPI offline explícito; renderer independente, sem publicação."""
 from __future__ import annotations
 import argparse
 import hashlib
@@ -153,9 +153,19 @@ def render(root, source):
     stream = json.loads(probe.stdout)['streams'][0]
     if int(stream['nb_read_frames']) < 2 or abs(float(stream['duration']) - (alignment.duracao_audio + .8)) > .2:
         raise ValueError('Vídeo não corresponde à duração/frames esperados.')
+    audio_probe = original_run([os.environ['HORUS_DEMO_FFPROBE'], '-v', 'error', '-count_frames', '-select_streams', 'a:0',
+        '-show_entries', 'stream=nb_read_frames,duration,codec_name,sample_rate,channels', '-of', 'json', str(video)], capture_output=True, check=True)
+    audio_stream = json.loads(audio_probe.stdout)['streams'][0]
+    if int(audio_stream['nb_read_frames']) < 1 or float(audio_stream['duration']) < alignment.duracao_audio - .1:
+        raise ValueError('MP4 sem áudio completo decodificável.')
     original_run([os.environ['HORUS_DEMO_FFMPEG'], '-v', 'error', '-i', str(video), '-frames:v', '1',
                   str(folder / 'render/frame.png')], capture_output=True, check=True)
-    write_json(folder / 'render/validation.json', {'stream': stream, 'demo_only': True, 'real_voice': False,
+    if plan['mode'] == 'local_pilot':
+        original_run([os.environ['HORUS_DEMO_FFMPEG'], '-v', 'error', '-i', str(video), '-vn', '-ac', '1',
+            '-ar', '22050', '-c:a', 'pcm_s16le', str(folder / 'render/audio-review.wav')], capture_output=True, check=True)
+        original_run([os.environ['HORUS_DEMO_FFMPEG'], '-v', 'error', '-ss', str(alignment.duracao_audio / 2),
+            '-i', str(video), '-frames:v', '1', str(folder / 'render/subtitles-frame.png')], capture_output=True, check=True)
+    write_json(folder / 'render/validation.json', {'stream': stream, 'audio_stream': audio_stream, 'demo_only': True, 'real_voice': False,
                'speech_aligned': False, 'sha256': hashlib.sha256(video.read_bytes()).hexdigest()})
 
 
@@ -178,36 +188,47 @@ def main():
     def artifact(name, kind):
         artifacts.append({'kind': kind, 'relative_path': f'{prefix}/{name}'})
     stage('narration')
-    rate = 16000
-    with wave.open(str(folder / 'fixture.wav'), 'wb') as audio:
-        audio.setparams((1, 2, rate, 0, 'NONE', 'not compressed'))
-        for offset in range(math.ceil(plan['total_duration'])):
-            count = min(rate, round(plan['total_duration'] * rate) - offset * rate)
-            if count > 0:
-                audio.writeframes(b''.join(struct.pack('<h', round(400 * math.sin(2 * math.pi * 220 * (offset * rate + i) / rate))) for i in range(count)))
-    artifact('fixture.wav', 'audio')
-    stage('scenes')
-    assets, lines = [], []
-    for scene in plan['scenes']:
-        n = scene['n']
-        filename = f'scene-{n}.png'
-        png(folder / filename, n)
-        artifact(filename, 'scene')
-        lines.append({'n': n, 'inicio': scene['start'], 'fim': scene['end']})
-        assets.append({'linha': n, 'tipo': 'imagem', 'arquivo': filename, 'fonte': 'original_local_fixture',
+    if plan['mode'] == 'local_pilot':
+        from horus_backend.local_pilot import prepare
+        try:
+            artifacts.extend(prepare(root, folder, plan))
+        except ValueError as error:
+            write_json(root / 'result.json', {'blocked': True, 'error': 'Piloto local bloqueado: ' + str(error), 'artifacts': artifacts})
+            return
+        except (OSError, TimeoutError):
+            write_json(root / 'result.json', {'blocked': True, 'error': 'Piloto local indisponivel: confirme Windows SAPI pt-BR e WAV PCM valido; nenhum tom substitui voz.', 'artifacts': artifacts})
+            return
+    else:
+        rate = 16000
+        with wave.open(str(folder / 'fixture.wav'), 'wb') as audio:
+            audio.setparams((1, 2, rate, 0, 'NONE', 'not compressed'))
+            for offset in range(math.ceil(plan['total_duration'])):
+                count = min(rate, round(plan['total_duration'] * rate) - offset * rate)
+                if count > 0:
+                    audio.writeframes(b''.join(struct.pack('<h', round(400 * math.sin(2 * math.pi * 220 * (offset * rate + i) / rate))) for i in range(count)))
+        artifact('fixture.wav', 'audio')
+        stage('scenes')
+        assets, lines = [], []
+        for scene in plan['scenes']:
+            n = scene['n']
+            filename = f'scene-{n}.png'
+            png(folder / filename, n)
+            artifact(filename, 'scene')
+            lines.append({'n': n, 'inicio': scene['start'], 'fim': scene['end']})
+            assets.append({'linha': n, 'tipo': 'imagem', 'arquivo': filename, 'fonte': 'original_local_fixture',
+                           'licenca': 'demonstração; publicação não verificada', 'exige_credito': False, 'publicavel': False})
+        assets.append({'tipo': 'narracao', 'arquivo': 'fixture.wav', 'fonte': 'fixture_tone_sem_voz_real',
                        'licenca': 'demonstração; publicação não verificada', 'exige_credito': False, 'publicavel': False})
-    assets.append({'tipo': 'narracao', 'arquivo': 'fixture.wav', 'fonte': 'fixture_tone_sem_voz_real',
-                   'licenca': 'demonstração; publicação não verificada', 'exige_credito': False, 'publicavel': False})
-    write_json(folder / 'manifesto_assets.json', {'assets': assets})
-    artifact('manifesto_assets.json', 'manifest')
-    # Tempos sintéticos por cena, deliberadamente sem palavras alinhadas à fala.
-    write_json(folder / 'alinhamento.json', {'audio': 'fixture.wav', 'duracao_audio': plan['total_duration'],
-               'motor': 'synthetic_fixture_tone_no_real_voice', 'palavras': [], 'linhas': lines})
-    artifact('alinhamento.json', 'manifest')
-    stage('subtitles')
-    (folder / 'fixture.srt').write_text(render_srt(ProductionPlan.model_validate(plan)), encoding='utf-8')
-    artifact('fixture.srt', 'subtitles')
-    if plan['mode'] == 'local_demo':
+        write_json(folder / 'manifesto_assets.json', {'assets': assets})
+        artifact('manifesto_assets.json', 'manifest')
+        # Tempos sintéticos por cena, deliberadamente sem palavras alinhadas à fala.
+        write_json(folder / 'alinhamento.json', {'audio': 'fixture.wav', 'duracao_audio': plan['total_duration'],
+                   'motor': 'synthetic_fixture_tone_no_real_voice', 'palavras': [], 'linhas': lines})
+        artifact('alinhamento.json', 'manifest')
+        stage('subtitles')
+        (folder / 'fixture.srt').write_text(render_srt(ProductionPlan.model_validate(plan)), encoding='utf-8')
+        artifact('fixture.srt', 'subtitles')
+    if plan['mode'] in {'local_demo', 'local_pilot'}:
         stage('render')
         python = source / 'scripts/.venv' / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python') if source else None
         browser = next((Path(p) for p in [os.environ.get('HORUS_DEMO_BROWSER', ''),
@@ -239,7 +260,12 @@ def main():
         for name in ('src', 'node_modules', 'package.json', 'package-lock.json', 'tsconfig.json'):
             item = source / 'remotion' / name
             if item.is_dir():
-                shutil.copytree(item, remotion / name, ignore=shutil.ignore_patterns('.env', '.env.*', '*.mp4'))
+                # Prefixo Win32 estendido só para cópia Python: não altera política global de caminhos.
+                copy_source, copy_target = item, remotion / name
+                if os.name == 'nt':
+                    copy_source = Path('\\\\?\\' + str(copy_source.resolve()))
+                    copy_target = Path('\\\\?\\' + str(copy_target.resolve()))
+                shutil.copytree(copy_source, copy_target, ignore=shutil.ignore_patterns('.env', '.env.*', '*.mp4'))
             elif item.is_file():
                 shutil.copy2(item, remotion / name)
         (root / 'offline-guard.cjs').write_text(NODE_GUARD, encoding='utf-8')
@@ -256,7 +282,7 @@ def main():
             proxy.server_close()
             proxy_thread.join()
         if completed.returncode:
-            write_json(root / 'result.json', {'error': 'Render offline da fábrica falhou; verifique dependências locais, codec e browser.'})
+            write_json(root / 'result.json', {'error': 'Render offline da fábrica falhou; verifique dependências locais, codec e browser.', 'artifacts': artifacts})
             sys.exit(1)
         try:
             network_summary(root, rejected)
@@ -268,8 +294,18 @@ def main():
         artifact('render/short-rascunho.insumos.json', 'manifest')
         artifact('render/validation.json', 'manifest')
         artifact('render/frame.png', 'scene')
+    metadata = {}
+    if plan['mode'] == 'local_pilot':
+        from horus_backend.local_pilot import finalize
+        metadata = finalize(root, folder)
+        artifacts.append({'kind':'manifest','relative_path':'pilot-evidence.json'})
+        artifact('render/audio-review.wav', 'audio')
+        artifact('render/subtitles-frame.png', 'scene')
+        artifact('render/narration-signal.json', 'manifest')
+    else:
+        metadata = {'narration_kind':'fixture_tone','narration_disclosure':'Tom sintetico local; sem narracao.'}
     stage('review')
-    write_json(root / 'result.json', {'artifacts': artifacts, 'demo_only': True, 'real_voice': False, 'speech_aligned': False})
+    write_json(root / 'result.json', {'artifacts': artifacts, 'demo_only': True, 'real_voice': False, 'speech_aligned': False, **metadata})
 
 
 if __name__ == '__main__':
