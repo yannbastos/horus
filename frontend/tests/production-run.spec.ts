@@ -655,6 +655,10 @@ test.describe('M4 — Interface de Produção Técnica Local e Revisão Final (H
     const scriptV2 = createScriptRecordFixture(2, 'approved');
 
     let prodState: Record<string, unknown> | null = null;
+    let previousProduction: Record<string, unknown> | null = null;
+    let startCount = 0;
+    let retryCalls = 0;
+    let trackingFailure: 'none' | '401' | 'network' = 'none';
     let jobStatus: 'running' | 'cancel_requested' | 'cancelled' | 'blocked' | 'succeeded' = 'blocked';
     let rejectReviewOnceWithHashConflict = true;
     const revokedUrls: string[] = [];
@@ -707,13 +711,14 @@ test.describe('M4 — Interface de Produção Técnica Local e Revisão Final (H
         await route.fulfill({
           status: 200,
           headers: corsHeaders,
-          json: { items: prodState ? [prodState] : [] },
+          json: { items: prodState ? [prodState, ...(previousProduction ? [previousProduction] : [])] : [] },
         });
         return;
       }
       if (pathUrl === `/v1/scripts/${SCRIPT_V2_ID}/productions` && request.method() === 'POST') {
         const body = request.postDataJSON();
         expect(body).toEqual({ expected_version: 2, mode: 'local_demo' });
+        startCount += 1;
         jobStatus = 'blocked';
         prodState = {
           id: PROD_DEMO_ID,
@@ -734,26 +739,26 @@ test.describe('M4 — Interface de Produção Técnica Local e Revisão Final (H
           real_voice: false,
           speech_aligned: false,
         };
+        if (startCount > 1) {
+          previousProduction = { ...prodState, id: PROD_DEMO_ID, status: 'blocked' };
+          jobStatus = 'running';
+          prodState = { ...prodState, id: 'bbbbccccddddeeeeffff000011112222', job_id: 'new-production-job', status: 'running', error: null };
+        }
         await route.fulfill({ status: 201, headers: corsHeaders, json: prodState });
         return;
       }
-      if (pathUrl === `/v1/productions/${PROD_DEMO_ID}` && request.method() === 'GET') {
+      if ((pathUrl === `/v1/productions/${PROD_DEMO_ID}` || pathUrl === '/v1/productions/bbbbccccddddeeeeffff000011112222') && request.method() === 'GET') {
+        if (trackingFailure === '401') { await route.fulfill({ status: 401, headers: corsHeaders, json: { detail: 'Token recusado.' } }); return; }
+        if (trackingFailure === 'network') { await route.abort('failed'); return; }
         await route.fulfill({ status: 200, headers: corsHeaders, json: prodState });
         return;
       }
       if (pathUrl === `/v1/jobs/${JOB_DEMO_ID}/retry` && request.method() === 'POST') {
-        jobStatus = 'running';
-        prodState = {
-          ...prodState!,
-          status: 'running',
-          stage: 'render',
-          error: null,
-          updated_at: '2026-11-12T11:12:00Z',
-        };
-        await route.fulfill({ status: 200, headers: corsHeaders, json: { id: JOB_DEMO_ID, status: 'running' } });
+        retryCalls += 1;
+        await route.fulfill({ status: 409, headers: corsHeaders, json: { detail: 'Concilie a tentativa antes de criar nova produção.' } });
         return;
       }
-      if (pathUrl === `/v1/jobs/${JOB_DEMO_ID}/cancel` && request.method() === 'POST') {
+      if ((pathUrl === `/v1/jobs/${JOB_DEMO_ID}/cancel` || pathUrl === '/v1/jobs/new-production-job/cancel') && request.method() === 'POST') {
         jobStatus = 'cancel_requested';
         prodState = {
           ...prodState!,
@@ -768,7 +773,7 @@ test.describe('M4 — Interface de Produção Técnica Local e Revisão Final (H
         });
         return;
       }
-      if (pathUrl === `/v1/jobs/${JOB_DEMO_ID}/events`) {
+      if (pathUrl === `/v1/jobs/${JOB_DEMO_ID}/events` || pathUrl === '/v1/jobs/new-production-job/events') {
         const isTerm = ['blocked', 'cancelled', 'succeeded', 'failed', 'interrupted'].includes(jobStatus);
         const events: Record<string, unknown>[] = [
           { sequence: 1, kind: 'stdout', message: `Estado do executor para ${JOB_DEMO_ID}: ${jobStatus}` },
@@ -795,7 +800,7 @@ test.describe('M4 — Interface de Produção Técnica Local e Revisão Final (H
         });
         return;
       }
-      if (pathUrl === `/v1/productions/${PROD_DEMO_ID}/artifacts/${VIDEO_ARTIFACT_ID}` && request.method() === 'GET') {
+      if (pathUrl.endsWith(`/artifacts/${VIDEO_ARTIFACT_ID}`) && request.method() === 'GET') {
         expect(request.headers()['authorization']).toBe(`Bearer ${SESSION_TOKEN}`);
         await route.fulfill({
           status: 200,
@@ -804,7 +809,7 @@ test.describe('M4 — Interface de Produção Técnica Local e Revisão Final (H
         });
         return;
       }
-      if (pathUrl === `/v1/productions/${PROD_DEMO_ID}/review` && request.method() === 'POST') {
+      if (pathUrl.endsWith('/review') && pathUrl.startsWith('/v1/productions/') && request.method() === 'POST') {
         const idemKey = request.headers()['idempotency-key'];
         expect(idemKey).toBeTruthy();
         const body = request.postDataJSON();
@@ -844,7 +849,7 @@ test.describe('M4 — Interface de Produção Técnica Local e Revisão Final (H
     await prodRegion.getByLabel('Modo de execução da produção').selectOption('local_demo');
     await prodRegion.getByRole('button', { name: 'Iniciar demo local', exact: true }).click();
 
-    const detailRegion = prodRegion.getByRole('region', { name: `Detalhes da produção ${PROD_DEMO_ID}` });
+    const detailRegion = prodRegion.getByRole('region', { name: /^Detalhes da produção / });
     await expect(detailRegion).toBeVisible();
 
     // 1. Blocked state is displayed with actionable message and no fake video
@@ -859,9 +864,28 @@ test.describe('M4 — Interface de Produção Técnica Local e Revisão Final (H
     await page.evaluate(() => document.fonts.ready);
     await page.screenshot({ path: path.join(artifactDir, 'production-demo-blocked-dark.png') });
 
-    // 2. Explicit retry transitions to running; clicking Cancel shows cancel_requested without claiming cancelled yet
-    await detailRegion.getByRole('button', { name: 'Tentar novamente', exact: true }).click();
+    // Recovery creates a distinct production only after explicit reconciliation, never job retry.
+    const recover = detailRegion.getByRole('button', { name: 'Criar nova produção após conciliação', exact: true });
+    await expect(recover).toBeDisabled();
+    await expect(detailRegion.getByRole('button', { name: 'Tentar novamente', exact: true })).toHaveCount(0);
+    await detailRegion.getByLabel('Conferi os artefatos e os efeitos da tentativa anterior').check();
+    await recover.click();
     await expect(detailRegion.getByText('Em execução').first()).toBeVisible();
+    expect(startCount).toBe(2);
+    expect(retryCalls).toBe(0);
+    expect(previousProduction?.id).toBe(PROD_DEMO_ID);
+    await expect(detailRegion).toHaveAttribute('aria-label', 'Detalhes da produção bbbbccccddddeeeeffff000011112222');
+
+    trackingFailure = '401';
+    const trackingAlert = detailRegion.getByRole('alert', { name: 'Acompanhamento desatualizado' });
+    await expect(trackingAlert).toContainText('401', { timeout: 10000 });
+    await expect(trackingAlert).toContainText('Último estado conhecido');
+    await expect(detailRegion.getByText('Em execução').first()).toBeVisible();
+    trackingFailure = 'network';
+    await expect(trackingAlert).toContainText('Falha de rede', { timeout: 10000 });
+    trackingFailure = 'none';
+    await trackingAlert.getByRole('button', { name: 'Verificar acompanhamento agora' }).click();
+    await expect(trackingAlert).toHaveCount(0);
 
     await detailRegion.getByRole('button', { name: 'Cancelar produção', exact: true }).click();
     await expect(detailRegion.getByText('CANCELAMENTO EM ANDAMENTO')).toBeVisible();
@@ -1135,6 +1159,7 @@ test.describe('M4 — Interface de Produção Técnica Local e Revisão Final (H
     );
     await expect(detailRegion.getByText('Não verificado (ausente; nunca inferir voz real)')).toBeVisible();
     await expect(detailRegion.getByText('Não verificado (ausente; nunca inferir alinhamento real)')).toBeVisible();
-    await expect(detailRegion.getByRole('button', { name: 'Tentar novamente', exact: true })).toBeEnabled();
+    await expect(detailRegion.getByRole('button', { name: 'Tentar novamente', exact: true })).toHaveCount(0);
+    await expect(detailRegion.getByRole('button', { name: 'Criar nova produção após conciliação', exact: true })).toBeDisabled();
   });
 });

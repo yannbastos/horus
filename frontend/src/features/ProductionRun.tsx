@@ -17,7 +17,6 @@ import {
   formatProductionError,
   getProduction,
   getScriptProductions,
-  retryProductionJob,
   reviewProduction,
   sortProductionsDesc,
 } from '../services/production';
@@ -130,6 +129,8 @@ export default function ProductionRun({
   const [error, setError] = useState('');
   const [jobEvents, setJobEvents] = useState<JobEvent[]>([]);
   const [jobError, setJobError] = useState('');
+  const [trackingError, setTrackingError] = useState('');
+  const [reconciled, setReconciled] = useState(false);
 
   // Preview state (authenticated blob URL or text content)
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -263,6 +264,8 @@ export default function ProductionRun({
   // Clear preview if user switches selected production
   useEffect(() => {
     clearPreview();
+    setTrackingError('');
+    setReconciled(false);
   }, [activeProduction?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-scroll job logs
@@ -283,24 +286,14 @@ export default function ProductionRun({
     }
 
     const controller = new AbortController();
-    const targetProductionId = prod.id;
     const targetScriptId = prod.script_id;
     setJobEvents([]);
     setJobError('');
 
     void observeJob(conn, prod.job_id, controller.signal, event => {
       if (controller.signal.aborted || mountedScriptIdRef.current !== targetScriptId) return;
-      if (event.kind === 'complete' || event.kind === 'state' || event.kind === 'stage') {
-        void getProduction(conn, targetProductionId, controller.signal)
-          .then(fresh => {
-            if (controller.signal.aborted || mountedScriptIdRef.current !== targetScriptId) return;
-            upsertProductionRecord(fresh, false);
-          })
-          .catch(() => {
-            // Transient refresh error during stream is handled by explicit refresh/polling
-          });
-        if (event.kind === 'complete') return;
-      }
+      // A single polling request owns status updates; SSE only supplies logs.
+      if (event.kind === 'complete') return;
       setJobEvents(prev => [...prev, event].slice(-500));
     }).catch(reason => {
       if (!controller.signal.aborted && mountedScriptIdRef.current === targetScriptId) {
@@ -326,20 +319,27 @@ export default function ProductionRun({
     let active = true;
     const targetProductionId = prod.id;
     const targetScriptId = prod.script_id;
-    const timer = window.setInterval(() => {
-      void getProduction(conn, targetProductionId)
-        .then(fresh => {
-          if (!active || mountedScriptIdRef.current !== targetScriptId) return;
-          upsertProductionRecord(fresh, false);
-        })
-        .catch(() => {
-          // Transient polling errors do not overwrite user-visible alerts
-        });
-    }, 1200);
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    async function refresh() {
+      try {
+        const fresh = await getProduction(conn!, targetProductionId, controller.signal);
+        if (!active || mountedScriptIdRef.current !== targetScriptId) return;
+        setTrackingError('');
+        upsertProductionRecord(fresh, false);
+      } catch (reason) {
+        if (!active || controller.signal.aborted) return;
+        setTrackingError(formatProductionError(reason));
+      } finally {
+        if (active) timer = window.setTimeout(() => void refresh(), 1200);
+      }
+    }
+    timer = window.setTimeout(() => void refresh(), 1200);
 
     return () => {
       active = false;
-      clearInterval(timer);
+      clearTimeout(timer);
+      controller.abort();
     };
   }, [connection, activeProduction?.id, activeProduction?.status, activeProduction?.script_id]);
 
@@ -349,6 +349,7 @@ export default function ProductionRun({
     Boolean(latestScript) &&
     isLatestScriptApproved &&
     !hasActiveRun &&
+    (!activeProduction || !['failed', 'interrupted', 'blocked', 'cancelled'].includes(activeProduction.status) || reconciled) &&
     !loading &&
     !submitting;
 
@@ -362,6 +363,7 @@ export default function ProductionRun({
       const items = await getScriptProductions(connection, targetScriptId);
       if (mountedScriptIdRef.current !== targetScriptId) return;
       setProductions(items);
+      setTrackingError('');
       setSelectedId(prev => {
         if (prev && items.some(i => i.id === prev)) {
           return prev;
@@ -400,6 +402,7 @@ export default function ProductionRun({
         return;
       }
       upsertProductionRecord(fresh, true);
+      setTrackingError('');
     } catch (reason) {
       if (
         controller.signal.aborted ||
@@ -464,32 +467,6 @@ export default function ProductionRun({
 
     try {
       await cancelProductionJob(connection, targetJobId);
-      const fresh = await getProduction(connection, targetProductionId);
-      if (mountedScriptIdRef.current !== targetScriptId) return;
-      upsertProductionRecord(fresh, true);
-    } catch (reason) {
-      if (mountedScriptIdRef.current !== targetScriptId) return;
-      setError(formatProductionError(reason));
-    } finally {
-      inFlightRef.current = false;
-      if (mountedScriptIdRef.current === targetScriptId) {
-        setSubmitting(false);
-      }
-    }
-  }
-
-  async function handleRetryJob() {
-    if (!connection || !activeProduction || inFlightRef.current || submitting) return;
-    const targetScriptId = activeProduction.script_id;
-    const targetProductionId = activeProduction.id;
-    const targetJobId = activeProduction.job_id;
-
-    inFlightRef.current = true;
-    setSubmitting(true);
-    setError('');
-
-    try {
-      await retryProductionJob(connection, targetJobId);
       const fresh = await getProduction(connection, targetProductionId);
       if (mountedScriptIdRef.current !== targetScriptId) return;
       upsertProductionRecord(fresh, true);
@@ -607,7 +584,7 @@ export default function ProductionRun({
     !isTerminal &&
     activeProduction.status !== 'cancel_requested' &&
     !submitting;
-  const canRetryJob =
+  const needsReconciliation =
     activeProduction &&
     ['failed', 'interrupted', 'blocked', 'cancelled'].includes(activeProduction.status) &&
     !submitting;
@@ -932,17 +909,23 @@ export default function ProductionRun({
                 Cancelando processo…
               </button>
             )}
-            {canRetryJob && (
+            {needsReconciliation && (
+              <div role="region" aria-label="Conciliação da produção">
+                <p>Confira os arquivos e os efeitos da tentativa anterior antes de criar outra produção. A tentativa anterior e seus artefatos serão preservados; não há retentativa automática.</p>
+                <label><input type="checkbox" checked={reconciled} onChange={event => setReconciled(event.target.checked)} />Conferi os artefatos e os efeitos da tentativa anterior</label>
               <button
                 className="button"
                 type="button"
-                disabled={submitting}
-                onClick={() => void handleRetryJob()}
+                disabled={!reconciled || !canStartProduction}
+                onClick={() => void handleStartProduction()}
               >
-                Tentar novamente
+                Criar nova produção após conciliação
               </button>
+              </div>
             )}
           </div>
+
+          {trackingError && <div role="alert" aria-label="Acompanhamento desatualizado"><p>Acompanhamento indisponível. Último estado conhecido em {formatDate(activeProduction.updated_at)}; não confirma o término nem o cancelamento.</p><p className="error">{trackingError}</p><button className="button" disabled={loading || submitting} onClick={() => void handleInspectProduction(activeProduction)}>Verificar acompanhamento agora</button></div>}
 
           <details open>
             <summary>Logs e eventos reais do job ({activeProduction.job_id})</summary>

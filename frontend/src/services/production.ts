@@ -179,17 +179,6 @@ export async function cancelProductionJob(
   });
 }
 
-export async function retryProductionJob(
-  connection: Connection,
-  jobId: string,
-  signal?: AbortSignal
-): Promise<unknown> {
-  return api<unknown>(connection, `/v1/jobs/${encodeURIComponent(jobId)}/retry`, {
-    method: 'POST',
-    signal,
-  });
-}
-
 export async function fetchProductionArtifactBlob(
   connection: Connection,
   productionId: string,
