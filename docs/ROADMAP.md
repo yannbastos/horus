@@ -14,6 +14,12 @@ Produção técnica local integrada: roteiro aprovado → JobManager → fábric
 
 O MP4 demonstra o render, com tom de áudio, cenas sintéticas e SRT separado. Narração de fala, alinhamento e acabamento de um piloto completo continuam pendentes. NetLog parcial e guard local não homologam isolamento de SO nem ausência de tráfego de toda a sessão. A próxima rodada usa recursos locais, sem voz paga, inferência real, upload ou publicação; detalhes e limites em [produção local](producao-local.md). O Project continua sendo a fonte operacional das tarefas parciais.
 
+## Piloto local narrado — 13/11/2026
+
+Integrado na main o modo `local_pilot` (HOR-054/056/089/097, parciais): roteiro aprovado → narração TTS offline (Microsoft Maria/SAPI) medida por seção → cenas originais locais → SRT segmentado → MP4 540×960 com legendas → prévia autenticada (vídeo, SRT, narração completa por hash, metadados) e revisão humana por hash. Schema v7 com migração v6→v7 conferida em cópias de bancos v6 reais. Validação na main: 757 testes backend + 57 de contrato Hermes aprovados (6 ignorados condicionais), 101 Playwright e build aprovados; ensaio real do piloto repetido na main (13 testes, SAPI + render + revisão por hash + reinício), com MP4 de SHA-256 idêntico ao do ensaio conjunto aprovado e validador de qualidade sem erros bloqueantes ([piloto local](piloto-local.md)).
+
+O piloto é demonstrativo e não publicável: falta alinhamento por palavra, QC operacional no worker, licença da voz e dos componentes, escuta/aceite humano e acabamento em 1080×1920. Próxima rodada (estado no Project): contratos de `quality_report`, tempos por palavra e proveniência/licença por asset; alinhamento com tempos medidos e QC persistido no worker; revisão por timecode na UI; avaliação técnica do Piper como voz neural local, sem substituir a voz atual. Pexels/Pixabay apenas como arquitetura, sem APIs, chaves ou downloads.
+
 ## Como interpretar os estados
 
 - **Implementado:** existe código para a capacidade delimitada; não significa validação completa.
