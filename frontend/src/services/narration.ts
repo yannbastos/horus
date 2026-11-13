@@ -14,7 +14,7 @@ export type CommercialUse = 'allowed' | 'restricted' | 'unknown';
 export type PreviewMode = 'local' | 'requires_authorization' | 'unavailable';
 export type NarrationVoice = {
   id: string; name: string; language: string; license: { name: string; url: string | null };
-  commercial_use: CommercialUse; preview: PreviewMode;
+  commercial_use: CommercialUse; preview: PreviewMode; notes: string | null;
 };
 export type NarrationProvider = {
   id: string; name: string; kind: ProviderKind; status: ProviderStatus; reason: string;
@@ -76,7 +76,7 @@ export function parseProviders(raw: unknown): NarrationProvider[] {
           id: str(v.id, 'id da voz'), name: str(v.name, 'nome da voz'), language: str(v.language, 'idioma da voz'),
           license: { name: typeof vl.name === 'string' ? vl.name : 'não informada', url: optStr(vl.url) },
           commercial_use: oneOf<CommercialUse>(v.commercial_use, COMMERCIAL, 'uso comercial'),
-          preview: oneOf<PreviewMode>(v.preview, PREVIEWS, 'prévia'),
+          preview: oneOf<PreviewMode>(v.preview, PREVIEWS, 'prévia'), notes: optStr(v.notes),
         };
       }),
     };
@@ -121,10 +121,9 @@ async function request(connection: Connection, path: string, init: RequestInit =
       headers: { Authorization: `Bearer ${connection.token}`, ...(init.body ? { 'Content-Type': 'application/json' } : {}), ...init.headers },
     });
     if (!response.ok) {
-      const body = await response.json().catch(() => null) as { code?: unknown; detail?: unknown } | null;
-      const detail = body?.detail;
-      const code = typeof body?.code === 'string' ? body.code : (typeof detail === 'object' && detail !== null && typeof (detail as { code?: unknown }).code === 'string' ? (detail as { code: string }).code : null);
-      const message = typeof detail === 'string' ? detail : `Não foi possível concluir a operação (${response.status}).`;
+      const body = await response.json().catch(() => null) as { code?: unknown } | null;
+      const code = typeof body?.code === 'string' ? body.code : null;
+      const message = `Não foi possível concluir a operação (${response.status}${code ? `, ${code}` : ''}).`;
       throw new NarrationError(message, response.status, code);
     }
     return response;
@@ -140,31 +139,24 @@ export async function getProviders(connection: Connection, signal?: AbortSignal)
 export async function estimateNarration(connection: Connection, body: EstimateRequest, signal?: AbortSignal) {
   return parseEstimate(await json(connection, '/v1/narration/estimate', { method: 'POST', body: JSON.stringify(body) }, signal));
 }
-/** Prévia local: devolve um Blob de áudio. Nunca chamar para provedores pagos (o backend responde 403). */
+/**
+ * Prévia local em duas etapas: POST /v1/narration/preview -> {id, url, expires_in_seconds};
+ * GET autenticado em `url` -> audio/wav (uso único). Nunca chamar para provedores pagos (o backend responde 403).
+ */
 export async function previewNarration(connection: Connection, body: { provider: string; voice_id: string; text: string }, signal?: AbortSignal): Promise<Blob> {
   if (body.text.length > PREVIEW_MAX_CHARS) throw new Error(`O texto da prévia aceita até ${PREVIEW_MAX_CHARS} caracteres.`);
-  const response = await request(connection, '/v1/narration/preview', { method: 'POST', body: JSON.stringify(body) }, signal);
-  const type = response.headers.get('content-type') ?? '';
-  if (type.includes('json')) {
-    // Alternativa: o backend devolve o endereço autenticado do WAV temporário.
-    const data = obj(await response.json(), 'prévia'); const path = str(data.url ?? data.audio_url, 'endereço da prévia');
-    if (!path.startsWith('/')) bad('endereço da prévia');
-    return (await request(connection, path, {}, signal)).blob();
-  }
-  return response.blob();
-}
-/** Estado da credencial. Se a rota GET não existir, devolve null (estado indeterminado). */
-export async function getElevenLabsCredential(connection: Connection, signal?: AbortSignal): Promise<boolean | null> {
-  try { return parseConfigured(await json(connection, '/v1/narration/providers/elevenlabs/credential', undefined, signal)); }
-  catch (reason) { if (reason instanceof NarrationError && [404, 405].includes(reason.status)) return null; throw reason; }
+  const created = obj(await json(connection, '/v1/narration/preview', { method: 'POST', body: JSON.stringify(body) }, signal), 'prévia');
+  const id = str(created.id, 'id da prévia');
+  const url = str(created.url, 'endereço da prévia');
+  if (url !== `/v1/narration/previews/${id}`) bad('endereço da prévia');
+  return (await request(connection, url, {}, signal)).blob();
 }
 export async function setElevenLabsCredential(connection: Connection, key: string): Promise<boolean> {
-  return parseConfigured(await json(connection, '/v1/narration/providers/elevenlabs/credential', { method: 'PUT', body: JSON.stringify({ api_key: key }) }));
+  return parseConfigured(await json(connection, '/v1/narration/providers/elevenlabs/credential', { method: 'PUT', body: JSON.stringify({ key }) }));
 }
 export async function removeElevenLabsCredential(connection: Connection): Promise<boolean> {
   return parseConfigured(await json(connection, '/v1/narration/providers/elevenlabs/credential', { method: 'DELETE' }));
-}
-function parseDefault(raw: unknown): DefaultVoice | null {
+}function parseDefault(raw: unknown): DefaultVoice | null {
   if (raw === null) return null;
   const d = obj(raw, 'voz padrão');
   if (d.provider === null || d.provider === undefined) return null;

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Connection } from '../../services/api';
 import {
-  DEFAULT_PREVIEW_TEXT, PREVIEW_MAX_CHARS, estimateNarration, getDefaultVoice, getElevenLabsCredential, getProviders,
+  DEFAULT_PREVIEW_TEXT, PREVIEW_MAX_CHARS, estimateNarration, getDefaultVoice, getProviders,
   previewNarration, removeElevenLabsCredential, setDefaultVoice, setElevenLabsCredential,
 } from '../../services/narration';
 import type { CommercialUse, DefaultVoice, NarrationEstimate, NarrationProvider, NarrationVoice, ProviderStatus } from '../../services/narration';
@@ -69,6 +69,7 @@ function VoiceRow({ connection, provider, voice, text, isDefault, onDefault }: {
     </div>
     <p className="muted">Licença da voz: <LicenseLink name={voice.license.name} url={voice.license.url} /></p>
     {commercial.warning && <p className="narration-warning" role="note">{commercial.warning}</p>}
+    {voice.notes && <p className="muted">{voice.notes}</p>}
     <div className="narration-actions">
       {voice.preview === 'local' && <button className="button" disabled={busy || !text.trim()} onClick={() => void listen()} aria-label={`Ouvir prévia de ${label}`}>{busy ? 'GERANDO PRÉVIA…' : 'OUVIR PRÉVIA'}</button>}
       <button className="button" disabled={estimating || !text.trim()} onClick={() => void estimateCost()} aria-label={`Estimar custo de ${label}`}>{estimating ? 'ESTIMANDO…' : 'ESTIMAR CUSTO'}</button>
@@ -82,16 +83,16 @@ function VoiceRow({ connection, provider, voice, text, isDefault, onDefault }: {
   </li>;
 }
 
+// O estado vem de GET /v1/narration/providers: not_configured sem chave, blocked com chave (sem GET da credencial).
+
+const credentialFromStatus = (status: ProviderStatus) => status === 'blocked' ? true : status === 'not_configured' ? false : null;
+
 function ElevenLabsCredential({ connection, status }: { connection: Connection; status: ProviderStatus }) {
-  const [configured, setConfigured] = useState<boolean | null>(status === 'not_configured' ? false : null);
+  const [saved, setConfigured] = useState<boolean | null>(null);
+  const configured = saved ?? credentialFromStatus(status);
   const [key, setKey] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  useEffect(() => {
-    const controller = new AbortController();
-    getElevenLabsCredential(connection, controller.signal).then(value => { if (!controller.signal.aborted && value !== null) setConfigured(value); }).catch(() => undefined);
-    return () => controller.abort();
-  }, [connection]);
   async function save() {
     if (!key.trim() || busy) return;
     setBusy(true); setError('');
@@ -105,7 +106,7 @@ function ElevenLabsCredential({ connection, status }: { connection: Connection; 
   return <form className="narration-provider" aria-label="Conectar ElevenLabs" onSubmit={event => { event.preventDefault(); void save(); }}>
     <h4>Conectar ElevenLabs</h4>
     <p className="muted" role="note">Conectar não habilita o uso pago nem consome créditos. A chave é enviada somente ao backend local, guardada no cofre do sistema e nunca é exibida de volta.</p>
-    <p role="status">Chave: <strong>{configured === null ? 'estado não verificado' : configured ? 'configurada' : 'não configurada'}</strong></p>
+    <p role="status">Chave: <strong>{configured === null ? 'estado indisponível (provedor desabilitado)' : configured ? 'configurada' : 'não configurada'}</strong></p>
     <label>Chave da API ElevenLabs<input type="password" value={key} onChange={e => setKey(e.target.value)} autoComplete="new-password" spellCheck={false} /></label>
     <div className="narration-actions">
       <button className="button primary" type="submit" disabled={busy || !key.trim()}>{configured ? 'SUBSTITUIR CHAVE' : 'SALVAR CHAVE'}</button>
@@ -184,7 +185,7 @@ function NarrationPanel({ connection }: { connection: Connection | null }) {
         <p className="muted">Licença do motor: <LicenseLink name={provider.engine_license.name} url={provider.engine_license.url} />{provider.engine_license.notes ? ` — ${provider.engine_license.notes}` : ''}</p>
         {provider.native_word_timestamps && <p className="muted">Este provedor entrega timestamps próprios. Eles são evidência adicional: o alinhamento acústico continua sendo a medição.</p>}
         {provider.requires_authorization && <p className="narration-warning" role="note">Uso pago: cada geração exige autorização explícita com o custo estimado. Prévias não são geradas sem autorização.</p>}
-        {provider.id === 'elevenlabs' && <ElevenLabsCredential connection={connection} status={provider.status} />}
+        {provider.id === 'elevenlabs' && <ElevenLabsCredential key={provider.status} connection={connection} status={provider.status} />}
         {voices.length === 0 ? <p className="muted">Nenhuma voz para o idioma selecionado.</p>
           : <ul aria-label={`Vozes de ${provider.name}`}>{voices.map(voice => <VoiceRow key={voice.id} connection={connection} provider={provider} voice={voice} text={text}
             isDefault={defaultVoice?.provider === provider.id && defaultVoice.voice_id === voice.id} onDefault={() => void chooseDefault(provider, voice)} />)}</ul>}
