@@ -2,6 +2,8 @@
 
 Estas regras valem para todos os agentes que trabalham no HORUS.
 
+**Antes de trabalhar, leia obrigatoriamente a [política de governança dos agentes](docs/AGENT-GOVERNANCE.md)**: papéis (Claude Opus como Maestro; Codex, Claude Sonnet e Antigravity como programadores preferenciais, com distribuição flexível), ações previamente autorizadas, ações que exigem o usuário, testes proporcionais ao risco, fluxo de integração e a obrigação de atualizar Issue + Status do GitHub Projects + evidências. Ela vale em qualquer computador e sessão nova.
+
 ## Autonomia e escopo
 
 - Execute tarefas aprovadas com autonomia, sem pedir confirmação a cada etapa rotineira. Uma autorização explícita vigente não precisa ser solicitada novamente para a mesma ação e escopo.
@@ -32,6 +34,7 @@ Leia este arquivo e somente os documentos pertinentes ao escopo. Não carregue t
 | Interface ou identidade visual | [Critérios visuais](docs/ARCHITECTURE.md#identidade-visual-e-equivalência), [layout](docs/layout-desktop.md) e tokens da implementação afetada |
 | Hermes, agentes ou memória | [AI-SYSTEM](docs/AI-SYSTEM.md) e [integração Hermes](docs/integracao-hermes.md) |
 | Motion design, técnicas ou Remotion | [MOTION-LIBRARY](docs/MOTION-LIBRARY.md) e documentação própria da fábrica |
+| Autonomia, papéis e integração dos agentes | [AGENT-GOVERNANCE](docs/AGENT-GOVERNANCE.md) (leitura obrigatória) e [retomada em outro computador](docs/CONTINUAR-EM-OUTRO-PC.md) |
 | Estado, prioridade ou validação | [Project privado](https://github.com/users/yannbastos/projects/1), [Issues de gestão](https://github.com/yannbastos/horus-management/issues) e [procedimento](docs/GESTAO-GITHUB.md); [ROADMAP](docs/ROADMAP.md) como síntese contextual e relatórios datados como evidência |
 | Decisão histórica ou contrato proposto | [Índice de planejamento](docs/planejamento/README.md) e [registro da reorganização](docs/historico/reorganizacao-2026-11-11/README.md) |
 
@@ -109,7 +112,7 @@ Quando uma decisão importante exigir aprovação, avance primeiro no trabalho i
 
 ## Git
 
-- A política aprovada em [docs/GOVERNANCA-AGENTES.md](docs/GOVERNANCA-AGENTES.md) autoriza commits, Pull Requests, merges normais na `main` e pushes normais para `yannbastos/horus` e `yannbastos/horus-management`, após os testes e a revisão que ela exige. Fora dela, não crie commits, faça push ou merge sem autorização expressa que cubra a tarefa.
+- A política aprovada em [docs/AGENT-GOVERNANCE.md](docs/AGENT-GOVERNANCE.md) autoriza commits, Pull Requests, merges normais na `main` e pushes normais para `yannbastos/horus` e `yannbastos/horus-management`, após os testes e a revisão que ela exige. Fora dela, não crie commits, faça push ou merge sem autorização expressa que cubra a tarefa.
 - Antes de um commit autorizado, revise o diff e selecione somente alterações da tarefa; não inclua trabalho alheio nem segredos.
 - Não crie repositórios remotos sem autorização.
 - A branch principal atual é `main`; confirme o estado real antes de operar. Não renomeie ou remova branches por conta própria.
@@ -129,7 +132,7 @@ Quando uma decisão importante exigir aprovação, avance primeiro no trabalho i
 - Mudar o escopo ou os objetivos do produto.
 - Escolher a licença do projeto.
 
-Decisões técnicas rotineiras que respeitem estas regras não precisam de aprovação. A [governança dos agentes](docs/GOVERNANCA-AGENTES.md) detalha o que está previamente autorizado (inclusive dependências gratuitas de fontes confiáveis e atualização de contratos internos com compatibilidade) e o que continua exigindo o usuário; em conflito, prevalece a regra mais restritiva de segurança, privacidade ou gasto.
+Decisões técnicas rotineiras que respeitem estas regras não precisam de aprovação. A [governança dos agentes](docs/AGENT-GOVERNANCE.md) detalha o que está previamente autorizado (inclusive dependências gratuitas de fontes confiáveis e atualização de contratos internos com compatibilidade) e o que continua exigindo o usuário; em conflito, prevalece a regra mais restritiva de segurança, privacidade ou gasto.
 
 ## Comunicação
 

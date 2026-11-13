@@ -54,7 +54,7 @@ Estados de origem: Concluído → Concluído e Issue fechada com histórico; Ref
 5. Entregar ao agente a Issue, restrições, dependências, aceite e instruções AGENTS.md/CLAUDE.md.
 6. Reportar na Issue resultado, branch/PR, arquivos relevantes, testes executados, evidências e limitações. Atualizar comentário de andamento do worktree.
 7. Preparar PR no repositório de código com ID no título e referência segura. As Issues estão em outro repositório: `#NUMERO` isolado aponta ao destino errado. No conteúdo privado de gestão, registrar o link do PR público. No PR público, usar somente o ID HOR-XXX e informações técnicas já públicas; não copiar corpo privado, notas de segurança ou evidências confidenciais. Referências cruzadas completas a `yannbastos/horus-management#NUMERO` só quando a própria referência puder ser divulgada. Preferir fechamento manual após validação, sem automação entre os repositórios.
-8. Em revisão quando houver entrega verificável; Maestro revisa e usuário autoriza merges quando exigido. Commit, push e merge seguem a autorização específica do repositório.
+8. Em revisão quando houver entrega verificável; o Maestro revisa e integra. Commits, merges normais e pushes normais seguem a [governança dos agentes](AGENT-GOVERNANCE.md); ações sensíveis listadas ali continuam exigindo o usuário.
 9. Concluir somente depois da integração validada, critérios cumpridos e evidências registradas. Sincronizar Issue fechada e Status Concluído.
 
 Um bloqueio exige motivo, dependência/link quando existir, ação necessária e responsável pela resolução. Marcar Bloqueado e registrar o último estado útil. Retomar após evidência da resolução. Nenhum agente precisa de conta própria no GitHub.

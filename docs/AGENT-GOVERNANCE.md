@@ -2,6 +2,8 @@
 
 Política vigente desde 13/11/2026, definida pelo usuário (idealizador e responsável pelo produto). Ela substitui as exigências anteriores de aprovação individual para commits, merges e pushes normais. Regras de segurança, privacidade e gastos mais restritivas, em [AGENTS.md](../AGENTS.md) ou em outros documentos, continuam valendo.
 
+**Leitura obrigatória:** todo agente lê este documento e o [AGENTS.md](../AGENTS.md) antes de trabalhar, em qualquer computador e em qualquer sessão nova. A política está versionada no repositório, vale para qualquer clone, não depende de caminhos absolutos nem de memória local de agentes e não contém credenciais ou configurações privadas. Autorizações registradas em conversas, memórias ou cartas antigas não ampliam o que está aqui.
+
 ## Papéis
 
 | Agente | Função | Preferências |
@@ -11,7 +13,7 @@ Política vigente desde 13/11/2026, definida pelo usuário (idealizador e respon
 | Claude Sonnet — programador | Contratos, validadores, qualidade audiovisual, segurança, testes, refatorações delimitadas | |
 | Antigravity — programador | React/TypeScript, interface, prévia e revisão audiovisual, acessibilidade, Playwright | |
 
-As preferências não são limites rígidos. O Maestro redistribui por dependência, disponibilidade e limite de uso, não deixa agente ocioso quando há tarefa independente autorizada e não inicia tarefas simultâneas nos mesmos arquivos sem coordenação explícita (cada tarefa declara os arquivos de que é dona).
+Codex, Claude Sonnet e Antigravity são os programadores preferenciais; as preferências não são limites rígidos e a distribuição pode mudar conforme a disponibilidade e os limites de uso de cada um. O Maestro redistribui por dependência, disponibilidade e limite de uso, não deixa agente ocioso quando há tarefa independente autorizada e não inicia tarefas simultâneas nos mesmos arquivos sem coordenação explícita (cada tarefa declara os arquivos de que é dona).
 
 ## Ações autorizadas sem aprovação individual
 
@@ -93,7 +95,17 @@ Opus para coordenação, arquitetura complexa e revisão crítica; Sonnet para i
 
 ## Continuidade
 
-Ao concluir um incremento: revisar, testar, integrar e fazer push quando os critérios forem atendidos, atualizar o Project e delegar a próxima tarefa independente enquanto houver capacidade e autorização. Agente bloqueado ou no limite de uso: registrar e redistribuir. Não prometer execução futura sem mecanismo ativo; registrar o ponto de retomada na Issue.
+Ao concluir um incremento: atualizar Issue + Status do Project + evidências (obrigatório em toda transição), revisar, testar, integrar e fazer push quando os critérios forem atendidos, atualizar o Project e delegar a próxima tarefa independente enquanto houver capacidade e autorização. Agente bloqueado ou no limite de uso: registrar e redistribuir. Não prometer execução futura sem mecanismo ativo; registrar o ponto de retomada na Issue.
+
+## Retomada em outro computador ou nova sessão
+
+O estado oficial não fica na máquina: está no Git (`main`, branches `feat/*`/`fix/*` publicadas) e no GitHub Projects/Issues. Estado do Orca (Runs, mensagens, worktrees) e memórias de agentes são locais e não são fonte de verdade.
+
+1. Preparar o ambiente conforme [CONTINUAR-EM-OUTRO-PC.md](CONTINUAR-EM-OUTRO-PC.md).
+2. Ler este documento e o [AGENTS.md](../AGENTS.md).
+3. Conferir `main` e `origin/main`, branches publicadas e worktrees locais existentes (preservando alterações não commitadas).
+4. Consultar no Project os itens Em andamento, Em revisão e Bloqueado e o último comentário de cada Issue (ponto de retomada).
+5. Recriar worktrees e delegar a partir dessas Issues; registrar a retomada na Issue.
 
 ## Comunicação com o usuário
 

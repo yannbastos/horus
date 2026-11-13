@@ -1,6 +1,8 @@
 # Continuar o desenvolvimento em outro computador (Windows)
 
-Guia para clonar o Hórus em uma máquina nova e retomar o trabalho sem perder estado. Revisado em 2026-11-12, com `main` após a integração do Security Core (limites e orçamento). Nenhuma credencial, banco operacional ou backup acompanha os repositórios: tudo que é secreto é recriado localmente.
+Guia para clonar o Hórus em uma máquina nova e retomar o trabalho sem perder estado. Revisado em 2026-11-13. Nenhuma credencial, banco operacional ou backup acompanha os repositórios: tudo que é secreto é recriado localmente.
+
+**Leitura obrigatória antes de retomar:** [AGENT-GOVERNANCE.md](AGENT-GOVERNANCE.md) (política de autonomia, papéis, integração e restrições) e [AGENTS.md](../AGENTS.md). A política é versionada no repositório e não depende desta máquina; o roteiro de retomada da coordenação está na seção 15.
 
 ## 1. Repositórios
 
@@ -23,7 +25,7 @@ gh repo clone yannbastos/horus-management                            # PRIVADO: 
 
 ## 2. Branch recomendada
 
-Continue a partir de **`main`**. Todas as entregas M1, M2 e Security Core estão integradas; as branches `feat/*` publicadas são histórico (já contidas em `main`). Para trabalho novo, crie `feat/hor-XXX-descricao` a partir de `main`, conforme [GESTAO-GITHUB.md](GESTAO-GITHUB.md).
+Continue a partir de **`main`**. As entregas integradas estão em `main`; branches `feat/*` publicadas e ainda não contidas em `main` são trabalho em andamento — confira no Project antes de retomá-las. Para trabalho novo, crie `feat/hor-XXX-descricao` a partir de `main`, conforme [GESTAO-GITHUB.md](GESTAO-GITHUB.md).
 
 ## 3. Ferramentas e versões
 
@@ -126,7 +128,7 @@ uv sync --project ..\..\fabrica-canais\scripts --frozen --no-default-groups   # 
    - Codex: `gpt-6.1-sol` com esforço `high` para backend/segurança; `gpt-6-astra` só para o mais difícil.
    - Claude: Sonnet 5.5 (`--agent claude --model claude-sonnet-5-5 --effort high`) para implementação; Opus apenas para revisões críticas.
    - Antigravity: `claude-sonnet-5-5-medium` ou `gemini-4-argon-medium` para UI complexa, `gemini-3.8-flash-low` para tarefas simples. **Evite Gemini 3.8 Flash High** (o mais lento no benchmark).
-4. Siga [AGENTS.md](../AGENTS.md) e [GESTAO-GITHUB.md](GESTAO-GITHUB.md): worktree por agente, arquivos reservados, sem merge/push sem autorização.
+4. Siga [AGENT-GOVERNANCE.md](AGENT-GOVERNANCE.md), [AGENTS.md](../AGENTS.md) e [GESTAO-GITHUB.md](GESTAO-GITHUB.md): worktree por agente e arquivos reservados por tarefa. Programadores fazem commits nas próprias branches; o Maestro revisa, integra na `main` e faz push normal. Ações sensíveis (APIs pagas, inferência real, publicação, Git destrutivo, credenciais) continuam exigindo o usuário.
 
 ## 11. Hermes com segurança
 
@@ -162,3 +164,14 @@ A máquina nova **não** tem perfil `horus`. Recrie-o e endureça-o antes de qua
 - Instalação NSIS, GPU/CUDA, diálogos nativos e transcrição longa ainda não foram homologados.
 - Resíduos antigos em páginas livres do SQLite só saem com `VACUUM` (não executado); use BitLocker no disco do sistema.
 - O teste de symlink fica ignorado no Windows sem privilégio de criação de links.
+
+## 15. Retomar a coordenação dos agentes
+
+O estado oficial está no Git e no GitHub Projects, não na máquina. Runs, mensagens e worktrees do Orca e memórias dos agentes são locais e não são transferidos.
+
+1. Concluir os passos 1–4 e 10; ler [AGENT-GOVERNANCE.md](AGENT-GOVERNANCE.md).
+2. Iniciar a sessão do Maestro (Claude Opus) na raiz do clone e pedir que retome a coordenação conforme a política.
+3. O Maestro confere `main`/`origin/main`, branches publicadas pendentes e os itens Em andamento, Em revisão e Bloqueado no Project; o último comentário de cada Issue é o ponto de retomada.
+4. Para cada item pendente, recria o worktree a partir da branch publicada (ou de `main`) pelo Orca e delega ao programador indicado no campo Agente, registrando a retomada na Issue.
+5. Trabalho apenas local na máquina antiga (commits não publicados ou alterações não commitadas) não existe na nova: publique a branch antes de trocar de computador ou registre na Issue o que ficou pendente.
+6. Modelos locais (por exemplo, Whisper para alinhamento) e ferramentas de prova ficam em `%LOCALAPPDATA%\Horus\` e precisam ser baixados de novo, conferindo os hashes registrados na documentação correspondente.
