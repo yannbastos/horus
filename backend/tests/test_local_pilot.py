@@ -16,6 +16,15 @@ from horus_backend.local_pilot import subtitle_sections, wav_info, signal_measur
 from horus_backend.migrations import migrate, MIGRATIONS
 
 
+# Preserve explicit native rehearsals; unit tests never inherit operator modes.
+@pytest.fixture(autouse=True)
+def isolated_pilot_environment(monkeypatch, request):
+    if request.node.name.startswith('test_real_') or request.node.name == 'test_factory_caption_rule_has_not_drifted':
+        return
+    for name in ('HORUS_FFMPEG', 'HORUS_ALIGNMENT_MODEL', 'HORUS_SUBTITLE_FONT', 'HORUS_PILOT_FACTORY'):
+        monkeypatch.delenv(name, raising=False)
+
+
 @pytest.mark.parametrize('width,height', [(540,960),(1080,1920)])
 def test_scene_regions_survive_original_ken_burns_and_caption_reserve(width,height):
     from horus_backend.local_pilot_windows import scene_regions, transformed_bounds
@@ -491,7 +500,8 @@ def test_alignment_fallback_explicit_without_model_or_extra(tmp_path, monkeypatc
 
 
 @pytest.mark.parametrize('aligned', [False,True])
-def test_prepare_selects_valid_alignment_before_render(tmp_path, monkeypatch, aligned):
+@pytest.mark.parametrize('overlay', [False,True])
+def test_prepare_selects_valid_alignment_before_render(tmp_path, monkeypatch, aligned, overlay):
     from horus_backend import local_pilot as pilot
     from horus_backend.speech_alignment import align_with_report
     from test_production_contract import build
@@ -518,6 +528,14 @@ def test_prepare_selects_valid_alignment_before_render(tmp_path, monkeypatch, al
         return {'executed':True,'reason':None,'document':document,'report':report,'asr_seconds':.01}
     monkeypatch.setattr(pilot,'synthesize',inputs)
     monkeypatch.setattr(pilot,'align_narration',alignment)
+    if overlay:
+        font = folder/'fonts/test.ttf'
+        font.parent.mkdir()
+        font.write_bytes(b'fixture-font')
+        monkeypatch.setattr(pilot, 'configure_caption_overlay', lambda root, folder: {
+            'font_path': str(font), 'font_author':'fixture', 'font_source':'fixture',
+            'font_source_url':'https://example.org/font', 'font_license':{'id':'fixture','name':'fixture','url':'https://example.org/terms',
+                'commercial_use':'unknown','attribution_required':None,'verified_by':None,'verified_at':None}})
     events = []
     pilot.prepare(tmp_path,folder,plan,alignment_model=tmp_path,progress=events.append)
     assert events == ['align','subtitles']
@@ -530,7 +548,7 @@ def test_prepare_selects_valid_alignment_before_render(tmp_path, monkeypatch, al
     factory = json.loads((folder/'alinhamento.json').read_text(encoding='utf-8'))
     if aligned:
         assert [w['inicio'] for w in factory['palavras']] == [w['start'] for w in words['words']]
-        assert evidence['subtitles'] == pilot.subtitle_words(words['words'])
+        assert evidence['subtitles'] == (pilot.measured_subtitle_words if overlay else pilot.subtitle_words)(words['words'])
     else:
         assert factory['motor'] == 'windows_sapi_measured_sections_heuristic_subtitles'
 
