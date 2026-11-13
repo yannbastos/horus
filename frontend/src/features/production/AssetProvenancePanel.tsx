@@ -12,21 +12,26 @@ export default function AssetProvenancePanel({
   connection,
   productionId,
   onEffectiveProvenance,
+  reloadKey,
 }: {
   assetProvenance: NormalizedAssetProvenance;
   connection?: Connection | null;
   productionId?: string;
   onEffectiveProvenance?: (effective: Record<string, unknown> | null) => void;
+  /** Muda quando a produção avança (status/artefatos): força nova leitura dos registros de licença. */
+  reloadKey?: string;
 }) {
   const [history, setHistory] = useState<LicenseReview[]>([]);
   const [canReview, setCanReview] = useState(false);
   const [loadError, setLoadError] = useState('');
+  const [loading, setLoading] = useState(false);
   const report = useRef(onEffectiveProvenance);
   report.current = onEffectiveProvenance;
 
   const load = useCallback(
     async (signal?: AbortSignal) => {
       if (!connection || !productionId) return;
+      setLoading(true);
       try {
         const data = await getLicenseReviews(connection, productionId, signal);
         if (signal?.aborted) return;
@@ -34,8 +39,10 @@ export default function AssetProvenancePanel({
         setCanReview(data.effective_provenance !== null);
         setLoadError('');
         report.current?.(data.effective_provenance);
+        setLoading(false);
       } catch (reason) {
         if (signal?.aborted) return;
+        setLoading(false);
         setCanReview(false);
         setLoadError(
           reason instanceof ApiError
@@ -47,14 +54,19 @@ export default function AssetProvenancePanel({
     [connection, productionId]
   );
 
+  const lastProduction = useRef<string | undefined>(undefined);
   useEffect(() => {
-    setHistory([]);
-    setCanReview(false);
-    report.current?.(null);
+    // Ao trocar de produção limpa o estado; ao só avançar (reloadKey), mantém o que já havia.
+    if (lastProduction.current !== productionId) {
+      lastProduction.current = productionId;
+      setHistory([]);
+      setCanReview(false);
+      report.current?.(null);
+    }
     const controller = new AbortController();
     void load(controller.signal);
     return () => controller.abort();
-  }, [load]);
+  }, [load, reloadKey]);
 
   return (
     <div
@@ -288,6 +300,10 @@ export default function AssetProvenancePanel({
         )}
         {!connection || !productionId ? (
           <p className="muted">Sem conexão com o backend: a verificação humana não está disponível.</p>
+        ) : loading && !canReview ? (
+          <p className="loading" role="status">
+            Carregando proveniência e licenças desta produção…
+          </p>
         ) : !canReview ? (
           <p className="muted">
             A API não devolveu proveniência efetiva para esta produção; sem <code>asset-provenance.json</code>{' '}

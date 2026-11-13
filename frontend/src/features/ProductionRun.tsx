@@ -1936,6 +1936,7 @@ export default function ProductionRun({
               connection={connection}
               productionId={activeProduction?.id}
               onEffectiveProvenance={setEffectiveProvenance}
+              reloadKey={`${activeProduction?.status}:${activeProduction?.stage}:${activeProduction?.artifacts.length}`}
             />
           )}
 
