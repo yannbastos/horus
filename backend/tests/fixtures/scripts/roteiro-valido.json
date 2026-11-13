@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "simulated": true,
+  "title": "Roteiro simulado de teste",
+  "sections": [
+    {"id": "abertura", "kind": "hook", "heading": "Abertura", "narration": "Texto criativo simulado de abertura.", "source_ids": ["src_a"]},
+    {"id": "corpo-1", "kind": "body", "heading": "Primeiro bloco", "narration": "Desenvolvimento simulado.", "source_ids": ["src_a", "src_b"]},
+    {"id": "fim", "kind": "conclusion", "heading": "Encerramento", "narration": "Fechamento simulado.", "source_ids": []}
+  ]
+}
