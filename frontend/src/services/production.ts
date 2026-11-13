@@ -1,6 +1,32 @@
 import { api, ApiError } from './api';
 import type { Connection, JobStatus } from './api';
 import type { ScriptSection } from './scripts';
+import {
+  MAX_INTERPOLATED_RUN_SECONDS,
+  MIN_ALIGNMENT_MATCH_RATE,
+  isRecord,
+  parseWordTimingsWords,
+  readFiniteNumber,
+  readSha256,
+  readString,
+} from './mediaContracts';
+import type {
+  RecomputedAlignment,
+  WordAlignmentSummary,
+  WordTimingItem,
+  WordTimingSource,
+  WordTimingsReport,
+} from './mediaContracts';
+
+export type {
+  RecomputedAlignment,
+  WordAlignmentSummary,
+  WordTimingEngine,
+  WordTimingItem,
+  WordTimingKind,
+  WordTimingSource,
+  WordTimingsReport,
+} from './mediaContracts';
 
 export type ProductionMode = 'simulated' | 'local_demo' | 'local_pilot';
 
@@ -47,32 +73,6 @@ export type ProductionReview = {
 };
 
 // Contrato 1 — word-timings.json (contracts/media/word-timings.schema.json)
-export type WordTimingSource = 'tts_engine_events' | 'forced_alignment' | 'estimated';
-
-export type WordTimingEngine = {
-  name: string;
-  voice: string;
-};
-
-export type WordTimingItem = {
-  index: number;
-  text: string;
-  section: number | string;
-  start: number;
-  end: number;
-  char_offset: number;
-  char_length: number;
-};
-
-export type WordTimingsReport = {
-  schema_version: 1 | number;
-  narration_sha256: string;
-  duration_seconds: number;
-  source: WordTimingSource | string;
-  engine: WordTimingEngine;
-  words: WordTimingItem[];
-};
-
 // Contrato 2 — quality-report.json (contracts/media/quality-report.schema.json)
 export type QualityCheckCategory =
   | 'integrity'
@@ -410,6 +410,9 @@ export type NormalizedWordTimings = {
   engineName: string | null;
   engineVoice: string | null;
   words: WordTimingItem[];
+  /** Recomputado a partir das palavras (forced_alignment válido); nunca copiado do bloco declarado. */
+  alignment: RecomputedAlignment | null;
+  declaredAlignment: WordAlignmentSummary | null;
   speechAligned: boolean;
   validationReason: string;
 };
@@ -429,25 +432,8 @@ export type TimecodeSubtitleNavItem = {
   text: string;
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function readString(value: unknown): string | null {
-  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
-}
-
 function readBoolean(value: unknown): boolean | undefined {
   return typeof value === 'boolean' ? value : undefined;
-}
-
-function readFiniteNumber(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null;
-}
-
-function readSha256(value: unknown): string | null {
-  const s = readString(value);
-  return s && /^[a-f0-9]{64}$/i.test(s) ? s.toLowerCase() : null;
 }
 
 export function formatTimecode(seconds: number | null | undefined): string {
@@ -1149,6 +1135,8 @@ export function normalizeWordTimings(
       engineName: null,
       engineVoice: null,
       words: [],
+      alignment: null,
+      declaredAlignment: null,
       speechAligned: false,
       validationReason:
         'word-timings.json ausente — alinhamento por palavra não disponível (speech_aligned: false).',
@@ -1163,40 +1151,8 @@ export function normalizeWordTimings(
   const engineVoice = readString(engineObj?.voice);
   const isEstimated = source === 'estimated';
 
-  const words: WordTimingItem[] = [];
-  for (const item of raw.words) {
-    if (!isRecord(item)) continue;
-    const index = readFiniteNumber(item.index);
-    const text = typeof item.text === 'string' ? item.text : null;
-    const section =
-      typeof item.section === 'number' && Number.isInteger(item.section)
-        ? item.section
-        : readString(item.section);
-    const start = readFiniteNumber(item.start);
-    const end = readFiniteNumber(item.end);
-    const charOffset = readFiniteNumber(item.char_offset);
-    const charLength = readFiniteNumber(item.char_length);
-    if (
-      index === null ||
-      !text ||
-      section === null ||
-      start === null ||
-      end === null ||
-      charOffset === null ||
-      charLength === null
-    ) {
-      continue;
-    }
-    words.push({
-      index,
-      text,
-      section,
-      start,
-      end,
-      char_offset: charOffset,
-      char_length: charLength,
-    });
-  }
+  const parsed = parseWordTimingsWords(raw.words, source, raw.alignment);
+  const words = parsed.words;
 
   const sourceLabel =
     source === 'tts_engine_events'
@@ -1214,7 +1170,7 @@ export function normalizeWordTimings(
   if (isEstimated || (source !== 'tts_engine_events' && source !== 'forced_alignment')) {
     reasons.push('source=estimated (heurística nunca habilita speech_aligned=true)');
   }
-  if (words.length === 0 || words.length !== raw.words.length) {
+  if (words.length === 0 || parsed.invalidItems > 0) {
     reasons.push('lista de palavras vazia ou com itens inválidos');
   }
 
@@ -1245,6 +1201,12 @@ export function normalizeWordTimings(
     if (durationSeconds !== null && w.end > durationSeconds + 0.001) {
       withinDuration = false;
     }
+  }
+  reasons.push(...parsed.contractReasons);
+  if (parsed.belowThreshold) {
+    reasons.push(
+      `alignment abaixo dos limiares (taxa de casamento < ${MIN_ALIGNMENT_MATCH_RATE * 100}% ou trecho interpolado contínuo > ${MAX_INTERPOLATED_RUN_SECONDS} s)`
+    );
   }
   if (!validWordTextAndLength) {
     reasons.push('word.text contém espaços ou char_length difere de len(text)');
@@ -1339,6 +1301,8 @@ export function normalizeWordTimings(
     engineName,
     engineVoice,
     words,
+    alignment: parsed.contractReasons.length === 0 ? parsed.alignment : null,
+    declaredAlignment: parsed.declaredAlignment,
     speechAligned,
     validationReason,
   };
