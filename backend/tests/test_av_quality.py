@@ -286,3 +286,29 @@ def test_analyze_wav_measures_peak_rms_clipping_and_silence(tmp_path):
     assert abs(stats["duration"] - 3.0) < 0.01 and stats["peak"] == 1.0 and stats["clipped_samples"] == 3
     assert len(stats["silences"]) == 1 and abs(stats["silences"][0][0] - 1.0) < 0.05
     assert abs(stats["silences"][0][1] - stats["duration"]) < 0.05
+
+
+def test_estimated_word_timings_report_is_coherent_in_every_word_check(tmp_path):
+    root, _ = build(tmp_path, words=word_doc(source="estimated"))
+    report = qc.run_quality(root, production_id="prod1")
+    checks = {c["id"]: c for c in report["checks"]}
+    assert checks["word_timings"]["method"] == "estimated" and checks["subtitles_vs_words"]["method"] == "estimated"
+    assert mc.validate_quality_report(report, production_id="prod1", word_timings_source="estimated")["ok"]
+    # mesmo relatório rotulado como medido contradiz a fonte estimada e deve ser rejeitado
+    forged = json.loads(json.dumps(report))
+    for check in forged["checks"]:
+        if check["category"] == "sync":
+            check["method"] = "measured"
+    assert "estimate_as_measured" in {e["code"] for e in mc.validate_quality_report(forged, word_timings_source="estimated")["errors"]}
+
+
+def test_invalid_estimated_word_timings_fail_check_keeps_estimated_method(tmp_path):
+    def broken(scenes, duration, narration_sha):
+        doc = word_doc(source="estimated")(scenes, duration, narration_sha)
+        doc["words"][1]["start"] = 0.0          # sobrepõe a palavra anterior
+        return doc
+    root, _ = build(tmp_path, words=broken)
+    report = qc.run_quality(root, production_id="prod1")
+    check = next(c for c in report["checks"] if c["id"] == "word_timings")
+    assert check["status"] == "fail" and check["method"] == "estimated"
+    assert mc.validate_quality_report(report, word_timings_source="estimated")["ok"]
