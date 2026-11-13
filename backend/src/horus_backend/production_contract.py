@@ -8,9 +8,9 @@ está presente) sem copiar o schema da fábrica nem o perfil editorial do canal.
 from __future__ import annotations
 
 import re
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import ConfigDict, Field, model_validator
+from pydantic import BeforeValidator, ConfigDict, Field, model_validator
 
 from .hermes_contract.models import HexId, Id, Strict
 from .script_contract import ScriptDocument, validate_script
@@ -21,6 +21,20 @@ MIN_LINE_SECONDS, MAX_LINE_SECONDS = 1.5, 20.0
 MAX_TOTAL_SECONDS = 600.0       # 30 seções * 20 s
 EPSILON = 1e-6
 SHA256 = Field(pattern=r"^[a-f0-9]{64}$")
+
+
+def _exact(expected):
+    """Literal compara por igualdade (`1 == True`, `1.0 == 1`, `0 == False`): exigir também o tipo exato."""
+    def check(value):
+        if type(value) is not type(expected) or value != expected:
+            raise ValueError(f"deve ser exatamente {expected!r}.")
+        return value
+    return BeforeValidator(check)
+
+
+ExactOne = Annotated[Literal[1], _exact(1)]
+ExactTrue = Annotated[Literal[True], _exact(True)]
+ExactFalse = Annotated[Literal[False], _exact(False)]
 
 
 class _Plan(Strict):
@@ -39,7 +53,7 @@ class PlanLine(_Plan):
 class PlanRoteiro(_Plan):
     titulo: str = Field(min_length=1, max_length=200)
     formato: Literal["short"] = "short"
-    teste: Literal[True] = True
+    teste: ExactTrue = True
     linhas: list[PlanLine] = Field(min_length=3, max_length=30)
 
 
@@ -58,26 +72,26 @@ class PlanScene(_Plan):
 
 class PlanAudio(_Plan):
     kind: Literal["fixture_tone"] = "fixture_tone"
-    real_voice: Literal[False] = False
+    real_voice: ExactFalse = False
     disclosure: str = "Áudio de fixture local (tom): sem narração de voz real."
 
 
 class PlanSubtitles(_Plan):
     kind: Literal["synthetic_srt"] = "synthetic_srt"
-    speech_aligned: Literal[False] = False
+    speech_aligned: ExactFalse = False
     disclosure: str = "Legenda sintética por cena: não é alinhamento real de fala."
 
 
 class PlanLicense(_Plan):
-    publishable: Literal[False] = False
+    publishable: ExactFalse = False
     external_assets: list[str] = Field(default_factory=list, max_length=0)
     basis: str = "Somente cenas originais locais e fixtures; licença/publicação nunca inferidas do render."
 
 
 class ProductionPlan(_Plan):
-    schema_version: Literal[1] = 1
+    schema_version: ExactOne = 1
     mode: Literal["simulated", "local_demo"] = "simulated"
-    demo_only: Literal[True] = True
+    demo_only: ExactTrue = True
     script_id: HexId
     script_version: int = Field(ge=1, le=1_000_000)
     script_content_hash: str = SHA256

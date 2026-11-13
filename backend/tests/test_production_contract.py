@@ -169,6 +169,38 @@ def test_plan_rejects_incoherent_or_unsafe_documents(mutate):
         ProductionPlan.model_validate(value)
 
 
+@pytest.mark.parametrize('mutate', [
+    lambda d: d.update(schema_version=True), lambda d: d.update(schema_version=1.0), lambda d: d.update(schema_version='1'),
+    lambda d: d.update(demo_only=1), lambda d: d.update(demo_only='true'), lambda d: d.update(demo_only=1.0),
+    lambda d: d['roteiro'].update(teste=1), lambda d: d['roteiro'].update(teste='true'),
+    lambda d: d['audio'].update(real_voice=0), lambda d: d['audio'].update(real_voice=0.0), lambda d: d['audio'].update(real_voice=''),
+    lambda d: d['subtitles'].update(speech_aligned=0), lambda d: d['subtitles'].update(speech_aligned=None),
+    lambda d: d['license'].update(publishable=0), lambda d: d['license'].update(publishable='false'),
+    lambda d: d['scenes'][0].update(n=True), lambda d: d['roteiro']['linhas'][0].update(n=True),
+    lambda d: d.update(script_version=True),
+])
+def test_literal_flags_require_exact_types(mutate):
+    """Literal compara por igualdade: 1/1.0/True e 0/False seriam equivalentes sem validação do tipo exato."""
+    value = dump()
+    mutate(value)
+    with pytest.raises(ValueError):
+        ProductionPlan.model_validate(value)
+
+
+@pytest.mark.parametrize('origin', ['stock', 'external', 'https://example.com/a.png', 'original_local ', 1, True, None])
+def test_scene_origin_cannot_become_external(origin):
+    value = dump()
+    value['scenes'][0]['visual_origin'] = origin
+    with pytest.raises(ValueError):
+        ProductionPlan.model_validate(value)
+    scene = build().scenes[0]
+    scene.visual_origin = 'stock'  # mutação pós-construção
+    plan = build()
+    plan.scenes[0].visual_origin = 'stock'
+    with pytest.raises(ValueError):
+        render_srt(plan)
+
+
 def test_plan_json_round_trip():
     plan = build()
     assert ProductionPlan.model_validate_json(plan.model_dump_json()) == plan
