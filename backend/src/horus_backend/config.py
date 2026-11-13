@@ -16,7 +16,9 @@ def default_data_dir() -> Path:
 
 
 def discover_factory() -> Path | None:
-    configured = os.environ.get("FABRICA_HOME")
+    # FABRICA_HOME é a variável oficial; HORUS_PILOT_FACTORY (usada pelos ensaios e testes) é aceita como alias e só
+    # vale quando FABRICA_HOME está ausente ou vazia.
+    configured = os.environ.get("FABRICA_HOME") or os.environ.get("HORUS_PILOT_FACTORY")
     if configured:
         return Path(configured).expanduser().resolve()
     for parent in Path(__file__).resolve().parents:

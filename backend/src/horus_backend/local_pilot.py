@@ -174,7 +174,10 @@ def configure_caption_overlay(root, folder):
     executable = os.environ.get('HORUS_FFMPEG')
     if not executable:
         return None  # fallback fiel à regra da fábrica, inclusive sua falha temporal de QC
-    executable = Path(executable).resolve(strict=True)
+    try:
+        executable = Path(executable).resolve(strict=True)
+    except OSError:
+        raise ValueError('HORUS_FFMPEG aponta para um arquivo inexistente ou inacessível; corrija a variável ou remova-a.') from None
     filters = asyncio.run(owned_tool([executable,'-hide_banner','-filters'],cwd=root,timeout=30))
     if not re.search(rb'\bsubtitles\s', filters):
         raise ValueError('HORUS_FFMPEG precisa do filtro subtitles/libass preparado fora do job.')
@@ -184,7 +187,10 @@ def configure_caption_overlay(root, folder):
     font = Path(configured_font) if configured_font else local
     if font is None:
         font = Path(os.environ.get('WINDIR','C:/Windows'))/'Fonts/ariblk.ttf'
-    font = font.resolve(strict=True)
+    try:
+        font = font.resolve(strict=True)
+    except OSError:
+        raise ValueError('HORUS_SUBTITLE_FONT aponta para um arquivo inexistente ou inacessível.') from None
     if font.name not in {'ArchivoExpanded-SemiBold.ttf','ariblk.ttf'}:
         raise ValueError('Fonte sem metadados locais conhecidos; configure ArchivoExpanded-SemiBold.ttf ou ariblk.ttf.')
     fonts = folder/'fonts'

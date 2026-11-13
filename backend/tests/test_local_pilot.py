@@ -695,3 +695,53 @@ def test_qc_measures_words_even_when_factory_hold_fails(tmp_path):
     assert sync['method']=='measured' and sync['measured']['max_deviation_seconds'] > .6
     assert next(c for c in report['checks'] if c['id']=='evidence_manifest')['status']=='fail'
     assert next(c for c in report['checks'] if c['id']=='audio_clipping')['status']=='pass'
+
+
+# --- J-17: cada pré-condição reporta a própria causa --------------------------------------------------------
+
+def test_configured_ffmpeg_missing_is_reported_as_ffmpeg_not_sapi(tmp_path, monkeypatch):
+    from horus_backend import local_pilot as pilot
+    monkeypatch.setenv('HORUS_FFMPEG', str(tmp_path / 'ausente' / 'ffmpeg.exe'))
+    with pytest.raises(ValueError, match='HORUS_FFMPEG.*inexistente') as caught:
+        pilot.configure_caption_overlay(tmp_path, tmp_path)
+    assert 'SAPI' not in str(caught.value)
+    monkeypatch.setenv('HORUS_FFMPEG', str(Path(os.sys.executable)))
+    monkeypatch.setenv('HORUS_SUBTITLE_FONT', str(tmp_path / 'ausente.ttf'))
+    monkeypatch.setattr(pilot, 'owned_tool', lambda *a, **k: _async_value(b'subtitles '))
+    with pytest.raises(ValueError, match='HORUS_SUBTITLE_FONT.*inexistente'):
+        pilot.configure_caption_overlay(tmp_path, tmp_path)
+
+
+async def _async_value(value):
+    return value
+
+
+@pytest.mark.parametrize('error,expected,forbidden', [
+    (TimeoutError(), 'tempo limite', 'SAPI'),
+    (PermissionError(13, 'Acesso negado', 'x.bin'), 'PermissionError', 'SAPI'),
+    (FileNotFoundError(2, 'Arquivo não encontrado', 'C:/segredo/ffmpeg.exe'), 'FileNotFoundError', 'segredo')])
+def test_worker_unavailable_message_names_the_real_cause(error, expected, forbidden):
+    from horus_backend.production_worker import unavailable_message
+    message = unavailable_message(error)
+    assert expected in message and forbidden not in message and message.startswith('Piloto local indisponivel')
+
+
+def test_worker_missing_prerequisites_are_individual(tmp_path):
+    from horus_backend.production_worker import factory_missing
+    assert 'FABRICA_HOME' in ' '.join(factory_missing(None, None, None, None, None))
+    assert not any('Python' in m or 'Remotion' in m for m in factory_missing(None, None, None, None, None))
+    source = tmp_path / 'fabrica'
+    source.mkdir()
+    only_ffmpeg = factory_missing(source, None, Path('b'), 'ffprobe', None)
+    assert only_ffmpeg == ['Python da fábrica em scripts/.venv', 'Remotion instalado pelos locks em sandbox',
+                           'ffmpeg local para validar frames/duração']
+    assert 'FABRICA_HOME' not in ' '.join(only_ffmpeg)
+
+
+def test_factory_discovery_accepts_both_variables_with_documented_precedence(tmp_path, monkeypatch):
+    from horus_backend.config import discover_factory
+    monkeypatch.delenv('FABRICA_HOME', raising=False)
+    monkeypatch.setenv('HORUS_PILOT_FACTORY', str(tmp_path / 'alias'))
+    assert discover_factory() == (tmp_path / 'alias').resolve()
+    monkeypatch.setenv('FABRICA_HOME', str(tmp_path / 'oficial'))
+    assert discover_factory() == (tmp_path / 'oficial').resolve()

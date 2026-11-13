@@ -27,6 +27,28 @@ objeto do teste. A seleção de cues cobre explicitamente libass (fim acústico)
 e regra da fábrica (com manutenção), com/sem alinhamento válido. Ensaios reais
 continuam opt-in e preservam as variáveis fornecidas pelo operador.
 
+### Configuração da fábrica e causas de bloqueio (J-17)
+
+- A fábrica é descoberta por `FABRICA_HOME`. `HORUS_PILOT_FACTORY` (a variável dos ensaios e testes) é aceita como
+  alias e só vale quando `FABRICA_HOME` está ausente ou vazia; `FABRICA_HOME` tem precedência.
+- Cada pré-condição reporta a própria causa: fábrica não configurada (cita `FABRICA_HOME`), Python da fábrica,
+  Remotion, browser, `ffmpeg` e `ffprobe` aparecem separados; `HORUS_FFMPEG` ou `HORUS_SUBTITLE_FONT` inexistentes
+  bloqueiam com o nome da variável; um erro de sistema ou timeout inesperado informa o tipo do erro, sem atribuí-lo
+  à voz SAPI nem expor caminhos.
+
+### Alinhamento do roteiro e seu motivo (J-12)
+
+O texto de cada seção tem espaços e quebras de linha internos normalizados (`speech_alignment.join_script`) antes
+do alinhamento e da validação, de modo que uma `
+` dentro da narração não impeça o alinhamento; os limiares não
+mudaram. Quando o alinhamento não é executado ou fica abaixo do critério, `alignment-report.json` registra o
+`reason` e o check `word_timings` do QC o repete no `detail`.
+
+### Loudness fora da faixa (J-22)
+
+O aviso de loudness continua com a faixa de -26 a -12 LUFS; o `detail` agora orienta aumentar ou reduzir o ganho e
+normalizar a narração para cerca de -16 LUFS (alvo sugerido, não limiar).
+
 ### Ensaio SAPI pelo registro
 
 Ensaio em basetemp novo `%TEMP%/hn-459ac077`, produção

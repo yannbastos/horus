@@ -346,3 +346,14 @@ def test_unaligned_word_timings_expose_alignment_reason(tmp_path):
         {"executed": True, "reason": "taxa de casamento 0.5 abaixo do mínimo 0.85", "report": {}}), encoding="utf-8")
     _, checks = run(root)
     assert "taxa de casamento 0.5 abaixo do mínimo 0.85" in checks["word_timings"]["detail"]
+
+
+def test_loudness_warning_tells_what_to_do_without_moving_thresholds():
+    """J-22: o aviso orienta a correção; faixa e status permanecem os mesmos."""
+    quiet = qc._loudness_check(-31.0, -3.0, 5.0, "ebur128")
+    assert quiet["status"] == "warn" and "-31.0 LUFS fora de -26..-12" in quiet["detail"]
+    assert "aumente o ganho" in quiet["detail"] and "-16 LUFS" in quiet["detail"]
+    loud = qc._loudness_check(-8.0, 0.5, 5.0, "ebur128")
+    assert "reduza o ganho" in loud["detail"] and "limitador" in loud["detail"]
+    assert qc._loudness_check(-16.0, -3.0, 5.0, "ebur128")["status"] == "pass"
+    assert qc.LUFS_RANGE == (-26.0, -12.0)
