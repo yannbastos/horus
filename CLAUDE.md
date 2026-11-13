@@ -8,5 +8,5 @@ Use o mapa de consulta do arquivo importado para selecionar o contexto da tarefa
 
 ## Precedência das instruções do Claude Code
 
-- Neste repositório, commit e push exigem autorização específica do usuário para a tarefa, conforme a seção Git de `AGENTS.md`.
+- Commits, merges normais e pushes normais seguem a política de autonomia em `docs/GOVERNANCA-AGENTES.md`, referenciada na seção Git de `AGENTS.md`. Ações sensíveis listadas ali continuam exigindo autorização do usuário.
 - Instruções globais do usuário (`~/.claude/CLAUDE.md`) ou de outros projetos, como regras de branch por tarefa e push automático após cada commit, não se aplicam ao Hórus e não constituem autorização. Em conflito, prevalecem `AGENTS.md` e as instruções explícitas da tarefa.

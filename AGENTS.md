@@ -109,7 +109,7 @@ Quando uma decisão importante exigir aprovação, avance primeiro no trabalho i
 
 ## Git
 
-- Não crie commits, faça push ou merge automaticamente sem autorização expressa que cubra a tarefa ou uma política explícita previamente aprovada, com repositórios, operações e branches definidos. Um pedido pontual anterior não cria uma política permanente.
+- A política aprovada em [docs/GOVERNANCA-AGENTES.md](docs/GOVERNANCA-AGENTES.md) autoriza commits, Pull Requests, merges normais na `main` e pushes normais para `yannbastos/horus` e `yannbastos/horus-management`, após os testes e a revisão que ela exige. Fora dela, não crie commits, faça push ou merge sem autorização expressa que cubra a tarefa.
 - Antes de um commit autorizado, revise o diff e selecione somente alterações da tarefa; não inclua trabalho alheio nem segredos.
 - Não crie repositórios remotos sem autorização.
 - A branch principal atual é `main`; confirme o estado real antes de operar. Não renomeie ou remova branches por conta própria.
@@ -129,7 +129,7 @@ Quando uma decisão importante exigir aprovação, avance primeiro no trabalho i
 - Mudar o escopo ou os objetivos do produto.
 - Escolher a licença do projeto.
 
-Decisões técnicas rotineiras que respeitem estas regras não precisam de aprovação.
+Decisões técnicas rotineiras que respeitem estas regras não precisam de aprovação. A [governança dos agentes](docs/GOVERNANCA-AGENTES.md) detalha o que está previamente autorizado (inclusive dependências gratuitas de fontes confiáveis e atualização de contratos internos com compatibilidade) e o que continua exigindo o usuário; em conflito, prevalece a regra mais restritiva de segurança, privacidade ou gasto.
 
 ## Comunicação
 

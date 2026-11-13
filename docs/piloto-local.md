@@ -24,6 +24,18 @@ A tentativa inicial de helper PowerShell foi recusada pela política local de ex
 
 `alignment_method=measured_sections` significa limites reais por seção e segmentação interna heurística. **Não é alinhamento por palavra**; o destaque animado do componente existente é estimado. `speech_aligned=false` e `real_voice=false` permanecem explícitos, pois não é voz humana/clonada.
 
+### Investigação de eventos de palavra — 13/11/2026
+
+O ensaio local de captura por `ctypes` produziu WAVs válidos, mas não retornou eventos em `ISpEventSource::GetEvents`. Foram tentadas a voz Automation e uma instância independente de `ISpVoice` nativa, com `SetInterest` após `SetOutput`, interesses de palavra/fim de fluxo nos dois argumentos (incluindo `SPFEI_FLAGCHECK`), notificação Win32 e síntese assíncrona com drenagem durante `WaitUntilDone`. Um ciclo adicional autorizado usou `ISpStream` nativo, PCM mono 16 bits/22050 Hz e `BindToFile`, também sem fronteiras retornadas. Isso evidencia uma limitação da captura ensaiada, não prova que toda voz SAPI seja incapaz de emitir eventos.
+
+O protótipo foi retirado: permanece o helper funcional anterior, sem novas dependências, PowerShell, downloads ou mudança de políticas. Não é gerado `word-timings.json` com fonte `tts_engine_events` sem eventos reais. O fallback permanece `measured_sections` e `speech_aligned=false`; o desvio legenda × palavra não foi medido. Alinhamento acústico dependeria de ferramenta/modelo local e autorização de seu custo, não implementados neste incremento.
+
+### Notas da revisão por timecode
+
+`POST /v1/productions/{id}/review` aceita `notes` opcional, uma lista de até 200 objetos `{"at_seconds":2.125,"text":"Conferir esta legenda"}`. O tempo deve ser finito e não negativo, e o texto deve ter de 1 a 2000 caracteres. As notas são persistidas no JSON `review` existente, sem migração, junto à decisão vinculada ao SHA-256 do MP4. Repetir a mesma chave com notas diferentes é conflito; recibos antigos sem notas continuam válidos. Notas não alteram a exigência de revisão humana nem autorizam publicação.
+
+Ensaio real deste ajuste: **1 passed**, 79,13 s, basetemp novo `%TEMP%/horus-word-fallback-ec70913512924029be5dfe91f6d0bf5c`. MP4 de **48,733333 s**, SHA-256 `30ab612eba3e7345e9b3cae3620b672aed985aa4199473fa8416d7a79647c0b2`, roteiro com **77 palavras**. Confirmados cancelamento/nova produção, revisão com nota em 2,125 s, repetição idempotente, conflito ao alterar a nota e igualdade do registro após reinício. Desvio legenda × palavra **não medido**; não houve inspeção visual ou escuta humana nova. O hash coincidir com o ensaio anterior decorre dos insumos/render determinísticos, não de reutilização da pasta de produção.
+
 ## Resposta e artefatos
 
 Os endpoints e tipos de artefato existentes são preservados. A resposta acrescenta:
@@ -33,19 +45,42 @@ Os endpoints e tipos de artefato existentes são preservados. A resposta acresce
 | `narration_kind` | `local_tts` após resultado medido; `fixture_tone` nos modos antigos; `null` antes de confirmação |
 | `narration_disclosure` | descrição da narração efetivamente gerada; `null` enquanto não confirmada |
 | `alignment_method` | `measured_sections` após piloto validado; `null` nos demais casos |
+| `quality_report` | conteúdo do `quality-report.json` registrado, com contrato/hash válidos, ou `null` |
+| `asset_provenance` | conteúdo validado do registro de proveniência dos insumos, ou `null` |
+| `speech_aligned` | derivado do contrato de palavras e seu contexto físico; `false` no fallback estimado |
+| `quality_acknowledgement_required` | no piloto, `true` quando o QC falha ou está ausente, inválido ou `not_run` |
 | `publishable` | sempre `false` |
 
 `demo_only=true` é permanente neste incremento. Voz SAPI é `origin=system_voice`, `license=unverified`; nenhuma licença de voz ou aceite humano é presumido. As cenas locais são `original_local/original`.
 
 Principais arquivos registrados: plano aprovado com estimativas (`plan.json`), WAV por seção, WAV concatenado (`fixture.wav`, nome legado), PNGs e seus bounds/fontes/quebras medidos (`scene-N.layout.json`), SRT, manifesto da fábrica, alinhamento medido, `pilot-measurements.json`, `narration-signal.json`, `network-summary.json`, MP4, recibo de insumos, `render/validation.json`, `render/audio-review.wav`, frames de inspeção e `pilot-evidence.json`. O manifesto final segue exatamente o schema combinado: oito campos de topo, sem extras; hash do vídeo fica no registro de artefatos/validation, não em `video` do manifesto.
 
-Os relatórios `narration-signal.json` medem energia e concentração espectral em 220 Hz, rejeitando silêncio ou o tom M4. O relatório em `render/` verifica o áudio extraído do MP4. Isso não reconhece palavras, não atesta inteligibilidade/loudness e não substitui escuta humana. A verificação de qualidade do Sonnet é independente; este incremento não importa um módulo ausente nem declara QC conjunto concluído.
+Os relatórios `narration-signal.json` medem energia e concentração espectral em 220 Hz, rejeitando silêncio ou o tom M4. O relatório em `render/` verifica o áudio extraído do MP4. Isso não reconhece palavras, não atesta inteligibilidade/loudness e não substitui escuta humana. Após `pilot-evidence.json`, o worker executa `av_quality.run_quality` com os executáveis FFmpeg/ffprobe já resolvidos na sandbox e registra `quality-report.json`, `word-timings.json` e `asset-provenance.json` com SHA-256. Os [contratos de mídia](contratos-midia.md) definem as validações cruzadas. Checks indisponíveis permanecem `skipped`; dados estimados nunca contam como sincronização de fala medida.
+
+O fallback gera `word-timings.json` com `source=estimated`, cobertura/offsets do roteiro completo e os tempos proporcionais já usados nas legendas. Isso serve para auditar a heurística, sem promover seu resultado a alinhamento real. A proveniência cobre somente PNGs de entrada, WAVs de seção e WAV concatenado; MP4/frames/WAV de revisão são derivados. Todos os insumos permanecem `unverified`, com uso comercial desconhecido e sem verificação humana presumida.
+
+Uma produção tecnicamente concluída continua `succeeded` mesmo com QC `fail`, preservando artefatos e relatório. `reject` permanece possível. `approve` exige `acknowledge_quality_errors=true` quando `quality_acknowledgement_required=true`, além do SHA-256 correto do MP4; essa confirmação é persistida no JSON `review` e faz parte da idempotência. No piloto, relatório ausente/inválido/`not_run` também exige confirmação. Os modos legados mantêm sua regra anterior. Nenhuma confirmação torna `publishable` verdadeiro ou dispara publicação.
 
 ## Persistência, migração e cancelamento
 
 Schema **v7**, migração transacional v6→v7: amplia somente o CHECK de `productions.mode` para aceitar `local_pilot`. SQLite exige reconstruir a tabela; produções e recibos são copiados na mesma transação, com IDs, valores, índices de unicidade e FKs preservados. O mecanismo existente cria backup v6 antes da atualização. Falha faz rollback do schema, dados e versão; reabertura não repete a migração.
 
 Worker e helper SAPI têm posse explícita por `OwnedProcess`; no Windows os subprocessos pertencem a Job Objects. Cancelar encerra a árvore pertencente à produção. Saída já existente nunca é reutilizada, e a API não oferece retry direto da produção. Após interrupção/cancelamento, conciliar artefatos e criar outra produção com nova chave. Recibos idempotentes continuam devolvendo o mesmo ID para a mesma submissão.
+
+O estágio `quality` roda dentro do mesmo worker já possuído, após render/evidência; os subprocessos de QC também usam `OwnedProcess`. O cancelamento encerra a árvore desse worker durante o QC. Reabrir o backend não executa novamente uma produção já concluída; produções interrompidas continuam exigindo conciliação e nova submissão explícita. Os testes de posse usam um subprocesso de QC controlado, não simulam aceite editorial ou audição humana.
+
+## Evidência de QC no worker — 13/11/2026
+
+Contratos e QC integrados da branch `yannbastos/feat-hor-089-media-contracts`, incluindo a correção `d49d892` que mantém `method=estimated` quando a fonte de palavras é estimada. Nenhum arquivo de implementação do QC foi alterado pela integração do worker.
+
+- Backend completo: **869 passed, 7 skipped**, 133,55 s. Testes focados de produção/contratos de artefato: **44 passed, 3 skipped**, 15,62 s; verificação adicional das duas variantes de revisão com MP4 real: **2 passed**, 1,33 s. Aviso existente de depreciação Starlette/httpx; nenhuma dependência atualizada.
+- Ensaio real com `HORUS_PILOT_FACTORY=%TEMP%/horus-m4/backend-factory-demo` e basetemp novo: **14 passed**, 90,68 s. Saída preservada: `%TEMP%/horus-qc-final-2a39d58e05ef4a6bb0d4c30d36c9f7ff/test_real_local_pilot_render_r0/data/productions/933c546d97534b5cae921b18a40ab2b2`.
+- MP4: **48,733333 s** de vídeo, **47,912925 s** de narração; SHA-256 `30ab612eba3e7345e9b3cae3620b672aed985aa4199473fa8416d7a79647c0b2`. Cobertura de legendas: **77/77 palavras**, em **27 cues**, nas três seções medidas.
+- `quality-report.json`: **warn**, `blocking_errors=[]`, avisos `word_timings` e `asset_provenance`. Loudness por FFmpeg: **−23,95 LUFS**, true peak **−7,57 dBTP**, LRA **3,2 LU**. Hashes dos sete insumos conferem; clipping de 0%; nenhum silêncio longo. Análise visual automatizada: 489 quadros reduzidos, sem preto ≥0,5 s ou congelamento ≥4 s; isso não substitui inspeção visual humana.
+- Desvio SRT × palavras **estimadas**: máximo/médio **0,000 s**, `method=estimated`. Desvio legenda × palavra falada **não medido**; `speech_aligned=false`, `alignment_method=measured_sections`. Não houve nova escuta humana nem aceite de licença/publicação.
+- SHA-256: `quality-report.json` = `80a9d33122d823e2e5818e3f35466ee68e1ba606b29b96250b524dcbee64b496`; `word-timings.json` = `8b8e528a394f55c860f0eda3d9c9441b629659989a6e24d3ec7ef90cacb61f30`; `asset-provenance.json` = `cd8c0ed8dc6b00adcb89c54a653a70e5446ed0100f49a91e7a9b2bf599bb588c`.
+
+Os testes incluem confirmação adicional para QC reprovado/ausente/inválido/não executado, hashes/produção/vídeo divergentes, rejeição sem confirmação, persistência de notas/aceite após reinício, idempotência e encerramento da árvore no estágio `quality`. A revisão fictícia do ensaio real é `reject`; não constitui decisão editorial do operador. Frontend não foi alterado nem ensaiado neste worktree.
 
 ## Repetição em diretórios fictícios isolados
 
