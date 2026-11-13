@@ -393,12 +393,14 @@ def resolve_model_path(model_dir: Path, model_name: str) -> Path | None:
 
 async def run_alignment_async(wav: Path, script_text: str, *, sections: Sequence[Mapping], engine: Mapping[str, str],
                               model_dir: Path, model_name: str = "small", language: str = "pt",
-                              timeout: float = RUN_TIMEOUT_SECONDS) -> dict:
+                              timeout: float = RUN_TIMEOUT_SECONDS, environment: Mapping[str, str] | None = None) -> dict:
     """Executa o ASR em subprocesso possuído (CPU, offline) e alinha ao roteiro.
 
     Devolve `{executed, reason, document, report, asr_seconds}`. `executed=False` (com `reason`) se o extra
     `transcription`, o modelo local ou o WAV estão ausentes, se o ASR falha ou estoura o tempo. Cancelar a tarefa
     encerra a árvore do subprocesso. Não há fallback estimado.
+    `environment`, quando fornecido, é a base exclusiva do ambiente; flags offline
+    sempre prevalecem. `None` preserva a herança anterior para outros chamadores.
     """
     from importlib.util import find_spec
     from .processes import OwnedProcess
@@ -415,7 +417,7 @@ async def run_alignment_async(wav: Path, script_text: str, *, sections: Sequence
         sha, duration = await asyncio.to_thread(_wav_facts, wav)
     except (OSError, wave.Error, EOFError, ZeroDivisionError) as error:
         return _not_run(f"WAV da narração ilegível ({type(error).__name__})")
-    env = {**os.environ, "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1", "HF_HUB_DISABLE_TELEMETRY": "1",
+    env = {**(os.environ if environment is None else environment), "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1", "HF_HUB_DISABLE_TELEMETRY": "1",
            "HF_HUB_DISABLE_SYMLINKS_WARNING": "1", "PYTHONIOENCODING": "utf-8"}
     command = [sys.executable, "-I", "-m", "horus_backend.speech_alignment", "--wav", str(wav),
                "--model-path", str(model_path), "--language", language]
@@ -448,11 +450,11 @@ async def run_alignment_async(wav: Path, script_text: str, *, sections: Sequence
 
 def run_alignment(wav: Path, script_text: str, *, sections: Sequence[Mapping], engine: Mapping[str, str],
                   model_dir: Path, model_name: str = "small", language: str = "pt",
-                  timeout: float = RUN_TIMEOUT_SECONDS) -> dict:
+                  timeout: float = RUN_TIMEOUT_SECONDS, environment: Mapping[str, str] | None = None) -> dict:
     """Versão síncrona; segura dentro de um loop asyncio em execução (roda em thread própria)."""
     call = lambda: asyncio.run(run_alignment_async(  # noqa: E731
         wav, script_text, sections=sections, engine=engine, model_dir=model_dir, model_name=model_name,
-        language=language, timeout=timeout))
+        language=language, timeout=timeout, environment=environment))
     try:
         asyncio.get_running_loop()
     except RuntimeError:

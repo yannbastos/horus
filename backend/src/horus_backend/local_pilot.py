@@ -1,6 +1,6 @@
 """Piloto offline Windows: SAPI isolado, tempos de WAV e evidências do render real.
 
-Não faz alinhamento de palavras: distribui legendas dentro de seções medidas.
+Alinha palavras por ASR offline quando configurado; fallback por seções medidas.
 Não concede licença à voz do sistema nem autoriza publicação.
 """
 from __future__ import annotations
@@ -97,7 +97,45 @@ def subtitle_sections(text, start, end):
              'text':' '.join(words[i:i+3])} for i in range(0,len(words),3)]
 
 
-def prepare(root, folder, plan):
+# Hash da fonte independente usada para derivar a regra visual; não modifica a fábrica.
+FACTORY_CAPTION_SHA256 = 'aa4688a4affa70d607ae246ebaf47fe01dae102c604ad050fa87d886b4d04e2c'
+
+
+def subtitle_words(words, fps=30):
+    """Mesmos grupos/frames do LegendaPalavra.tsx (3 palavras, sem atravessar linhas).
+
+    O grupo permanece até o próximo começar, inclusive nas pausas. Só o último
+    desaparece 0,6 s após a última palavra. SRT usa intervalos de frames semiabertos.
+    """
+    groups = []
+    for word in words:
+        if not groups or len(groups[-1]) == 3 or groups[-1][0]['section'] != word['section']:
+            groups.append([])
+        groups[-1].append(word)
+    cues = []
+    for i, group in enumerate(groups):
+        first = math.ceil(group[0]['start'] * fps) / fps
+        end = (math.ceil(groups[i+1][0]['start'] * fps) / fps if i+1 < len(groups)
+               else (math.floor(group[-1]['end'] * fps + .6 * fps) + 1) / fps)
+        if end <= first:
+            raise ValueError('Grupo de legenda menor que um frame; renderer não pode exibir o texto integral.')
+        cues.append({'start':round(first,3), 'end':round(end,3), 'text':' '.join(w['text'] for w in group)})
+    return cues
+
+
+def align_narration(wav, script_text, *, sections, engine, model_dir):
+    """Alinhamento antes do render, timeout/posse no módulo ASR; nenhum download."""
+    if not model_dir:
+        return {'executed':False, 'reason':'HORUS_ALIGNMENT_MODEL não configurado',
+                'document':None, 'report':None, 'asr_seconds':None}
+    from .speech_alignment import run_alignment
+    environment = {k:v for k,v in os.environ.items() if k.upper() in
+                   {'PATH','SYSTEMROOT','WINDIR','TEMP','TMP','COMSPEC','PATHEXT'}}
+    return run_alignment(wav, script_text, sections=sections, engine=engine,
+                         model_dir=Path(model_dir), environment=environment, timeout=900)
+
+
+def prepare(root, folder, plan, *, alignment_model=None, progress=None):
     """Produz insumos medidos, preservando plan.json aprovado como estimativa original."""
     sections = [{'n':line['n'], 'text':line['narracao'], 'heading':scene['heading'],
                  'summary':' '.join(line['narracao'].split()[:32])}
@@ -190,7 +228,34 @@ def prepare(root, folder, plan):
         sections=[{'section':s['n'],'start':l['inicio'],'end':l['fim']} for s,l in zip(sections,lines)])
     if not checked['ok']:
         raise ValueError('Contrato de palavras estimadas inválido.')
+    if progress:
+        progress('align')
+    alignment = align_narration(folder/'fixture.wav', '\n'.join(s['text'] for s in sections),
+        sections=[{'section':s['n'],'start':l['inicio'],'end':l['fim']} for s,l in zip(sections,lines)],
+        engine=word_document['engine'], model_dir=alignment_model)
+    if alignment['executed']:
+        checked = validate_word_timings(alignment['document'], narration_sha256=word_document['narration_sha256'],
+            duration_seconds=measured, script_text='\n'.join(s['text'] for s in sections),
+            sections=[{'section':s['n'],'start':l['inicio'],'end':l['fim']} for s,l in zip(sections,lines)])
+        if not checked['ok']:
+            raise ValueError('Contrato do alinhamento acústico inválido.')
+    write(root/'alignment-report.json', {k:v for k,v in alignment.items() if k != 'document'})
+    paths.append({'kind':'manifest','relative_path':'alignment-report.json'})
     write(root/'word-timings.json',checked['value'])
+    if checked['speech_aligned']:
+        subtitles = subtitle_words(checked['value']['words'])
+        write(folder/'alinhamento.json', {'audio':'fixture.wav','duracao_audio':measured,
+            'motor':'forced_alignment','palavras':[
+                {'texto':w['text'],'inicio':w['start'],'fim':w['end'],'linha':w['section']}
+                for w in checked['value']['words']], 'linhas':lines})
+        (folder/'fixture.srt').write_text('\n'.join(
+            f"{i}\n{_timestamp(c['start'])} --> {_timestamp(c['end'])}\n{c['text']}\n"
+            for i,c in enumerate(subtitles,1)), encoding='utf-8')
+        evidence = json.loads((root/'pilot-measurements.json').read_text(encoding='utf-8'))
+        evidence.update(subtitles=subtitles, alignment_method='forced_alignment')
+        write(root/'pilot-measurements.json', evidence)
+    if progress:
+        progress('subtitles')
     provenance = {'schema_version':1,'assets':[
         {'asset_id':a['id'],'relative_path':a['relative_path'],'sha256':a['sha256'],
          'kind':'image' if a['origin']=='original_local' else 'voice','origin':a['origin'],
@@ -218,7 +283,7 @@ def finalize(root, folder):
     evidence['video'] = {'duration_seconds':float(stream['duration']),'width':int(stream['width']),
         'height':int(stream['height']),'frames':int(stream['nb_read_frames'])}
     write(root/'pilot-evidence.json',evidence)
-    return {'narration_kind':'local_tts','narration_disclosure':DISCLOSURE,'alignment_method':'measured_sections'}
+    return {'narration_kind':'local_tts','narration_disclosure':DISCLOSURE,'alignment_method':evidence['alignment_method']}
 
 
 def confirmed_metadata(root, artifacts):
@@ -234,7 +299,7 @@ def confirmed_metadata(root, artifacts):
     narration = evidence['narration']
     if (narration['kind'] != 'local_tts' or narration['engine'] != 'windows_sapi'
             or not isinstance(narration['voice'],str) or not narration['voice'].strip()
-            or evidence['alignment_method'] != 'measured_sections' or evidence['demo_only'] is not True):
+            or evidence['alignment_method'] not in {'measured_sections','forced_alignment'} or evidence['demo_only'] is not True):
         raise ValueError('Narração local não comprovada.')
     audio_asset = next(item for item in evidence['assets'] if item['sha256']==narration['sha256'])
     audio = registered.get(audio_asset['relative_path'])
@@ -247,7 +312,7 @@ def confirmed_metadata(root, artifacts):
         raise ValueError('Duração da narração não corresponde ao WAV registrado.')
     if not any(item['kind']=='video' for item in artifacts):
         raise ValueError('Piloto sem vídeo registrado.')
-    return {'narration_kind':'local_tts','narration_disclosure':DISCLOSURE,'alignment_method':'measured_sections'}
+    return {'narration_kind':'local_tts','narration_disclosure':DISCLOSURE,'alignment_method':evidence['alignment_method']}
 
 
 def quality_report(root, folder, production_id, *, ffmpeg=None, ffprobe=None):

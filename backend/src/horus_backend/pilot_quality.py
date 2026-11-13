@@ -359,11 +359,11 @@ def _provenance(report, assets, narration):
     report.done("provenance_licenses", detail="proveniência registrada; licenças declaradas, sem verificação independente")
 
 
-def validate_pilot_evidence(evidence: dict) -> dict:
+def validate_pilot_evidence(evidence: dict, *, word_timings=None) -> dict:
     """Valida o manifesto `pilot-evidence.json` já carregado. Pura: nunca levanta, nunca toca disco/rede."""
     report = _Report()
     try:
-        _validate(report, evidence)
+        _validate(report, evidence, word_timings)
     except Exception as exc:  # defesa final: uma entrada hostil nunca derruba o chamador
         report.done("schema", [f"validação interrompida por entrada inesperada ({type(exc).__name__})"])
     for check_id in _CHECK_IDS:
@@ -371,7 +371,7 @@ def validate_pilot_evidence(evidence: dict) -> dict:
     return report.result()
 
 
-def _validate(report, evidence):
+def _validate(report, evidence, word_timings):
     if not isinstance(evidence, dict):
         return report.done("schema", ["evidência deve ser um objeto"])
     errors = []
@@ -383,18 +383,42 @@ def _validate(report, evidence):
     report.done("schema", errors)
     report.done("demo_flag", [] if evidence.get("demo_only") is True else ["demo_only deve ser exatamente true"])
     method = evidence.get("alignment_method")
-    report.done("alignment_method", [] if method == "measured_sections" else ["alignment_method deve ser measured_sections"])
+    aligned = False
+    if method == "forced_alignment" and isinstance(word_timings, dict):
+        from .media_contracts import validate_word_timings
+        narration_node = evidence.get('narration', {})
+        scenes_node = evidence.get('scenes', [])
+        words = word_timings.get('words', [])
+        script = '\n'.join(' '.join(w['text'] for w in words if w['section'] == n)
+                           for n in sorted({w['section'] for w in words}))
+        verdict = validate_word_timings(word_timings,
+            narration_sha256=narration_node.get('sha256'), duration_seconds=narration_node.get('duration_seconds'),
+            script_text=script, sections=[{'section':n,'start':c['start'],'end':c['end']}
+                                         for n,c in enumerate(scenes_node,1)])
+        aligned = word_timings.get('source') == 'forced_alignment' and verdict['ok'] and verdict['speech_aligned']
+    report.done("alignment_method", [] if method == "measured_sections" or aligned
+                else ["alignment_method requer measured_sections ou forced_alignment validado"] )
     narration = _narration(report, evidence.get("narration"))
     video = _video(report, evidence.get("video"))
     assets = _assets(report, evidence.get("assets"))
     scenes = _scenes(report, evidence.get("scenes"), assets, narration, video)
-    _subtitles(report, evidence.get("subtitles"), scenes, narration)
+    if aligned:
+        # Estrutura validada pela rotina legada; contenção por palavras/frames e manutenção explícita.
+        _subtitles(report, evidence.get("subtitles"), None, None)
+        hold = caption_holds(evidence.get('subtitles', []), word_timings['words'], video['duration_seconds'], scenes)
+        report.done('subtitles_timing', hold['errors'])
+    else:
+        _subtitles(report, evidence.get("subtitles"), scenes, narration)
     _durations(report, narration, video)
     _provenance(report, assets, narration)
     report.skip("acoustic_evidence", "sem inspeção acústica (silêncio/clipping/loudness): execute inspect_pilot_files")
-    report.skip("word_alignment", "alinhamento por seções medidas; não há alinhamento por palavra (limitação conhecida)")
+    if aligned:
+        report.done('word_alignment', detail='word-timings forced_alignment validado; não substitui escuta humana')
+    else:
+        report.skip("word_alignment", "alinhamento por seções medidas; não há alinhamento por palavra (limitação conhecida)")
     report.skip("physical_files", "manifesto validado sem abrir arquivos; hash/WAV/MP4 reais não verificados")
-    report.warn("alinhamento por palavra não verificado: legendas seguem seções medidas, não fala palavra a palavra")
+    if not aligned:
+        report.warn("alinhamento por palavra não verificado: legendas seguem seções medidas, não fala palavra a palavra")
     report.checks["publishability"] = ("not_checked", "publishable=false sempre: licença, voz e revisão humana pendentes")
 
 
@@ -587,3 +611,47 @@ def analyze_wav(path: Path, *, silence_peak: float = SILENCE_PEAK, min_silence: 
     out.update(peak=peak / 32768, rms=rms, clipped_fraction=clipped / count, clipped_samples=clipped,
                silences=[(a, b) for a, b in runs if b - a >= min_silence])
     return out
+
+
+def _caption_holds(cues, words, video_duration, scenes):
+    """Contenção com manutenção visual declarada; desvio acústico não é subtraído."""
+    errors, holds, position, previous_end = [], [], 0, 0.0
+    frame = 1 / 30
+    for i, cue in enumerate(cues):
+        chunk = words[position:position + len(cue['text'].split())]
+        position += len(chunk)
+        if not chunk or [w['text'] for w in chunk] != cue['text'].split():
+            errors.append(f'cue {i}: texto não corresponde às palavras')
+            continue
+        next_start = cues[i+1]['start'] if i+1 < len(cues) else video_duration
+        last = chunk[-1]['end']
+        hold = max(0.0, cue['end'] - last)
+        holds.append(round(hold, 3))
+        if cue['start'] < chunk[0]['start'] - frame - .001:
+            errors.append(f'cue {i}: começa antes da primeira palavra')
+        if cue['end'] > min(last + .6 + frame, next_start, video_duration) + .001:
+            errors.append(f'cue {i}: excede manutenção de 0,6s/próxima cue/vídeo')
+        if cue['end'] <= cue['start'] or cue['start'] < previous_end - .001:
+            errors.append(f'cue {i}: duração inválida ou sobreposição')
+        following = words[position:]
+        if following and following[0]['section'] != chunk[-1]['section'] and cue['end'] > following[0]['start'] + frame + .001:
+            errors.append(f'cue {i}: sobrepõe fala da próxima seção')
+        if any(w['section'] != chunk[0]['section'] for w in chunk):
+            errors.append(f'cue {i}: grupo atravessa seções')
+        previous_end = cue['end']
+    if position != len(words):
+        errors.append('cues não cobrem todas as palavras')
+    return {'errors':errors, 'hold_seconds':holds, 'max_hold_seconds':max(holds, default=0.0)}
+
+
+def caption_holds(cues, words, video_duration, scenes):
+    try:
+        if not isinstance(words, list) or not isinstance(cues, list):
+            raise ValueError('cues/words must be lists')
+        if not _seconds(video_duration) or any(
+                not _seconds(item[key]) for item in [*words, *cues] for key in ('start', 'end')):
+            raise ValueError('tempos devem ser finitos e positivos')
+        return _caption_holds(cues, words, video_duration, scenes)
+    except (KeyError, TypeError, ValueError, IndexError):
+        return {'errors':['cues/words/video inválidos para verificar manutenção'],
+                'hold_seconds':[], 'max_hold_seconds':None}

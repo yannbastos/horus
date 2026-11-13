@@ -1,5 +1,37 @@
 # Piloto audiovisual local — HOR-054
 
+## Alinhamento acústico no worker — 13/11/2026
+
+Configure explicitamente `Settings.alignment_model` ou `HORUS_ALIGNMENT_MODEL` com a pasta que contém `small/model.bin` ou `faster-whisper-small/model.bin` (CTranslate2). O worker usa `small`, CPU int8 e idioma `pt`, com timeout de 900 segundos. Prepare o extra separadamente: `uv sync --project backend --frozen --extra test --extra transcription`. O worker nunca baixa o modelo.
+
+```powershell
+$env:HORUS_ALIGNMENT_MODEL = "$env:LOCALAPPDATA/Horus/models/whisper"
+$env:HORUS_PILOT_FACTORY = "$env:TEMP/horus-m4/backend-factory-demo"
+& backend/.venv/Scripts/python.exe -m pytest backend/tests/test_local_pilot.py::test_real_local_pilot_render_review_and_restart backend/tests/test_local_pilot.py::test_factory_caption_rule_has_not_drifted -q -s --basetemp "$env:TEMP/horus-alignment-$([guid]::NewGuid().ToString('N'))"
+```
+
+O estágio `align` ocorre depois da concatenação/medição dos WAVs e antes do render. O ASR usa `OwnedProcess`, ambiente mínimo sem tokens, `.env` ou perfis, e flags offline obrigatórias. Cancelar a produção encerra sua árvore, inclusive ASR. `alignment-report.json` registra execução, motivo da indisponibilidade, duração do ASR e diagnóstico; nenhuma ausência é apresentada como medição. O modelo local conferido tem SHA-256 `3e305921506d8872816023e4c273e75d2419fb89b24da97b4fe7bce14170d671` (`model.bin`).
+
+Sem configuração, modelo, extra ou execução bem-sucedida, preserva `source=estimated`, `alignment_method=measured_sections`, `speech_aligned=false`. Abaixo do limiar do validador, registra o documento `forced_alignment` com cada palavra `measured` ou `interpolated` e seu diagnóstico, mas mantém legendas heurísticas por seção e `speech_aligned=false`. Só um contrato válido com contexto físico completo habilita palavras medidas no `alinhamento.json` da fábrica e `alignment_method=forced_alignment`.
+
+**Regra do renderer independente:** o SRT reproduz `remotion/src/componentes/LegendaPalavra.tsx`, SHA-256 `aa4688a4affa70d607ae246ebaf47fe01dae102c604ad050fa87d886b4d04e2c`, da sandbox da fábrica. Agrupa até três palavras da mesma seção; cada grupo começa no primeiro frame de 30 fps em que sua primeira palavra já começou, permanece até o próximo grupo e só o último desaparece no primeiro frame depois de `fim + 0,6 s`. O SRT representa esses intervalos semiabertos, arredondados a milissegundos. O teste de deriva confere o hash quando `HORUS_PILOT_FACTORY` está disponível. Nenhum código da fábrica é alterado.
+
+**Limite conhecido:** a fábrica mantém o grupo durante pausas e trocas de seção, potencialmente por mais de 0,6 s até o próximo grupo. Não há como suprimir essa manutenção usando somente seu contrato atual. O QC mede o desvio real de SRT contra bordas de palavras medidas, sem subtrair a manutenção, e informa `measured.hold_seconds`. A contenção permite até 0,6 s mais um frame, limitada pela próxima cue e duração do vídeo; início antecipado, sobreposição ou invasão da fala da seção seguinte reprovam. Persistência além desse limite continua falha visível no QC. Aceitar cues explícitas na fábrica depende de decisão futura do usuário; este incremento não certifica respeito integral às pausas.
+
+As evidências históricas abaixo descrevem o fallback anterior. `publishable=false`, `demo_only=true`, voz com licença não verificada e revisão humana permanecem obrigatórios.
+
+### Ensaio do worker com alinhamento
+
+Ensaio final em basetemp novo `%TEMP%/ha-730e9d94`: **2 passed**, 90,23 s (render/revisão/reinício e detecção de deriva). Produção `a17da94f2ead4e97b9fc9168d1148b2f`: **77/77 palavras casadas**, **0 interpoladas**, `speech_aligned=true`, ASR **6,34 s** por relógio monotônico do subprocesso. A primeira repetição também casou 77/77 em 9,50 s; tempo depende do aquecimento do ambiente.
+
+MP4 H.264/AAC de **540×960**, **48,733333 s**, SHA-256 `0995a295f2572548bbfabeb8540566d634fea05d1a5012b700d9c6f58ac77d68`. Narração completa **47,912925 s**. Os 27 grupos do SRT reproduzem a regra visual da fábrica. `subtitles_vs_words`: **measured**, desvio médio **0,191 s**, máximo **1,193 s**, 27 cues casadas, 0 sem correspondência. O desvio vem da permanência visual até o próximo grupo, não de tempos estimados.
+
+**QC final: fail**, com `evidence_manifest`, `subtitles_vs_sections` e `subtitles_vs_words` em `blocking_errors`; manutenção máxima **1,193 s**, acima dos 0,6 s declarados. A falha temporal não impede medir WAV, hashes e sincronização. O teste verifica explicitamente essa falha, exige a confirmação adicional para aprovação e registra revisão fictícia `reject`. Não houve escuta ou aceite humano novo, nem ensaio de frontend. Corrigir a permanência do renderer depende da evolução autorizada do contrato da fábrica; a Issue permanece aberta.
+
+Artefatos locais preservados em `%TEMP%/ha-730e9d94/test_real_local_pilot_render_r0/data/productions/a17da94f2ead4e97b9fc9168d1148b2f/`, incluindo `alignment-report.json`, `word-timings.json`, `quality-report.json`, `pilot-evidence.json` e `canais/demo/videos/fixture/render/short-rascunho.mp4`. Nenhum upload foi realizado.
+
+Regressão dos módulos afetados: `pytest backend/tests/test_local_pilot.py backend/tests/test_production.py backend/tests/test_production_contract.py backend/tests/test_speech_alignment.py backend/tests/test_av_quality.py backend/tests/test_pilot_quality.py backend/tests/test_media_contracts.py -q` pelo Python do venv: **340 passed, 8 skipped**, 21,69 s. Inclui regressões simulated/local_demo, fallback, limiar, ambiente sem vazamento, flags offline, cancelamento da árvore em `align`, contenção negativa e medição apesar da falha temporal. As duas revisões condicionais com MP4 real mais os dois casos de fallback foram executadas separadamente com `HORUS_TEST_REAL_VIDEO`: **4 passed**, 1,47 s. Não foi executada a suíte completa de backend, frontend ou .NET neste incremento.
+
 O modo explícito `local_pilot` acrescenta narração sintética offline em pt-BR à produção técnica existente. Reutiliza o roteiro M3 aprovado, JobManager, armazenamento e renderer da fábrica. `simulated` e `local_demo` continuam disponíveis; o tom do M4 nunca substitui uma voz indisponível.
 
 ## Pré-requisitos e fronteiras

@@ -310,11 +310,13 @@ def test_real_local_pilot_render_review_and_restart(settings):
             if item['status'] not in {'queued','running','cancel_requested'}: break
             time.sleep(.2)
         assert item['status']=='succeeded',item
-        assert item['narration_kind']=='local_tts' and item['alignment_method']=='measured_sections'
-        assert not item['real_voice'] and not item['speech_aligned'] and not item['publishable']
-        assert item['quality_report']['status']=='warn'
+        assert item['narration_kind']=='local_tts'
+        aligned = bool(settings.alignment_model)
+        assert item['alignment_method'] == ('forced_alignment' if aligned else 'measured_sections')
+        assert not item['real_voice'] and item['speech_aligned'] is aligned and not item['publishable']
+        assert item['quality_report']['status']==('fail' if aligned else 'warn')
         assert item['quality_report']['video_sha256']==next(a['sha256'] for a in item['artifacts'] if a['kind']=='video')
-        assert item['quality_acknowledgement_required'] is False
+        assert item['quality_acknowledgement_required'] is aligned
         assert item['asset_provenance'] is not None
         root = settings.data_dir/'productions'/item['id']
         evidence = json.loads((root/'pilot-evidence.json').read_text(encoding='utf-8'))
@@ -325,9 +327,20 @@ def test_real_local_pilot_render_review_and_restart(settings):
             artifact=next(a for a in item['artifacts'] if a['relative_path']==name)
             assert hashlib.sha256((root/name).read_bytes()).hexdigest()==artifact['sha256']
         word_timings=json.loads((root/'word-timings.json').read_text(encoding='utf-8'))
-        assert word_timings['source']=='estimated' and len(word_timings['words'])==77
-        assert evidence['subtitles'][0]['start']==0
-        assert evidence['subtitles'][-1]['end']==pytest.approx(evidence['narration']['duration_seconds'])
+        assert word_timings['source']==('forced_alignment' if aligned else 'estimated') and len(word_timings['words'])==77
+        if not aligned:
+            assert evidence['subtitles'][0]['start']==0
+            assert evidence['subtitles'][-1]['end']==pytest.approx(evidence['narration']['duration_seconds'])
+        else:
+            assert word_timings['alignment']['matched_words'] == 77
+            assert word_timings['alignment']['interpolated_words'] == 0
+            assert evidence['subtitles'] == __import__('horus_backend.local_pilot',fromlist=['subtitle_words']).subtitle_words(word_timings['words'])
+            sync = next(c for c in item['quality_report']['checks'] if c['id']=='subtitles_vs_words')
+            assert sync['method']=='measured' and sync['status']=='fail'
+            assert sync['measured']['mean_deviation_seconds'] > 0
+            assert sync['measured']['max_deviation_seconds'] > .6
+            hold = next(c for c in item['quality_report']['checks'] if c['id']=='subtitles_vs_sections')
+            assert hold['status']=='fail' and hold['measured']['max_hold_seconds'] > .6
         for asset in evidence['assets']:
             assert hashlib.sha256((root/asset['relative_path']).read_bytes()).hexdigest()==asset['sha256']
         assert {a['license'] for a in evidence['assets'] if a['origin']=='system_voice'}=={'unverified'}
@@ -353,6 +366,207 @@ def test_real_local_pilot_render_review_and_restart(settings):
         print('REAL_PILOT_DURATION='+str(evidence['video']['duration_seconds']))
         print('REAL_PILOT_SCRIPT_WORDS='+str(sum(len(line['narracao'].split()) for line in
               json.loads((root/'plan.json').read_text(encoding='utf-8'))['roteiro']['linhas'])))
-        print('REAL_PILOT_SUBTITLE_WORD_DEVIATION=not_measured; measured_sections only')
+        print('REAL_PILOT_ALIGNMENT='+json.dumps(json.loads((root/'alignment-report.json').read_text(encoding='utf-8'))))
+        print('REAL_PILOT_SYNC='+json.dumps([c for c in item['quality_report']['checks'] if c['category']=='sync']))
     with client_for(settings) as client:
         assert client.get('/v1/productions/'+item['id']).json()==item
+
+
+def test_measured_cues_follow_factory_groups_frames_and_final_hold():
+    from horus_backend.local_pilot import subtitle_words
+    words = [{'text':str(i), 'section':1 if i < 4 else 2,
+              'start':i*.21+.011, 'end':i*.21+.15, 'timing':'measured'} for i in range(7)]
+    cues = subtitle_words(words)
+    assert [c['text'] for c in cues] == ['0 1 2','3','4 5 6']
+    assert cues[0]['start'] == .033
+    assert cues[0]['end'] == cues[1]['start']
+    assert cues[-1]['end'] == 2.033
+    assert all(c['start'] < c['end'] for c in cues)
+
+
+def test_factory_caption_rule_has_not_drifted():
+    from horus_backend.local_pilot import FACTORY_CAPTION_SHA256
+    source = os.environ.get('HORUS_PILOT_FACTORY')
+    if not source:
+        pytest.skip('Fábrica não configurada; detecção de deriva exige HORUS_PILOT_FACTORY.')
+    path = Path(source)/'remotion/src/componentes/LegendaPalavra.tsx'
+    if not path.is_file():
+        pytest.skip('Fonte da fábrica indisponível para detectar deriva.')
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == FACTORY_CAPTION_SHA256
+
+
+@pytest.mark.parametrize('case', ['missing_model','missing_extra'])
+def test_alignment_fallback_explicit_without_model_or_extra(tmp_path, monkeypatch, case):
+    from horus_backend.local_pilot import align_narration
+    monkeypatch.setattr('importlib.util.find_spec', lambda name:None if case == 'missing_extra' else True)
+    result = align_narration(tmp_path/'missing.wav','fala',sections=[],engine={},model_dir=tmp_path)
+    assert result['executed'] is False and result['reason'] and result['document'] is None
+    assert ('transcription' if case == 'missing_extra' else 'não encontrado') in result['reason']
+
+
+@pytest.mark.parametrize('aligned', [False,True])
+def test_prepare_selects_valid_alignment_before_render(tmp_path, monkeypatch, aligned):
+    from horus_backend import local_pilot as pilot
+    from horus_backend.speech_alignment import align_with_report
+    from test_production_contract import build
+    plan = build(mode='local_pilot').model_dump(mode='json')
+    folder = tmp_path/'canais/demo/videos/fixture'
+    folder.mkdir(parents=True)
+    async def inputs(request):
+        for section in json.loads(request.read_text(encoding='utf-8'))['sections']:
+            with wave.open(str(folder/f"section-{section['n']}.wav"),'wb') as audio:
+                audio.setparams((1,2,16000,0,'NONE','not compressed'))
+                audio.writeframes(b''.join(struct.pack('<h',round(3000*math.sin(2*math.pi*440*i/16000))) for i in range(32000)))
+            (folder/f"scene-{section['n']}.png").write_bytes(b'png')
+            pilot.write(folder/f"scene-{section['n']}.layout.json",{})
+        pilot.write(folder/'voice.json',{'culture':'pt-BR','voice':'fixture'})
+    def alignment(wav, script_text, *, sections, engine, model_dir):
+        asr = []
+        if aligned:
+            for text, section in zip(script_text.split('\n'),sections):
+                tokens = text.split()
+                asr.extend({'word':token,'start':section['start']+i*2/len(tokens),
+                            'end':section['start']+(i+1)*2/len(tokens)} for i,token in enumerate(tokens))
+        document, report = align_with_report(script_text,asr,sections=sections,engine=engine,
+            narration_sha256=pilot.sha(wav),duration_seconds=pilot.wav_info(wav)[1])
+        return {'executed':True,'reason':None,'document':document,'report':report,'asr_seconds':.01}
+    monkeypatch.setattr(pilot,'synthesize',inputs)
+    monkeypatch.setattr(pilot,'align_narration',alignment)
+    events = []
+    pilot.prepare(tmp_path,folder,plan,alignment_model=tmp_path,progress=events.append)
+    assert events == ['align','subtitles']
+    words = json.loads((tmp_path/'word-timings.json').read_text(encoding='utf-8'))
+    evidence = json.loads((tmp_path/'pilot-measurements.json').read_text(encoding='utf-8'))
+    assert words['source'] == 'forced_alignment'
+    assert words['alignment']['match_rate'] == (1 if aligned else 0)
+    assert all(w['timing'] == ('measured' if aligned else 'interpolated') for w in words['words'])
+    assert evidence['alignment_method'] == ('forced_alignment' if aligned else 'measured_sections')
+    factory = json.loads((folder/'alinhamento.json').read_text(encoding='utf-8'))
+    if aligned:
+        assert [w['inicio'] for w in factory['palavras']] == [w['start'] for w in words['words']]
+        assert evidence['subtitles'] == pilot.subtitle_words(words['words'])
+    else:
+        assert factory['motor'] == 'windows_sapi_measured_sections_heuristic_subtitles'
+
+
+@pytest.mark.parametrize('cancel', [False,True])
+def test_alignment_environment_offline_flags_and_owned_cancellation(tmp_path, monkeypatch, cancel):
+    import asyncio
+    import sys
+    from horus_backend import speech_alignment as alignment
+    from horus_backend.processes import OwnedProcess
+    model = tmp_path/'small'
+    model.mkdir()
+    (model/'model.bin').write_bytes(b'fixture')
+    wav = tmp_path/'voice.wav'
+    with wave.open(str(wav),'wb') as audio:
+        audio.setparams((1,2,16000,0,'NONE','not compressed'))
+        audio.writeframes(b'\0\0'*16000)
+    monkeypatch.setattr('importlib.util.find_spec', lambda name:True)
+    monkeypatch.setenv('HORUS_PRIVATE_TEST_SECRET','must-not-leak')
+    original = OwnedProcess.start
+    processes = []
+    captured = []
+    async def start(command, **kwargs):
+        captured.append(kwargs['env'])
+        command = [sys.executable,'-I','-c','import time; time.sleep(60)' if cancel else "print('{\"words\": []}')"]
+        owned = await original(command, **kwargs)
+        processes.append(owned)
+        return owned
+    monkeypatch.setattr(OwnedProcess,'start',start)
+    async def run():
+        task = asyncio.create_task(alignment.run_alignment_async(wav,'fala',sections=[{'section':1,'start':0,'end':1}],
+            engine={'name':'fixture','voice':'fixture'},model_dir=tmp_path,
+            environment={'SYSTEMROOT':os.environ.get('SYSTEMROOT',''),'HF_HUB_OFFLINE':'0'},timeout=10))
+        if cancel:
+            while not processes:
+                await asyncio.sleep(.01)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            assert processes[0].process.returncode is not None
+        else:
+            assert (await task)['executed']
+    asyncio.run(run())
+    assert 'HORUS_PRIVATE_TEST_SECRET' not in captured[0]
+    assert set(captured[0]) == {'SYSTEMROOT','HF_HUB_OFFLINE','TRANSFORMERS_OFFLINE',
+        'HF_HUB_DISABLE_TELEMETRY','HF_HUB_DISABLE_SYMLINKS_WARNING','PYTHONIOENCODING'}
+    assert all(captured[0][key] == '1' for key in ('HF_HUB_OFFLINE','TRANSFORMERS_OFFLINE','HF_HUB_DISABLE_TELEMETRY'))
+
+
+@pytest.mark.parametrize('change', ['early','hold','overlap','video','next_section','cross_section'])
+def test_caption_hold_negative_rules(change):
+    from horus_backend.pilot_quality import caption_holds
+    words = [{'text':'uma','start':1.,'end':1.2,'section':1},
+             {'text':'outra','start':2.,'end':2.2,'section':2}]
+    cues = [{'text':'uma','start':1.,'end':1.6}, {'text':'outra','start':2.,'end':2.8}]
+    duration = 3.
+    if change == 'early': cues[0]['start'] = .8
+    if change == 'hold': cues[0]['end'] = 1.9
+    if change == 'overlap': cues[0]['end'] = 2.1
+    if change == 'video': duration = 2.5
+    if change == 'next_section': words[1]['start'] = 1.5
+    if change == 'cross_section': cues = [{'text':'uma outra','start':1.,'end':2.8}]
+    assert caption_holds(cues,words,duration,[])['errors']
+
+
+def test_caption_hold_reports_measured_maintenance():
+    from horus_backend.pilot_quality import caption_holds
+    result = caption_holds([{'text':'fala','start':1.,'end':1.8}],
+                           [{'text':'fala','start':1.,'end':1.2,'section':1}],2.,[])
+    assert not result['errors'] and result['hold_seconds'] == [.6]
+
+
+@pytest.mark.parametrize('invalid', [None, 'missing', 'estimated', 'below_threshold', 'hash'])
+def test_forced_evidence_requires_valid_acoustic_contract(invalid):
+    from test_pilot_quality import good
+    from horus_backend.pilot_quality import validate_pilot_evidence
+    from horus_backend.speech_alignment import align_script
+    evidence = good()
+    evidence['alignment_method'] = 'forced_alignment'
+    words = align_script('Primeira fala.\nSegunda fala.',
+        [{'word':t,'start':a,'end':b} for t,a,b in [
+            ('Primeira',.2,1.),('fala',1.,3.8),('Segunda',4.1,6.),('fala',6.,9.8)]],
+        sections=[{'section':1,'start':0,'end':4.},{'section':2,'start':4.,'end':10.}],
+        narration_sha256=evidence['narration']['sha256'],duration_seconds=10.,
+        engine={'name':'fixture','voice':'fixture'})
+    if invalid == 'missing': words = None
+    if invalid == 'estimated':
+        words['source'] = 'estimated'
+        words.pop('alignment')
+        for word in words['words']: word.pop('timing')
+    if invalid == 'below_threshold':
+        words['words'][0]['timing'] = 'interpolated'
+        words['alignment'].update(matched_words=3,interpolated_words=1,match_rate=.75,
+                                  longest_interpolated_seconds=.8)
+    if invalid == 'hash': words['narration_sha256'] = 'f'*64
+    result = validate_pilot_evidence(evidence,word_timings=words)
+    method = next(c for c in result['checks'] if c['id']=='alignment_method')
+    assert method['status'] == ('pass' if invalid is None else 'fail')
+
+
+def test_qc_measures_words_even_when_factory_hold_fails(tmp_path):
+    from test_av_quality import build, word_doc, stamp
+    from horus_backend import av_quality as qc
+    from horus_backend.local_pilot import write
+    root, evidence = build(tmp_path,words=word_doc())
+    words = json.loads((root/'word-timings.json').read_text(encoding='utf-8'))
+    words['source'] = 'forced_alignment'
+    words['alignment'] = {'method':'asr_sequence_match','asr_engine':'fixture','matched_words':18,
+        'interpolated_words':0,'match_rate':1.,'longest_interpolated_seconds':0.}
+    for word in words['words']: word['timing'] = 'measured'
+    write(root/'word-timings.json',words)
+    evidence['alignment_method'] = 'forced_alignment'
+    # A cue da primeira seção mantém texto por mais de 0,6 s: falha explícita,
+    # mas hashes, WAV, cobertura e desvio acústico continuam sendo medidos.
+    evidence['subtitles'][0]['end'] = 1.9
+    write(root/'pilot-evidence.json',evidence)
+    folder = root/'canais/demo/videos/fixture'
+    (folder/'fixture.srt').write_text('\n'.join(
+        f"{i}\n{stamp(c['start'])} --> {stamp(c['end'])}\n{c['text']}\n"
+        for i,c in enumerate(evidence['subtitles'],1)),encoding='utf-8')
+    report = qc.run_quality(root,production_id='fixture')
+    sync = next(c for c in report['checks'] if c['id']=='subtitles_vs_words')
+    assert sync['method']=='measured' and sync['measured']['max_deviation_seconds'] > .6
+    assert next(c for c in report['checks'] if c['id']=='evidence_manifest')['status']=='fail'
+    assert next(c for c in report['checks'] if c['id']=='audio_clipping')['status']=='pass'
