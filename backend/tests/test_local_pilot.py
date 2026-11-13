@@ -165,6 +165,9 @@ def test_estimated_words_provenance_quality_and_registered_hashes(tmp_path,monke
         if asset['id'].startswith('section-') or asset['id']=='narration':
             assert asset['origin']==expected_origin and asset['license']=='unverified'
             assert asset['narration']['engine']==provider
+            # J-16: o texto de direitos usa o provedor e a voz efetivos, nunca SAPI fixo.
+            assert provider in asset['attribution'] and 'Voz fictícia do teste' in asset['attribution']
+            assert ('sapi' in asset['attribution'].lower()) == (provider=='windows_sapi')
             if provider=='piper': assert asset['narration']['model']['sha256']=='a'*64
     pilot.write(tmp_path/'pilot-evidence.json',evidence)
     pilot.quality_report(tmp_path,folder,'unit-production')
