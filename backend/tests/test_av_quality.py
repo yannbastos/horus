@@ -131,6 +131,27 @@ def test_happy_path_is_valid_without_ffmpeg(tmp_path):
     assert all(c["method"] != "measured" or c["status"] == "skipped" or c["measured"].get("source") for c in report["checks"])
 
 
+@pytest.mark.parametrize('broken',[False,True])
+def test_local_model_uses_same_physical_qc_and_requires_provenance(tmp_path,broken):
+    root, evidence = build(tmp_path)
+    synthesis = {'engine':'piper','voice':'Modelo fictício','voice_id':'pt.onnx',
+                 'origin':'local_tts_model',
+                 'model':{'id':'pt.onnx','version':'1','sha256':'a'*64}}
+    evidence['narration'].update(synthesis)
+    for asset in evidence['assets']:
+        if asset['origin'] == 'system_voice':
+            asset.update(origin='local_tts_model',narration=synthesis.copy())
+    if broken:
+        evidence['narration']['model'].pop('sha256')
+    (root/'pilot-evidence.json').write_text(json.dumps(evidence),encoding='utf-8')
+    report, checks = run(root)
+    assert checks['evidence_manifest']['status'] == ('fail' if broken else 'pass')
+    if not broken:
+        assert report['blocking_errors'] == []
+        assert checks['audio_clipping']['status'] == 'pass'
+        assert checks['duration_narration']['method'] == 'measured'
+
+
 def test_clipping_fails_with_timecode_free_counts(tmp_path):
     loud = struct.pack("<%dh" % (2 * RATE), *([32767, -32768] * RATE))
     root, _ = build(tmp_path, sections=[tone(2.0), loud, tone(2.0)])

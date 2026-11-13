@@ -11,10 +11,103 @@ from horus_backend.production import confined, inspect_artifact
 from horus_backend.workflows import WorkflowConflict
 
 
+@pytest.fixture(autouse=True)
+def isolated_production_environment(monkeypatch):
+    for name in ('HORUS_FFMPEG','HORUS_ALIGNMENT_MODEL','HORUS_SUBTITLE_FONT','HORUS_PILOT_FACTORY',
+                 'HORUS_PIPER_EXECUTABLE','HORUS_PIPER_MODELS','HORUS_NARRATION_PAID_ENABLED'):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr('horus_backend.narration.providers.WindowsSapi.voices',
+                        lambda self: [{'id':'fixture-pt-br','name':'Fixture','language':'pt-BR'}])
+
+
+@pytest.mark.parametrize('source', ['default','preference','explicit'])
+def test_production_narration_selection_and_receipt(settings, source):
+    preference = {'provider':'piper','voice_id':'saved.onnx'}
+    explicit = {'provider':'windows_sapi','voice_id':'explicit-voice'}
+    if source != 'default':
+        settings.data_dir.mkdir(parents=True)
+        (settings.data_dir/'narration-preference.json').write_text(json.dumps(preference),encoding='utf-8')
+    expected = explicit if source == 'explicit' else preference if source == 'preference' else {
+        'provider':'windows_sapi','voice_id':'fixture-pt-br'}
+    extra = {'narration':explicit} if source == 'explicit' else {}
+    with client_for(settings) as client:
+        script = script_for(client)
+        response = start(client,script,mode='local_pilot',**extra)
+        assert response.status_code == 201, response.text
+        with client.app.state.store.connect() as db:
+            plan = json.loads(db.execute('SELECT plan FROM productions WHERE id=?',(response.json()['id'],)).fetchone()[0])
+            receipt = json.loads(db.execute('SELECT request FROM production_receipts').fetchone()[0])
+        assert {key:plan['audio'][key] for key in expected} == expected
+        assert receipt['narration'] == expected
+        assert start(client,script,mode='local_pilot',**extra).status_code == 200
+        changed = {**expected,'voice_id':'different'}
+        assert start(client,script,mode='local_pilot',narration=changed).status_code == 409
+        (settings.data_dir/'narration-preference.json').write_text(json.dumps(changed),encoding='utf-8')
+        assert start(client,script,mode='local_pilot').status_code == 409
+
+
+@pytest.mark.parametrize('provider,voice,reason', [
+    ('piper','missing.onnx','narration_provider_unavailable'),
+    ('elevenlabs','paid','paid_provider_not_authorized'),
+    ('missing','voice','provider_not_found')])
+def test_production_narration_blocks_without_fallback(settings, provider, voice, reason):
+    with client_for(settings) as client:
+        script = script_for(client)
+        response = start(client,script,mode='local_pilot',narration={'provider':provider,'voice_id':voice})
+        assert response.status_code == 201, response.text
+        item = finished(client,response.json())
+        assert item['status'] == 'blocked', item
+        assert reason in item['error']
+        assert not any(a['kind']=='audio' for a in item['artifacts'])
+
+
+def test_narration_selection_rejected_for_fixture_modes(settings):
+    with client_for(settings) as client:
+        script = script_for(client)
+        for mode in ('simulated','local_demo'):
+            assert start(client,script,mode=mode,narration={'provider':'piper','voice_id':'v'}).status_code == 422
+
+
+def test_legacy_pilot_receipt_without_selection_remains_recoverable(settings):
+    with client_for(settings) as client:
+        script = script_for(client)
+        response = start(client,script,mode='local_pilot')
+        item = finished(client,response.json())
+        with client.app.state.store.connect() as db:
+            old_request = {'expected_version':script['version'],'mode':'local_pilot'}
+            from horus_backend.workflows import encode
+            db.execute('UPDATE production_receipts SET request=?',(encode(old_request),))
+        replay = start(client,script,mode='local_pilot')
+        assert replay.status_code==200 and replay.json()['id']==item['id']
+        settings.data_dir.joinpath('narration-preference.json').write_text(
+            json.dumps({'provider':'piper','voice_id':'changed.onnx'}),encoding='utf-8')
+        assert start(client,script,mode='local_pilot').status_code==409
+
+
 def script_for(client):
     script = generate(client, approved(client)).json()
     assert decide(client, script).status_code == 200
     return script
+
+
+def test_render_quality_is_explicit_validated_and_part_of_plan(settings):
+    from horus_backend.production import ProductionRequest
+    from pydantic import ValidationError
+    assert ProductionRequest(expected_version=1,mode='local_pilot').render_quality == 'draft'
+    for mode in ('simulated','local_demo'):
+        with pytest.raises(ValidationError):
+            ProductionRequest(expected_version=1,mode=mode,render_quality='final')
+    with client_for(settings) as client:
+        script = script_for(client)
+        assert start(client,script,render_quality='final').status_code == 422
+        assert start(client,script,mode='local_pilot',render_quality='other').status_code == 422
+        response = start(client,script,mode='local_pilot',render_quality='final')
+        assert response.status_code == 201
+        with client.app.state.store.connect() as db:
+            plan = json.loads(db.execute('SELECT plan FROM productions WHERE id=?',
+                (response.json()['id'],)).fetchone()['plan'])
+        assert plan['render_quality'] == 'final'
+        assert start(client,script,mode='local_pilot',render_quality='draft').status_code == 409
 
 
 def start(client, script, key='production', mode='simulated', **extra):

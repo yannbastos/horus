@@ -34,6 +34,16 @@ def build(document=None, **extra):
     return build_production_plan(document or script(), **values)
 
 
+def test_render_quality_defaults_legacy_plans_to_draft_and_limits_final_to_pilot():
+    legacy = build().model_dump(mode='json')
+    legacy.pop('render_quality')
+    assert ProductionPlan.model_validate(legacy).render_quality == 'draft'
+    assert build(mode='local_pilot',render_quality='final').render_quality == 'final'
+    for mode in ('simulated','local_demo'):
+        with pytest.raises(ValidationError):
+            build(mode=mode,render_quality='final')
+
+
 def section(index, kind='body', narration='n', **extra):
     return {'id': f's{index}', 'kind': kind, 'heading': f'h{index}', 'narration': narration, **extra}
 

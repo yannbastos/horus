@@ -23,6 +23,8 @@ from array import array
 from datetime import datetime
 from pathlib import Path
 
+from .narration.providers import PRODUCTION_ORIGINS
+
 SCHEMA_VERSION = 1
 # Limites contra entradas imensas.
 MAX_SCENES, MAX_SUBTITLES, MAX_ASSETS = 200, 2000, 500
@@ -45,7 +47,7 @@ EDGE_SILENCE_SECONDS = 1.5      # silêncio inicial/final acima disso gera aviso
 _HEX = re.compile(r"[0-9a-f]{64}")
 _ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}")
 _CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
-_ORIGINS, _LICENSES = ("original_local", "system_voice"), ("original", "unverified")
+_ORIGINS, _LICENSES = ("original_local", "system_voice", "local_tts_model", "licensed_manual"), ("original", "unverified")
 _TOP = {"schema_version", "demo_only", "narration", "scenes", "subtitles", "assets", "video", "alignment_method"}
 _CHECK_IDS = (
     "schema", "demo_flag", "alignment_method", "narration", "video", "assets_structure", "assets_paths",
@@ -135,14 +137,47 @@ def _items(report, check_id, value, limit, label):
     return value
 
 
+def _synthesis_errors(node):
+    errors = []
+    engine = node.get('engine')
+    if not isinstance(engine, str) or engine not in PRODUCTION_ORIGINS:
+        return ['engine deve pertencer ao registro de motores locais']
+    origin = PRODUCTION_ORIGINS[engine]
+    if node.get('origin') != origin:
+        errors.append('engine e origin incoerentes')
+    if not _text(node.get('voice'), MAX_FIELD):
+        errors.append('voice ausente')
+    if node.get('voice_id') is not None and not _text(node['voice_id'],1000):
+        errors.append('voice_id inválido')
+    if origin == 'local_tts_model':
+        if not _text(node.get('voice_id'), 1000):
+            errors.append('voice_id do modelo local ausente')
+        model = node.get('model')
+        if not isinstance(model, dict) or set(model) != {'id','version','sha256'}:
+            errors.append('modelo local exige id, version e sha256')
+        elif (not _text(model['id'], 1000) or not _text(model['version'], 200)
+              or not isinstance(model['sha256'], str) or not _HEX.fullmatch(model['sha256'])
+              or model['id'] != node.get('voice_id')):
+            errors.append('identidade/versão/SHA-256 do modelo local inválidos')
+    elif node.get('model') is not None:
+        errors.append('voz do sistema não declara modelo local')
+    return errors
+
+
 def _narration(report, node):
     errors = []
     if not isinstance(node, dict):
         return report.done("narration", ["narration deve ser objeto"]) or None
-    if set(node) != {"kind", "engine", "voice", "duration_seconds", "sha256"}:
-        errors.append("campos de narration devem ser exatamente kind, engine, voice, duration_seconds, sha256")
-    if node.get("kind") != "local_tts" or node.get("engine") != "windows_sapi":
-        errors.append("narration deve ser kind=local_tts e engine=windows_sapi")
+    legacy = {'kind','engine','voice','duration_seconds','sha256'}
+    extended = legacy | {'voice_id','origin','model'}
+    if set(node) == legacy and node.get('engine') == 'windows_sapi':
+        pass  # Evidência histórica SAPI, preservada sem campos presumidos.
+    elif set(node) == extended:
+        errors.extend(_synthesis_errors(node))
+    else:
+        errors.append('campos de narration incompatíveis com o engine')
+    if node.get('kind') != 'local_tts':
+        errors.append('narration deve ser kind=local_tts')
     if not _text(node.get("voice"), MAX_FIELD):
         errors.append("voice deve ser texto não vazio")
     duration = node.get("duration_seconds")
@@ -191,11 +226,21 @@ def _assets(report, node):
     ids, paths = set(), set()
     for index, asset in enumerate(items):
         tag = f"assets[{index}]"
-        if not isinstance(asset, dict) or set(asset) != {
-                "id", "relative_path", "sha256", "origin", "license", "attribution", "generated_at"}:
+        base = {"id", "relative_path", "sha256", "origin", "license", "attribution", "generated_at"}
+        if not isinstance(asset, dict) or set(asset) not in (base, base | {'narration'}):
             errors.append(f"{tag}: campos devem ser exatamente id, relative_path, sha256, origin, license, "
                           "attribution, generated_at")
             continue
+        synthesis = asset.get('narration')
+        if synthesis is not None:
+            if (not isinstance(synthesis, dict) or set(synthesis) != {'engine','voice','voice_id','origin','model'}):
+                errors.append(f'{tag}: campos da síntese inválidos')
+            else:
+                errors.extend(f'{tag}: {error}' for error in _synthesis_errors(synthesis))
+                if synthesis['origin'] != asset['origin']:
+                    errors.append(f'{tag}: origem da síntese diverge do asset')
+        elif asset['origin'] == 'local_tts_model':
+            errors.append(f'{tag}: modelo local exige proveniência da síntese')
         if not (isinstance(asset["id"], str) and _ID.fullmatch(asset["id"])):
             errors.append(f"{tag}: id inválido {_short(asset['id'])}")
         elif asset["id"] in ids:
@@ -341,10 +386,18 @@ def _provenance(report, assets, narration):
     if assets is None:
         return report.skip("provenance_licenses", "assets inválidos")
     errors = []
-    voices = [a for a in assets if a["origin"] == "system_voice"]
+    voices = [a for a in assets if a['origin'] in {'system_voice','local_tts_model'}]
     if narration is not None:
         if not any(a["sha256"] == narration["sha256"] for a in voices):
-            errors.append("narration.sha256 não corresponde a nenhum asset origin=system_voice")
+            errors.append('narration.sha256 não corresponde a nenhum asset de voz')
+        expected_origin = PRODUCTION_ORIGINS[narration['engine']]
+        for asset in voices:
+            if asset['origin'] != expected_origin:
+                errors.append(f"asset {asset['id']}: origem incompatível com engine")
+            if 'origin' in narration:
+                expected = {k:narration[k] for k in ('engine','voice','voice_id','origin','model')}
+                if asset.get('narration') != expected:
+                    errors.append(f"asset {asset['id']}: síntese difere da narração combinada")
     for asset in voices:
         if asset["license"] == "original":
             errors.append(f"asset {asset['id']}: voz do sistema não pode ser declarada license=original; "
@@ -530,7 +583,7 @@ def inspect_pilot_files(root, evidence: dict) -> dict:
             errors.append(f"{asset['id']}: arquivo ilegível durante o hash")
         elif digest != asset["sha256"]:
             errors.append(f"{asset['id']}: sha256 do arquivo difere do manifesto")
-        elif asset["origin"] == "system_voice" and asset["sha256"] == evidence["narration"]["sha256"]:
+        elif asset['origin'] in {'system_voice','local_tts_model'} and asset['sha256'] == evidence['narration']['sha256']:
             voice_path = path
     report.done("physical_files", errors, detail="hash de todos os assets confere; MP4 não inspecionado")
     if voice_path is None:

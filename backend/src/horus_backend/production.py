@@ -12,9 +12,9 @@ import sys
 import uuid
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from .production_contract import build_production_plan
+from .production_contract import ProductionPlan, build_production_plan
 from .script_contract import ScriptDocument
 from .scripts import ScriptService
 from .storage import now
@@ -22,10 +22,26 @@ from .workflows import WorkflowConflict, digest, encode
 from .processes import OwnedProcess
 
 
+class NarrationSelection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    provider: str = Field(min_length=1, max_length=80)
+    voice_id: str = Field(min_length=1, max_length=1000)
+
+
 class ProductionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    narration: NarrationSelection | None = None
     expected_version: int = Field(ge=1, strict=True)
     mode: Literal["simulated", "local_demo", "local_pilot"]
+    render_quality: Literal["draft", "final"] = "draft"
+
+    @model_validator(mode="after")
+    def quality_mode(self):
+        if self.render_quality == "final" and self.mode != "local_pilot":
+            raise ValueError("render final requer local_pilot")
+        if self.narration is not None and self.mode != "local_pilot":
+            raise ValueError("narração requer local_pilot")
+        return self
 
 
 class ProductionReviewNote(BaseModel):
@@ -58,7 +74,7 @@ def confined(root: Path, relative: str) -> Path:
 def inspect_artifact(root, relative, kind):
     path = confined(root, relative)
     suffixes = {"plan": {".json"}, "scene": {".png"}, "audio": {".wav"}, "subtitles": {".srt"},
-                "video": {".mp4"}, "manifest": {".json"}}
+                "video": {".mp4"}, "manifest": {".json"}, "font": {".ttf", ".otf"}}
     if kind not in suffixes or path.suffix not in suffixes[kind] or path.stat().st_size == 0:
         raise WorkflowConflict("Tipo ou conteúdo de artefato inválido.")
     with path.open("rb") as stream:
@@ -146,18 +162,50 @@ class ProductionService:
         return script, document
 
     async def create(self, script_id, request, key):
-        scope, encoded = f"create:{script_id}", encode(request.model_dump())
+        body = request.model_dump()
+        selection = None
+        default_selection = False
+        if request.mode == 'local_pilot':
+            if request.narration:
+                selection = request.narration.model_dump()
+            else:
+                preference = self.settings.data_dir / 'narration-preference.json'
+                if preference.exists():
+                    try:
+                        selection = NarrationSelection.model_validate_json(preference.read_text(encoding='utf-8')).model_dump()
+                    except (OSError, ValueError):
+                        raise WorkflowConflict('Preferência de narração inválida; revise Ajustes.') from None
+                else:
+                    default_selection = True
+                    from .narration.providers import WindowsSapi, NarrationError
+                    try:
+                        voices = await asyncio.to_thread(WindowsSapi().voices)
+                    except NarrationError:
+                        voices = []
+                    voice = next((v['id'] for v in voices if v['language'].lower() == 'pt-br'), 'default_pt_BR')
+                    selection = {'provider': 'windows_sapi', 'voice_id': voice}
+            body['narration'] = selection
+        else:
+            body.pop('narration')
+        if request.render_quality == "draft":
+            body.pop("render_quality")  # preserva recibos anteriores ao preset explicito
+        scope, encoded = f"create:{script_id}", encode(body)
         with self.store.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             receipt = db.execute("SELECT * FROM production_receipts WHERE scope=? AND idempotency_key=?", (scope, key)).fetchone()
             if receipt:
-                if receipt["request"] != encoded:
+                previous = json.loads(receipt['request'])
+                compared = body
+                # Recibos anteriores à seleção continuam recuperáveis pelo pedido padrão.
+                if default_selection and 'narration' not in previous:
+                    compared = {k:v for k,v in body.items() if k != 'narration'}
+                if receipt["request"] != encode(compared):
                     raise WorkflowConflict("Chave de idempotência usada com outro pedido.")
                 return self.record(db, self.require(db, receipt["production_id"])), False
             script, document = self.approved(db, script_id, request.expected_version)
             content_hash = digest(document)
             plan = build_production_plan(ScriptDocument.model_validate(document), script_id=script_id,
-                script_version=script["version"], script_content_hash=content_hash, mode=request.mode)
+                script_version=script["version"], script_content_hash=content_hash, mode=request.mode, render_quality=request.render_quality, narration=selection)
             production_id, job_id, timestamp = uuid.uuid4().hex, uuid.uuid4().hex, now()
             payload = encode({"operation": "production.run", "production_id": production_id})
             db.execute("INSERT INTO jobs(id,idempotency_key,payload,status,created_at,updated_at) VALUES(?,?,?,'queued',?,?)",
@@ -224,9 +272,12 @@ class ProductionService:
                 if digest(document) != row["script_content_hash"] or script["review"] != row["script_review"]:
                     raise WorkflowConflict("Roteiro/aprovação mudou após submissão.")
                 plan = row["plan"]
+                saved = json.loads(plan)
                 expected_plan = build_production_plan(ScriptDocument.model_validate(document), script_id=row["script_id"],
-                    script_version=row["script_version"], script_content_hash=row["script_content_hash"], mode=row["mode"])
-                if digest(json.loads(plan)) != digest(expected_plan.model_dump(mode="json")):
+                    script_version=row["script_version"], script_content_hash=row["script_content_hash"], mode=row["mode"],
+                    render_quality=saved.get("render_quality", "draft"),
+                    narration={k:saved['audio'][k] for k in ('provider','voice_id') if saved['audio'].get(k) is not None})
+                if digest(ProductionPlan.model_validate_json(plan).model_dump(mode="json")) != digest(expected_plan.model_dump(mode="json")):
                     raise WorkflowConflict("Plano não corresponde ao roteiro aprovado.")
             if getattr(sys, "frozen", False):
                 raise WorkflowConflict("Worker de produção requer backend Python preparado; empacotamento ainda não homologado.")
@@ -248,6 +299,16 @@ class ProductionService:
             env.update(PYTHONUTF8="1", PYTHONUNBUFFERED="1")
             if row["mode"] == "local_pilot" and self.settings.alignment_model:
                 env["HORUS_ALIGNMENT_MODEL"] = str(self.settings.alignment_model.resolve())
+            if row["mode"] == "local_pilot" and self.settings.ffmpeg:
+                env["HORUS_FFMPEG"] = str(self.settings.ffmpeg.resolve())
+            if row["mode"] == "local_pilot" and self.settings.subtitle_font:
+                env["HORUS_SUBTITLE_FONT"] = str(self.settings.subtitle_font.resolve())
+            if row["mode"] == "local_pilot":
+                for name, value in (("HORUS_PIPER_EXECUTABLE", self.settings.piper_executable),
+                                    ("HORUS_PIPER_MODELS", self.settings.piper_models),
+                                    ("HORUS_KOKORO_PYTHON", self.settings.kokoro_python),
+                                    ("HORUS_KOKORO_MODEL_DIR", self.settings.kokoro_model_dir)):
+                    if value: env[name] = str(value.resolve())
             manager.active_process = await OwnedProcess.start(command, env=env, cwd=root)
             process = manager.active_process.process
             if self.store.get_job(job_id)["status"] == "cancel_requested":

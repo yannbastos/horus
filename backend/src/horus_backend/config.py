@@ -96,6 +96,9 @@ class Settings:
     # Pasta de modelos preparada pelo operador; nunca baixar durante produção.
     alignment_model: Path | None = field(default_factory=lambda: (
         Path(os.environ["HORUS_ALIGNMENT_MODEL"]).expanduser() if os.environ.get("HORUS_ALIGNMENT_MODEL") else None))
+    # Ferramenta/fonte locais preparadas fora do job; sem instalação ou PATH global.
+    ffmpeg: Path | None = field(default_factory=lambda: Path(os.environ["HORUS_FFMPEG"]).expanduser() if os.environ.get("HORUS_FFMPEG") else None)
+    subtitle_font: Path | None = field(default_factory=lambda: Path(os.environ["HORUS_SUBTITLE_FONT"]).expanduser() if os.environ.get("HORUS_SUBTITLE_FONT") else None)
     # Apenas configuração do operador/testes. Nunca aceitar executável vindo da API.
     factory_command: tuple[str, ...] | None = None
     # Somente testes substituem o subprocesso de transcrição/download.
@@ -113,6 +116,13 @@ class Settings:
     budget_daily_usd: Decimal | None = field(default_factory=lambda: operator_decimal("HORUS_BUDGET_DAILY_USD", "1"))
     price_input_usd_per_mtok: Decimal | None = field(default_factory=lambda: operator_decimal("HORUS_PRICE_INPUT_USD_PER_MTOK"))
     price_output_usd_per_mtok: Decimal | None = field(default_factory=lambda: operator_decimal("HORUS_PRICE_OUTPUT_USD_PER_MTOK"))
+    narration_paid_enabled: bool = field(default_factory=lambda: os.environ.get("HORUS_NARRATION_PAID_ENABLED") == "1")
+    elevenlabs_price_per_1k_chars: Decimal | None = field(default_factory=lambda: operator_decimal("HORUS_ELEVENLABS_PRICE_PER_1K_CHARS"))
+    elevenlabs_currency: str | None = field(default_factory=lambda: os.environ.get("HORUS_ELEVENLABS_CURRENCY"))
+    piper_executable: Path | None = field(default_factory=lambda: Path(os.environ["HORUS_PIPER_EXECUTABLE"]).expanduser() if os.environ.get("HORUS_PIPER_EXECUTABLE") else None)
+    piper_models: Path | None = field(default_factory=lambda: Path(os.environ["HORUS_PIPER_MODELS"]).expanduser() if os.environ.get("HORUS_PIPER_MODELS") else None)
+    kokoro_python: Path | None = field(default_factory=lambda: Path(os.environ["HORUS_KOKORO_PYTHON"]).expanduser() if os.environ.get("HORUS_KOKORO_PYTHON") else None)
+    kokoro_model_dir: Path | None = field(default_factory=lambda: Path(os.environ["HORUS_KOKORO_MODEL_DIR"]).expanduser() if os.environ.get("HORUS_KOKORO_MODEL_DIR") else None)
     hermes_poll_seconds: float = 2.0
     hermes_run_timeout: float = 900.0
     origins: tuple[str, ...] = field(default_factory=frontend_origins)
