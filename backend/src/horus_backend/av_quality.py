@@ -135,6 +135,7 @@ class _Context:
         self.inputs: dict[str, str] = {}   # relative_path -> sha256 real (assets de ENTRADA)
         self.hash_errors: list[str] = []
         self.section_wavs: dict[int, Path] = {}
+        self.word_source: str | None = None   # `source` declarado em word-timings.json (None se ausente)
 
     def read_json(self, relative: str):
         path, reason = _confined(self.root, relative)
@@ -392,6 +393,9 @@ def _coverage(cues: list[dict], script_tokens: list[str] | None) -> dict:
 
 def _word_checks(ctx: _Context, stats, cues, script_tokens) -> list[dict]:
     raw = ctx.read_json("word-timings.json")
+    declared = raw.get("source") if isinstance(raw, dict) else None
+    ctx.word_source = declared if isinstance(declared, str) else None
+    method = "estimated" if ctx.word_source == "estimated" else "measured"   # vale também para documento inválido
     if raw is None:
         why = "word-timings.json ausente; sincronia por palavra não medida"
         return [_skip("word_timings", "sync", why), _skip("subtitles_vs_words", "sync", why)]
@@ -403,7 +407,7 @@ def _word_checks(ctx: _Context, stats, cues, script_tokens) -> list[dict]:
         raw, narration_sha256=ctx.evidence["narration"]["sha256"], duration_seconds=stats["duration"],
         script_text=" ".join(script_tokens) if script_tokens else None, sections=sections)
     if not verdict["ok"]:
-        return [_check("word_timings", "sync", "fail", "measured", "; ".join(
+        return [_check("word_timings", "sync", "fail", method, "; ".join(
             f"{e['code']}@{e['path']}" for e in verdict["errors"][:4]),
             {"source": "media_contracts.validate_word_timings", "errors": len(verdict["errors"])}),
             _skip("subtitles_vs_words", "sync", "word-timings inválido")]
@@ -412,7 +416,7 @@ def _word_checks(ctx: _Context, stats, cues, script_tokens) -> list[dict]:
     detail = f"fonte {value['source']}; speech_aligned={verdict['speech_aligned']}"
     if verdict["warnings"]:
         detail += "; contexto parcial: " + ", ".join(verdict["warnings"])
-    checks = [_check("word_timings", "sync", "pass" if verdict["speech_aligned"] else "warn", "measured", detail,
+    checks = [_check("word_timings", "sync", "pass" if verdict["speech_aligned"] else "warn", method, detail,
                      {"source": "media_contracts.validate_word_timings", "timing_source": value["source"],
                       "speech_aligned": verdict["speech_aligned"], "words": len(value["words"])})]
     if not cues:
@@ -642,7 +646,8 @@ async def run_quality_async(root: Path, *, production_id: str, ffmpeg: Path | No
               "status": mc.derive_report_status([mc.QualityCheck.model_validate(c) for c in checks]),
               "checks": checks, "blocking_errors": [c["id"] for c in checks if c["status"] == "fail"],
               "warnings": [c["id"] for c in checks if c["status"] == "warn"]}
-    verdict = mc.validate_quality_report(report, video_sha256=video_sha, production_id=production_id)
+    verdict = mc.validate_quality_report(report, video_sha256=video_sha, production_id=production_id,
+                                         word_timings_source=ctx.word_source)
     if not verdict["ok"]:   # bug do próprio QC: nunca devolver relatório inválido como se fosse válido
         raise RuntimeError("quality-report gerado viola o contrato: " + "; ".join(e["code"] for e in verdict["errors"][:5]))
     return verdict["value"]
