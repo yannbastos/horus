@@ -871,4 +871,132 @@ test.describe('M3 — Roteiro Estruturado Simulado e Revisão Humana (HOR-050)',
     await expect(scriptRegion.getByRole('region', { name: 'Revisão humana do roteiro' })).toHaveCount(0);
     await expect(docV1Region.getByText('Aprovado').first()).toBeVisible();
   });
+
+  test('Inspeção de histórico: não oculta falhas 401/rede no GET individual, preserva versão em tela, permite recuperação e evita seleção fora de ordem', async ({
+    page,
+  }) => {
+    const currentWf = createWorkflowFixture();
+    const v1Record = createScriptRecordFixture(1, 'changes_requested', {
+      decision: 'request_changes',
+      feedback: 'Encurtar gancho.',
+      reviewed_at: '2026-11-12T10:15:00Z',
+    });
+    const v2Record = createScriptRecordFixture(2, 'awaiting_review', null);
+
+    let v1GetBehavior: '401' | 'network' | 'delayed' | 'ok' = '401';
+    let releaseDelayedV1!: () => void;
+    const delayedV1Gate = new Promise<void>(resolve => {
+      releaseDelayedV1 = resolve;
+    });
+
+    await page.route('http://127.0.0.1:8765/**', async route => {
+      const request = route.request();
+      const pathUrl = new URL(request.url()).pathname;
+      if (request.method() === 'OPTIONS') {
+        await route.fulfill({ status: 204, headers: corsHeaders });
+        return;
+      }
+      if (pathUrl === '/health') {
+        await route.fulfill({ status: 200, headers: corsHeaders, json: { status: 'ready' } });
+        return;
+      }
+      if (pathUrl === '/v1/hermes') {
+        await route.fulfill({
+          status: 200,
+          headers: corsHeaders,
+          json: { state: 'ready', connected: true, cli_available: true, configured: true, features: [] },
+        });
+        return;
+      }
+      if (pathUrl === '/v1/jobs') {
+        await route.fulfill({ status: 200, headers: corsHeaders, json: [] });
+        return;
+      }
+      if (pathUrl === '/v1/workflows') {
+        await route.fulfill({ status: 200, headers: corsHeaders, json: [currentWf] });
+        return;
+      }
+      if (pathUrl === `/v1/workflows/${WORKFLOW_ID}`) {
+        await route.fulfill({ status: 200, headers: corsHeaders, json: currentWf });
+        return;
+      }
+      if (pathUrl === `/v1/workflows/${WORKFLOW_ID}/scripts` && request.method() === 'GET') {
+        await route.fulfill({ status: 200, headers: corsHeaders, json: { items: [v2Record, v1Record] } });
+        return;
+      }
+      if (pathUrl === `/v1/scripts/${SCRIPT_V1_ID}` && request.method() === 'GET') {
+        if (v1GetBehavior === '401') {
+          await route.fulfill({
+            status: 401,
+            headers: corsHeaders,
+            json: { detail: 'Sessão expirada ao consultar roteiro v1.' },
+          });
+          return;
+        }
+        if (v1GetBehavior === 'network') {
+          await route.abort('failed');
+          return;
+        }
+        if (v1GetBehavior === 'delayed') {
+          await delayedV1Gate;
+          await route.fulfill({ status: 200, headers: corsHeaders, json: v1Record });
+          return;
+        }
+        await route.fulfill({ status: 200, headers: corsHeaders, json: v1Record });
+        return;
+      }
+      if (pathUrl === `/v1/scripts/${SCRIPT_V2_ID}` && request.method() === 'GET') {
+        await route.fulfill({ status: 200, headers: corsHeaders, json: v2Record });
+        return;
+      }
+      await route.fulfill({ status: 404, headers: corsHeaders, json: { detail: 'Não encontrado' } });
+    });
+
+    await connectSession(page);
+    await page.getByRole('button', { name: 'Produção', exact: true }).click();
+
+    const scriptRegion = page.getByRole('region', { name: 'Roteiro e revisão humana' });
+    const historyRegion = scriptRegion.getByRole('region', { name: 'Histórico de versões do roteiro' });
+
+    await expect(scriptRegion.getByRole('region', { name: 'Documento do roteiro versão 2' })).toBeVisible();
+
+    // 1. Selecting v1 when GET /v1/scripts/{v1.id} returns 401: shows alert and preserves v1 content
+    v1GetBehavior = '401';
+    await historyRegion.getByRole('button', { name: 'Ver v1', exact: true }).click();
+    await expect(scriptRegion.getByRole('region', { name: 'Documento do roteiro versão 1' })).toBeVisible();
+    await expect(
+      scriptRegion.getByRole('heading', { name: 'Roteiro Editorial v1: Automação Local com Supervisão' })
+    ).toBeVisible();
+    await expect(scriptRegion.getByRole('alert')).toContainText(
+      'Sessão não autorizada (401): Sessão expirada ao consultar roteiro v1.'
+    );
+
+    // 2. Recovery button when GET /v1/scripts/{v1.id} fails with network error: shows network alert and preserves v1 content
+    v1GetBehavior = 'network';
+    await scriptRegion.getByRole('button', { name: 'Recarregar versão v1', exact: true }).click();
+    await expect(scriptRegion.getByRole('region', { name: 'Documento do roteiro versão 1' })).toBeVisible();
+    await expect(scriptRegion.getByRole('alert')).toContainText(
+      'Falha de rede ao comunicar com o backend local'
+    );
+
+    // 3. Recovery succeeds when endpoint returns 200 OK and clears alert
+    v1GetBehavior = 'ok';
+    await scriptRegion.getByRole('button', { name: 'Recarregar versão v1', exact: true }).click();
+    await expect(scriptRegion.getByRole('alert')).toHaveCount(0);
+    await expect(scriptRegion.getByRole('region', { name: 'Documento do roteiro versão 1' })).toBeVisible();
+
+    // 4. Rapid version switching (v1 delayed, then v2 immediately): out-of-order response from v1 cannot override v2
+    await historyRegion.getByRole('button', { name: 'Ver v2', exact: true }).click();
+    await expect(scriptRegion.getByRole('region', { name: 'Documento do roteiro versão 2' })).toBeVisible();
+
+    v1GetBehavior = 'delayed';
+    await historyRegion.getByRole('button', { name: 'Ver v1', exact: true }).click();
+    await historyRegion.getByRole('button', { name: 'Ver v2', exact: true }).click();
+    releaseDelayedV1();
+
+    await expect(scriptRegion.getByRole('region', { name: 'Documento do roteiro versão 2' })).toBeVisible();
+    await expect(
+      scriptRegion.getByRole('heading', { name: 'Roteiro Editorial v2: Comparativo Prático e Gancho Direto' })
+    ).toBeVisible();
+  });
 });

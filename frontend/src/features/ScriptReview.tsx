@@ -98,6 +98,14 @@ export default function ScriptReview({
   // Preserves Idempotency-Key across network retries of the exact same logical operation
   const idempotencyCacheRef = useRef<{ signature: string; key: string } | null>(null);
   const mountedWorkflowRef = useRef<string>(workflow.id);
+  const inspectControllerRef = useRef<AbortController | null>(null);
+  const inspectRequestIdRef = useRef(0);
+
+  function cancelPendingInspect() {
+    inspectControllerRef.current?.abort();
+    inspectControllerRef.current = null;
+    inspectRequestIdRef.current += 1;
+  }
 
   function getOrCreateIdempotencyKey(signature: string): string {
     if (idempotencyCacheRef.current?.signature === signature) {
@@ -127,12 +135,16 @@ export default function ScriptReview({
 
   useEffect(() => {
     mountedWorkflowRef.current = workflow.id;
+    cancelPendingInspect();
     setScripts([]);
     setSelectedVersion(null);
     setError('');
     setFeedback('');
     setFeedbackError('');
     idempotencyCacheRef.current = null;
+    return () => {
+      cancelPendingInspect();
+    };
   }, [workflow.id]);
 
   useEffect(() => {
@@ -183,6 +195,7 @@ export default function ScriptReview({
 
   async function handleRefreshList() {
     if (!connection || inFlightRef.current || submitting) return;
+    cancelPendingInspect();
     setLoading(true);
     setError('');
     try {
@@ -206,14 +219,40 @@ export default function ScriptReview({
   }
 
   async function handleInspectVersion(item: ScriptRecord) {
-    setSelectedVersion(item.version);
-    if (!connection || inFlightRef.current || submitting) return;
+    inspectControllerRef.current?.abort();
+    const controller = new AbortController();
+    inspectControllerRef.current = controller;
+    const requestId = ++inspectRequestIdRef.current;
+    const targetWorkflowId = workflow.id;
+    const intendedVersion = item.version;
+
+    setSelectedVersion(intendedVersion);
+    setError('');
+
+    if (!connection) return;
     try {
-      const fresh = await getScript(connection, item.id);
-      if (mountedWorkflowRef.current !== workflow.id) return;
-      upsertScriptRecord(fresh);
-    } catch {
-      // Keep already-loaded version from the list if individual endpoint is not mocked
+      const fresh = await getScript(connection, item.id, controller.signal);
+      if (
+        controller.signal.aborted ||
+        inspectRequestIdRef.current !== requestId ||
+        mountedWorkflowRef.current !== targetWorkflowId
+      ) {
+        return;
+      }
+      setScripts(prev => {
+        const filtered = prev.filter(s => s.id !== fresh.id && s.version !== fresh.version);
+        return sortScriptsDesc([fresh, ...filtered]);
+      });
+      setSelectedVersion(intendedVersion);
+    } catch (reason) {
+      if (
+        controller.signal.aborted ||
+        inspectRequestIdRef.current !== requestId ||
+        mountedWorkflowRef.current !== targetWorkflowId
+      ) {
+        return;
+      }
+      setError(formatScriptError(reason));
     }
   }
 
@@ -221,6 +260,7 @@ export default function ScriptReview({
     if (!connection || !isProposalApproved || !proposalArtifactId) return;
     if (inFlightRef.current || submitting) return;
 
+    cancelPendingInspect();
     const targetWorkflowId = workflow.id;
     const signature = `create:${targetWorkflowId}:${workflow.revision}:${proposalArtifactId}:${latestScript?.version ?? 0}`;
     const idempotencyKey = getOrCreateIdempotencyKey(signature);
@@ -269,6 +309,7 @@ export default function ScriptReview({
       return;
     }
 
+    cancelPendingInspect();
     const targetWorkflowId = workflow.id;
     const signature = `review:${latestScript.id}:${latestScript.version}:${decision}:${trimmedFeedback}`;
     const idempotencyKey = getOrCreateIdempotencyKey(signature);
@@ -384,6 +425,16 @@ export default function ScriptReview({
             >
               Atualizar roteiros
             </button>
+            {activeScript && (
+              <button
+                className="button"
+                type="button"
+                disabled={loading || submitting}
+                onClick={() => void handleInspectVersion(activeScript)}
+              >
+                Recarregar versão v{activeScript.version}
+              </button>
+            )}
           </div>
         </div>
       )}
