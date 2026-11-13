@@ -46,6 +46,8 @@ Regressão dos módulos afetados e contratos relacionados, sem ferramentas reais
 
 O fallback `draft` também foi ensaiado sem `HORUS_FFMPEG`, com alinhamento configurado, em basetemp novo `%TEMP%/hd-0e539f8d`: **2 passed em 113,01 s**, incluindo hash da fonte da fábrica. MP4 **540×960 / 48,733333 s**, SHA-256 `f086094a563f2425ef4a2f04de47a33190d6a5bce43928e06c8a26c272600828`, produção `94911fba750a4194b308e214f83d4d04`. O teste confirmou **QC fail esperado**, desvio máximo **1,193 s** e médio **0,191 s**, sem afrouxar limiares para o fallback; a aprovação continua exigindo ciência explícita dos erros. O teste aprovado confirma esse comportamento, não a qualidade editorial do fallback.
 
+Repetição final com o código de `b7aaad236456426d3154d2fa7111ac5e328a07db` e asserções adicionais do aviso de resolução: **2 passed em 139,10 s**, incluindo detecção de deriva da fábrica. Basetemp novo `%TEMP%/hf-0f9f9bfe`, produção `43975ca29778409bbf219c1e7e48b2bd`; MP4 com o **mesmo SHA-256 `0098ba2d7dc5e6f9d14b4af554a5593b4267ea967d2080d1327329f15df0709b`**, 1080×1920 e 48,733333 s. Fábrica **96,828 s**, sobreposição **11,906 s**, render + verificações/extrações **117,125 s**, ASR **7,56 s**. QC novamente `warn`, sem bloqueios, único aviso `asset_provenance`; sincronização e contenção aprovadas por medição. O SHA da fonte `LegendaPalavra.tsx` continuou `aa4688a4affa70d607ae246ebaf47fe01dae102c604ad050fa87d886b4d04e2c`.
+
 ## Histórico anterior / fallback sem libass
 
 As seções seguintes preservam evidências anteriores. A regra de permanência da fábrica descrita abaixo continua aplicável quando `HORUS_FFMPEG` não está configurado; a sobreposição acima corrige esse limite sem modificar a fábrica.
