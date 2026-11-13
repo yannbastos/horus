@@ -14,6 +14,33 @@ from horus_backend.pilot_quality import inspect_pilot_files, validate_pilot_evid
 H1, H2, H3 = 'a' * 64, 'b' * 64, 'c' * 64
 
 
+def model_evidence():
+    evidence = good()
+    synthesis = {'engine':'piper','voice':'Modelo fictício','voice_id':'pt.onnx',
+                 'origin':'local_tts_model', 'model':{'id':'pt.onnx','version':'sha256:'+H3,'sha256':H3}}
+    evidence['narration'].update(synthesis)
+    evidence['assets'][-1].update(origin='local_tts_model',narration=copy.deepcopy(synthesis))
+    return evidence
+
+
+def test_local_model_evidence_strict_provenance():
+    assert validate_pilot_evidence(model_evidence())['blocking_errors'] == []
+    for mutate in (
+        lambda e:e['assets'][-1].update(origin='system_voice'),
+        lambda e:e['narration'].update(origin='system_voice'),
+        lambda e:e['narration']['model'].pop('sha256'),
+        lambda e:e['assets'][-1]['narration']['model'].pop('sha256'),
+        lambda e:e['narration']['model'].update(version=None),
+        lambda e:e['narration'].update(engine='unregistered'),
+        lambda e:e['assets'][-1].pop('narration'),
+        lambda e:e['assets'][-1]['narration'].update(voice_id='another.onnx'),
+        lambda e:e['narration'].update(extra=True),
+    ):
+        evidence = model_evidence()
+        mutate(evidence)
+        assert validate_pilot_evidence(evidence)['blocking_errors'], evidence
+
+
 def good():
     return {
         'schema_version': 1, 'demo_only': True, 'alignment_method': 'measured_sections',

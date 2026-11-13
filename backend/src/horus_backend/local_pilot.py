@@ -20,8 +20,10 @@ import time
 import wave
 
 from .processes import OwnedProcess
+from .narration.providers import PRODUCTION_ORIGINS
 
-DISCLOSURE = 'Narração sintética local Windows SAPI (pt-BR); não é voz humana ou clonada; licença não verificada.'
+def narration_disclosure(provider, voice):
+    return f'Narração sintética local {provider}; voz {voice}; não é voz humana ou clonada; licença não verificada.'
 
 
 def write(path, value):
@@ -37,11 +39,23 @@ async def synthesize(input_path):
     if os.name != 'nt':
         raise ValueError('Piloto requer Windows SAPI offline com voz pt-BR instalada.')
     env = {k:v for k,v in os.environ.items() if k.upper() in {'PATH','SYSTEMROOT','WINDIR','TEMP','TMP','COMSPEC','PATHEXT'}}
-    owned = await OwnedProcess.start([sys.executable, str(Path(__file__).with_name('local_pilot_windows.py')), str(input_path)], env=env, cwd=input_path.parent)
+    request = json.loads(input_path.read_text(encoding='utf-8'))
+    if request.get('narration'):
+        for name in ('HORUS_PIPER_EXECUTABLE', 'HORUS_PIPER_MODELS'):
+            if os.environ.get(name): env[name] = os.environ[name]
+        # Módulo do mesmo backend; PYTHONPATH não vem do operador.
+        env['PYTHONPATH'] = str(Path(__file__).resolve().parents[1])
+        command = [sys.executable, '-m', 'horus_backend.narration.production_worker', str(input_path)]
+    else:
+        command = [sys.executable, str(Path(__file__).with_name('local_pilot_windows.py')), str(input_path)]
+    owned = await OwnedProcess.start(command, env=env, cwd=input_path.parent)
     try:
         # Limite explícito de geração, nunca cortar texto para caber em estimativa.
         stdout, stderr = await asyncio.wait_for(owned.process.communicate(), timeout=1200)
         if owned.process.returncode:
+            error_path = input_path.with_suffix('.error.json')
+            if error_path.is_file():
+                raise ValueError(json.loads(error_path.read_text(encoding='utf-8'))['error'])
             raise ValueError('SAPI/cenas locais indisponíveis; confirme voz offline pt-BR e política de scripts local, sem bypass.')
     finally:
         await owned.stop()
@@ -51,7 +65,7 @@ async def synthesize(input_path):
 def wav_info(path):
     with wave.open(str(path), 'rb') as audio:
         if audio.getnchannels() != 1 or audio.getsampwidth() != 2 or audio.getcomptype() != 'NONE':
-            raise ValueError('SAPI deve produzir WAV PCM mono de 16 bits.')
+            raise ValueError('Narração deve produzir WAV PCM mono de 16 bits.')
         frames, rate = audio.getnframes(), audio.getframerate()
         duration = frames / rate
         if not math.isfinite(duration) or duration <= 0:
@@ -236,18 +250,28 @@ def prepare(root, folder, plan, *, alignment_model=None, progress=None):
         raise ValueError('Texto contém controle incompatível com fala integral SAPI.')
     request = root / 'sapi-input.json'
     size = [1080,1920] if plan.get('render_quality','draft') == 'final' else [540,960]
-    write(request, {'folder':str(folder), 'sections':sections, 'scene_size':size})
-    overlay = configure_caption_overlay(root,folder)
+    selection = {k: plan['audio'][k] for k in ('provider','voice_id') if plan.get('audio',{}).get(k)}
+    write(request, {'folder':str(folder), 'sections':sections, 'scene_size':size, 'narration':selection})
     asyncio.run(synthesize(request))
+    overlay = configure_caption_overlay(root,folder)
     voice = json.loads((folder/'voice.json').read_text(encoding='utf-8-sig'))
-    if voice['culture'] != 'pt-BR' or not voice['voice']:
-        raise ValueError('Voz medida não é pt-BR.')
+    if not voice['voice']:
+        raise ValueError('Voz medida ausente.')
+    engine = voice.get('engine', 'windows_sapi')
+    origin = voice.get('origin', 'system_voice')
+    if selection and (engine != selection['provider'] or voice.get('voice_id') != selection['voice_id']):
+        raise ValueError('Síntese diverge do provedor/voz registrados no plano.')
+    synthesis = {'engine':engine, 'voice':voice['voice'], 'voice_id':voice.get('voice_id'),
+                 'origin':origin, 'model':voice.get('model')}
+    attribution = engine + '; ' + voice['voice'] + '; licença não verificada.'
     cursor, lines, subtitles, words, assets, evidence_assets, scenes = 0.0, [], [], [], [], [], []
     generated = datetime.now(timezone.utc).isoformat()
     paths = []
     def add_asset(path, asset_id, origin, license, attribution):
         evidence_assets.append({'id':asset_id,'relative_path':path.relative_to(root).as_posix(),
             'sha256':sha(path),'origin':origin,'license':license,'attribution':attribution,'generated_at':generated})
+        if origin in {'system_voice','local_tts_model'}:
+            evidence_assets[-1]['narration'] = synthesis
     params = None
     with wave.open(str(folder/'fixture.wav'), 'wb') as combined:
         for section, scene in zip(sections,plan['scenes']):
@@ -274,7 +298,7 @@ def prepare(root, folder, plan, *, alignment_model=None, progress=None):
             image = folder/f'scene-{n}.png'
             paths.append({'kind':'manifest','relative_path':image.with_suffix('.layout.json').relative_to(root).as_posix()})
             add_asset(image,f'scene-{n}','original_local','original','Cena informativa original gerada localmente a partir do roteiro aprovado.')
-            add_asset(path,f'section-{n}','system_voice','unverified',voice['voice']+'; '+DISCLOSURE)
+            add_asset(path,f'section-{n}',origin,'unverified',attribution)
             assets.append({'linha':n,'tipo':'imagem','arquivo':image.name,'fonte':'original_local',
                 'licenca':'original; piloto não publicável','exige_credito':False,'publicavel':False})
             paths.extend([{'kind':'scene','relative_path':image.relative_to(root).as_posix()},
@@ -285,12 +309,12 @@ def prepare(root, folder, plan, *, alignment_model=None, progress=None):
         raise ValueError('Duração concatenada diverge das seções.')
     write(root/'narration-signal.json',signal_measurements(folder/'fixture.wav'))
     paths.append({'kind':'manifest','relative_path':'narration-signal.json'})
-    assets.append({'tipo':'narracao','arquivo':'fixture.wav','fonte':'windows_sapi_local_tts',
+    assets.append({'tipo':'narracao','arquivo':'fixture.wav','fonte':engine+'_local_tts',
         'licenca':'não verificada; exige aceite humano','exige_credito':False,'publicavel':False})
-    add_asset(folder/'fixture.wav','narration','system_voice','unverified',voice['voice']+'; '+DISCLOSURE)
+    add_asset(folder/'fixture.wav','narration',origin,'unverified',attribution)
     write(folder/'manifesto_assets.json',{'assets':assets})
     write(folder/'alinhamento.json',{'audio':'fixture.wav','duracao_audio':measured,
-        'motor':'windows_sapi_measured_sections_heuristic_subtitles','palavras':words,'linhas':lines})
+        'motor':engine+'_measured_sections_heuristic_subtitles','palavras':words,'linhas':lines})
     from .production_contract import _timestamp
     (folder/'fixture.srt').write_text('\n'.join(f"{i}\n{_timestamp(s['start'])} --> {_timestamp(s['end'])}\n{s['text']}\n"
         for i,s in enumerate(subtitles,1)),encoding='utf-8')
@@ -298,14 +322,15 @@ def prepare(root, folder, plan, *, alignment_model=None, progress=None):
                       ('alinhamento.json','manifest'),('fixture.srt','subtitles')]:
         paths.append({'kind':kind,'relative_path':(folder/name).relative_to(root).as_posix()})
     write(root/'pilot-measurements.json',{'schema_version':1,'demo_only':True,
-        'narration':{'kind':'local_tts','engine':'windows_sapi','voice':voice['voice'],
+        'narration':{'kind':'local_tts','engine':engine,'voice':voice['voice'],
+                     'voice_id':voice.get('voice_id'), 'origin':origin, 'model':voice.get('model'),
                      'duration_seconds':measured,'sha256':sha(folder/'fixture.wav')},
         'scenes':scenes,'subtitles':subtitles,'assets':evidence_assets,'alignment_method':'measured_sections'})
     paths.append({'kind':'manifest','relative_path':'pilot-measurements.json'})
     # A fonte é deliberadamente estimated: somente as seções foram medidas.
     word_document = {'schema_version':1,'narration_sha256':sha(folder/'fixture.wav'),
         'duration_seconds':measured,'source':'estimated',
-        'engine':{'name':'windows_sapi_measured_sections_heuristic_subtitles','voice':voice['voice']},'words':[]}
+        'engine':{'name':engine+'_measured_sections_heuristic_subtitles','voice':voice['voice']},'words':[]}
     offset = 0
     for section, line in zip(sections,lines):
         tokens = list(re.finditer(r'\S+',section['text']))
@@ -357,7 +382,8 @@ def prepare(root, folder, plan, *, alignment_model=None, progress=None):
          'license':{'id':'original' if a['origin']=='original_local' else None,
                     'name':None,'url':None,'commercial_use':'unknown','attribution_required':None,
                     'verified_by':None,'verified_at':None},
-         'status':'unverified','notes':a['attribution']} for a in evidence_assets]}
+         'status':'unverified','notes':(json.dumps(a['narration'],ensure_ascii=False)
+                                     if 'narration' in a else a['attribution'])} for a in evidence_assets]}
     if overlay:
         font = Path(overlay['font_path'])
         relative = font.relative_to(root).as_posix()
@@ -394,7 +420,7 @@ def finalize(root, folder):
     evidence['video'] = {'duration_seconds':float(stream['duration']),'width':int(stream['width']),
         'height':int(stream['height']),'frames':int(stream['nb_read_frames'])}
     write(root/'pilot-evidence.json',evidence)
-    return {'narration_kind':'local_tts','narration_disclosure':DISCLOSURE,'alignment_method':evidence['alignment_method']}
+    return {'narration_kind':'local_tts','narration_disclosure':narration_disclosure(evidence['narration']['engine'], evidence['narration']['voice']),'alignment_method':evidence['alignment_method']}
 
 
 def confirmed_metadata(root, artifacts):
@@ -408,14 +434,18 @@ def confirmed_metadata(root, artifacts):
         raise ValueError('Piloto sem manifesto de evidência registrado.')
     evidence = json.loads((root/'pilot-evidence.json').read_text(encoding='utf-8'))
     narration = evidence['narration']
-    if (narration['kind'] != 'local_tts' or narration['engine'] != 'windows_sapi'
+    from .pilot_quality import validate_pilot_evidence
+    verdict = validate_pilot_evidence(evidence,word_timings=registered_json(root,artifacts,'word-timings.json'))
+    if any(not error.startswith('subtitles_timing:') for error in verdict['blocking_errors']):
+        raise ValueError('Manifesto de narração inválido.')
+    if (narration['kind'] != 'local_tts' or narration['engine'] not in PRODUCTION_ORIGINS
             or not isinstance(narration['voice'],str) or not narration['voice'].strip()
             or evidence['alignment_method'] not in {'measured_sections','forced_alignment'} or evidence['demo_only'] is not True):
         raise ValueError('Narração local não comprovada.')
     audio_asset = next(item for item in evidence['assets'] if item['sha256']==narration['sha256'])
     audio = registered.get(audio_asset['relative_path'])
     if (not audio or audio['kind'] != 'audio' or audio['sha256'] != narration['sha256']
-            or audio_asset['origin'] != 'system_voice' or audio_asset['license'] != 'unverified'):
+            or audio_asset['origin'] != PRODUCTION_ORIGINS[narration['engine']] or audio_asset['license'] != 'unverified'):
         raise ValueError('WAV ou proveniência da narração não correspondem à evidência.')
     _, duration = wav_info(root/audio['relative_path'])
     expected = narration['duration_seconds']
@@ -423,7 +453,7 @@ def confirmed_metadata(root, artifacts):
         raise ValueError('Duração da narração não corresponde ao WAV registrado.')
     if not any(item['kind']=='video' for item in artifacts):
         raise ValueError('Piloto sem vídeo registrado.')
-    return {'narration_kind':'local_tts','narration_disclosure':DISCLOSURE,'alignment_method':evidence['alignment_method']}
+    return {'narration_kind':'local_tts','narration_disclosure':narration_disclosure(evidence['narration']['engine'], evidence['narration']['voice']),'alignment_method':evidence['alignment_method']}
 
 
 def quality_report(root, folder, production_id, *, ffmpeg=None, ffprobe=None):

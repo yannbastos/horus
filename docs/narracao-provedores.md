@@ -1,8 +1,47 @@
 ﻿# Provedores de narração (HOR-132 / HOR-053)
 
 Implementado em 13/11/2026: registro extensível `NarrationProvider` com status,
-vozes, estimativa, prévia e síntese. Não depende do Hermes. Não altera
-`ProductionRequest` nem integra a seleção ao worker de produção neste incremento.
+vozes, estimativa, prévia e síntese. Não depende do Hermes. A produção
+`local_pilot` usa o provedor e a voz do pedido ou a preferência salva.
+
+## Seleção na produção
+
+`POST /v1/scripts/{id}/productions` aceita o campo opcional
+`narration: {provider, voice_id}`, somente em `local_pilot`. A precedência é:
+pedido explícito, `narration-preference.json` e primeira voz Windows SAPI pt-BR
+instalada (o padrão anterior). Preferência existente inválida bloqueia o pedido;
+voz/provedor indisponível bloqueia a produção com motivo, sem troca silenciosa.
+
+O recibo canônico inclui a escolha efetiva: reutilizar a chave com outra voz,
+provedor ou preferência efetiva retorna 409. A escolha fica em `plan.audio.provider`
+e `plan.audio.voice_id`, sem migração de banco. Alterações posteriores dos Ajustes
+não mudam o plano enfileirado. Recibos antigos sem seleção continuam recuperáveis
+pelo pedido padrão sem preferência; planos antigos mantêm o helper SAPI anterior.
+
+O worker chama `NarrationProvider.synthesize` uma vez por seção em um processo
+possuído, com timeout global de síntese de 1200 s e encerramento da árvore por
+cancelamento/timeout. Cada comando local do adaptador tem limite de 60 s.
+SAPI reutiliza o helper COM existente; Piper usa seu executável separado. As cenas
+continuam no helper Windows. Não há download, Hermes ou troca de renderer.
+
+Seções WAV e WAV combinado registram engine, voz, identificador e origem:
+`system_voice` para SAPI, `local_tts_model` para Piper. Modelos locais exigem
+identificador, versão de conteúdo (`sha256:<hash>`) e SHA-256 dos pesos, conferido
+antes/depois da síntese e entre seções. O manifesto de evidências guarda a
+estrutura; `asset-provenance.json` mantém o mesmo conteúdo em `notes`, sem alterar
+seu contrato. Licenças permanecem `unverified`, sem atribuição de direitos automática.
+
+O QC aceita somente motores locais registrados, com origem e identidade coerentes;
+campos inesperados, modelo sem hash ou Piper declarado `system_voice` reprovam.
+Timestamps/flags do provedor não concedem `speech_aligned`: Whisper mede o WAV
+combinado, seguido das mesmas legendas, QC e revisão humana. A disclosure existente
+passa a citar engine e nome da voz efetivos; a interface não foi alterada.
+
+Produção paga permanece **blocked**, inclusive com credencial e flag habilitadas:
+o pedido não aceita autorização e o worker bloqueia antes de consultar credenciais
+ou transmitir texto. A autorização interna preparada no adaptador continua vinculada
+ao hash do texto, voz e custo estimado; habilitar uma autorização por produção
+exigirá o fluxo humano referente ao roteiro integral e ao custo estimado integral.
 
 ## API local autenticada
 
@@ -34,7 +73,7 @@ fazem parte da API padrão; versões, fontes e hashes estão em `backend/uv.lock
 ## Motores locais
 
 **Windows SAPI:** enumera vozes instaladas e sintetiza em processo Python separado,
-reutilizando o wrapper COM de `local_pilot_windows.py`, sem modificá-lo. Cada voz
+reutilizando o wrapper COM de `local_pilot_windows.py`. Cada voz
 mantém licença comercial `unknown`: disponibilidade no Windows não comprova direitos.
 O processo recebe texto por stdin JSON, como BSTR literal, sem interpretar SSML.
 

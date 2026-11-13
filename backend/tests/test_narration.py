@@ -26,6 +26,9 @@ class MemoryKeyring(KeyringBackend):
 
 @pytest.fixture(autouse=True)
 def no_network(monkeypatch):
+    for name in ('HORUS_PIPER_EXECUTABLE','HORUS_PIPER_MODELS','HORUS_NARRATION_PAID_ENABLED',
+                 'HORUS_ELEVENLABS_PRICE_PER_1K_CHARS','HORUS_ELEVENLABS_CURRENCY'):
+        monkeypatch.delenv(name,raising=False)
     def blocked(*args, **kwargs): raise AssertionError('Network forbidden')
     original_connect = socket.socket.connect
     def guarded_connect(sock, address):

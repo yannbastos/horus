@@ -73,6 +73,8 @@ class PlanScene(_Plan):
 
 class PlanAudio(_Plan):
     kind: Literal["fixture_tone", "local_tts"] = "fixture_tone"
+    provider: str | None = Field(default=None, min_length=1, max_length=80)
+    voice_id: str | None = Field(default=None, min_length=1, max_length=1000)
     real_voice: ExactFalse = False
     disclosure: str = "Áudio de fixture local (tom): sem narração de voz real."
 
@@ -108,6 +110,10 @@ class ProductionPlan(_Plan):
 
     @model_validator(mode="after")
     def coherent(self):
+        if (self.audio.provider is None) != (self.audio.voice_id is None):
+            raise ValueError('provedor e voz devem ser informados juntos.')
+        if self.audio.provider is not None and self.mode != 'local_pilot':
+            raise ValueError('seleção de narração requer local_pilot.')
         if (self.audio.kind == "local_tts") != (self.mode == "local_pilot"):
             raise ValueError("tipo de áudio planejado incompatível com modo.")
         if self.render_quality == "final" and self.mode != "local_pilot":
@@ -141,7 +147,7 @@ def line_seconds(narration: str) -> float:
 
 def build_production_plan(script: ScriptDocument, *, script_id: str, script_version: int,
                           script_content_hash: str, mode: Literal["simulated", "local_demo", "local_pilot"] = "simulated",
-                          render_quality: Literal["draft", "final"] = "draft") -> ProductionPlan:
+                          render_quality: Literal["draft", "final"] = "draft", narration: dict | None = None) -> ProductionPlan:
     """Plano determinístico: mesma entrada, mesmo plano. `script_id`/versão/hash vêm do servidor.
 
     Levanta `ValidationError`/`ValueError` para roteiro inválido ou metadados fora do formato (sem coerção).
@@ -161,7 +167,7 @@ def build_production_plan(script: ScriptDocument, *, script_id: str, script_vers
     return ProductionPlan(
         mode=mode, render_quality=render_quality, script_id=script_id, script_version=script_version, script_content_hash=script_content_hash,
         title=document.title, roteiro=PlanRoteiro(titulo=document.title, linhas=lines), scenes=scenes,
-        audio=PlanAudio(kind="local_tts", disclosure="TTS local solicitado; voz e duração só confirmadas após WAV medido; licença não verificada.") if mode == "local_pilot" else PlanAudio(),
+        audio=PlanAudio(kind="local_tts", **(narration or {}), disclosure="TTS local solicitado; voz e duração só confirmadas após WAV medido; licença não verificada.") if mode == "local_pilot" else PlanAudio(),
         total_duration=cursor, sources=list(dict.fromkeys(ref for scene in scenes for ref in scene.source_ids)))
 
 

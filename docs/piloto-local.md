@@ -1,5 +1,81 @@
 # Piloto audiovisual local — HOR-054 / HOR-056
 
+## Provedor e voz na produção — HOR-132, 13/11/2026
+
+O pedido aceita `narration: {provider, voice_id}` opcional em `local_pilot`.
+Exemplo: `{"expected_version":1,"mode":"local_pilot","narration":{"provider":"piper","voice_id":"pt_BR.onnx"}}`.
+Sem seleção explícita, usa a preferência dos Ajustes; sem preferência, preserva
+a primeira voz SAPI pt-BR instalada. A escolha efetiva é persistida no plano e
+no recibo de idempotência; outra escolha com a mesma chave retorna 409.
+Provedor/voz indisponível bloqueia a produção, sem substituir por SAPI ou por tom.
+
+A síntese passa pelo registro de provedores, em processo possuído pelo worker,
+por seção. Timeout e cancelamento encerram seus subprocessos. Piper exige binário
+e modelos já preparados; nenhum download ocorre no job. Provedores pagos continuam
+bloqueados antes de consultar o cofre ou enviar texto, independentemente de flags.
+O campo de autorização não é exposto nesta API.
+
+Cada WAV registra origem, engine e voz. Modelos locais registram versão e SHA-256
+dos pesos; a licença continua não verificada. A disclosure cita o provedor e a voz
+efetivos. Whisper, limites de QC e aprovação humana valem para todos os provedores;
+nenhum resultado do adaptador substitui o alinhamento acústico. `demo_only=true`
+e `publishable=false` permanecem. Detalhes em [narração](narracao-provedores.md).
+
+Os testes unitários isolam `HORUS_FFMPEG`, `HORUS_ALIGNMENT_MODEL`,
+`HORUS_SUBTITLE_FONT` e `HORUS_PILOT_FACTORY` quando essas configurações não são o
+objeto do teste. A seleção de cues cobre explicitamente libass (fim acústico)
+e regra da fábrica (com manutenção), com/sem alinhamento válido. Ensaios reais
+continuam opt-in e preservam as variáveis fornecidas pelo operador.
+
+### Ensaio SAPI pelo registro
+
+Ensaio em basetemp novo `%TEMP%/hn-459ac077`, produção
+`0221edbf445e47eeb2b0296d41c8025b`: **1 passed em 129,03 s**, incluindo
+cancelamento durante síntese, render final, revisão fictícia e reinício.
+Executado com `HORUS_PILOT_FACTORY`, `HORUS_ALIGNMENT_MODEL`, `HORUS_FFMPEG`
+e `HORUS_PILOT_QUALITY=final`, usando os recursos já preparados descritos abaixo.
+
+Engine `windows_sapi`, voz **Microsoft Maria Desktop - Portuguese(Brazil)**;
+o plano e a evidência registram o token SAPI efetivo. WAV combinado: **47,912925 s**,
+SHA-256 `2fc4667c7fb878d946f116b688ea7c94c90077d778e55affb27150c3e57bfa4a`.
+MP4: **1080×1920, 30 fps, 1462 frames, 48,733333 s**, SHA-256
+`0098ba2d7dc5e6f9d14b4af554a5593b4267ea967d2080d1327329f15df0709b`.
+Whisper mediu **77/77 palavras casadas**, zero interpoladas, em **6,34 s**.
+QC **warn**, `blocking_errors=[]`; único aviso: licença/proveniência não verificada.
+As 27 cues tiveram desvio máximo/médio de **0,000 s** contra os tempos medidos.
+
+Fonte dos tempos: relógios monotônicos em `alignment-report.json` e
+`render/validation.json`: fábrica **96,343 s**, sobreposição **5,109 s**,
+render com verificações **107,812 s**. O teste não avalia naturalidade nem constitui
+aceite humano da voz. Piper nesta integração foi coberto por mocks e contratos;
+não foi executada síntese Piper real, serviço pago, frontend ou pacote instalado.
+
+Artefatos preservados sob `%TEMP%/hn-459ac077/test_real_local_pilot_render_r0/data/productions/0221edbf445e47eeb2b0296d41c8025b/`.
+Os dois primeiros ensaios falharam antes da entrega: descoberta de configuração
+global no ambiente mínimo e import indireto de `keyring` no Python independente
+da fábrica; ambos foram corrigidos e o segundo recebeu regressão sem site-packages.
+
+### Verificações deste incremento
+
+- Suíte completa durante a implementação, sem as quatro variáveis operacionais:
+  `python -m pytest backend/tests -q --tb=short`: **1047 passed, 10 skipped**, 148,59 s.
+- Suíte completa com as quatro variáveis definidas para caminhos fictícios:
+  **1049 passed, 8 skipped, 2 deselected**, 152,61 s. Os dois ensaios opt-in de
+  `test_local_pilot.py` foram excluídos por seus IDs `tests/test_local_pilot.py::test_real_sapi_owned_process_cancels_without_finishing`
+  e `tests/test_local_pilot.py::test_real_local_pilot_render_review_and_restart` via
+  `--deselect`; o ensaio real final foi executado separadamente com caminhos válidos.
+- Regressão afetada (piloto, produção, contrato, narração, QC, alinhamento e mídia):
+  **405 passed, 8 skipped**, 30,15 s; última confirmação dos módulos de piloto,
+  produção e síntese: **107 passed, 6 skipped**, 23,86 s.
+- Após isolar também as variáveis de Piper/provedor pago nos testes, narração e
+  produção: **85 passed, 3 skipped**, 23,89 s. `git diff --check` aprovado.
+
+Todos os comandos usaram `backend/.venv/Scripts/python.exe`. Os testes novos cobrem
+preferência, escolha explícita, padrão SAPI, recibo antigo, 409 por escolha diferente,
+indisponibilidade sem fallback, bloqueio pago sem consulta ao cofre, timeout e
+cancelamento com processo real temporário, modelo alterado durante síntese,
+proveniência negativa e regressões simulated/local_demo. Nenhum limiar de QC mudou.
+
 ## Legenda medida e preset final — 13/11/2026
 
 O pedido de produção aceita `render_quality: "draft" | "final"`. O padrão permanece `draft` (540×960); `final` (1080×1920) é aceito somente em `local_pilot`. A opção fica no plano JSON persistido, sem migração de banco; planos e recibos antigos continuam interpretados como `draft`. Exemplo de corpo para `POST /v1/scripts/{id}/productions`: `{"expected_version":1,"mode":"local_pilot","render_quality":"final"}`. A seleção ainda não foi acrescentada à interface.

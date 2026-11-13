@@ -128,11 +128,13 @@ def test_metadata_cannot_claim_tts_without_registered_evidence(tmp_path):
         confirmed_metadata(tmp_path,[])
 
 
-def test_estimated_words_provenance_quality_and_registered_hashes(tmp_path,monkeypatch):
+@pytest.mark.parametrize('provider',['windows_sapi','piper'])
+def test_estimated_words_provenance_quality_and_registered_hashes(tmp_path,monkeypatch,provider):
     from horus_backend import local_pilot as pilot
     from horus_backend.production import inspect_artifact
     from test_production_contract import build
-    plan=build(mode='local_pilot').model_dump(mode='json')
+    plan=build(mode='local_pilot',narration={'provider':provider,
+        'voice_id':'pt.onnx' if provider=='piper' else 'fixture'}).model_dump(mode='json')
     folder=tmp_path/'canais/demo/videos/fixture'
     folder.mkdir(parents=True)
     pilot.write(tmp_path/'plan.json',plan)
@@ -144,7 +146,10 @@ def test_estimated_words_provenance_quality_and_registered_hashes(tmp_path,monke
                 audio.writeframes(b''.join(struct.pack('<h',round(3000*math.sin(2*math.pi*440*i/22050))) for i in range(22050)))
             (folder/f"scene-{section['n']}.png").write_bytes(b'\x89PNG\r\n\x1a\nunit-fixture')
             pilot.write(folder/f"scene-{section['n']}.layout.json",{})
-        pilot.write(folder/'voice.json',{'culture':'pt-BR','voice':'Voz fictícia do teste'})
+        pilot.write(folder/'voice.json',{'culture':'pt-BR','voice':'Voz fictícia do teste',
+            'engine':provider,'voice_id':'pt.onnx' if provider=='piper' else 'fixture',
+            'origin':'local_tts_model' if provider=='piper' else 'system_voice',
+            'model':{'id':'pt.onnx','version':'1','sha256':'a'*64} if provider=='piper' else None})
     monkeypatch.setattr(pilot,'synthesize',synthetic_inputs)
     paths=pilot.prepare(tmp_path,folder,plan)
     words=json.loads((tmp_path/'word-timings.json').read_text(encoding='utf-8'))
@@ -155,16 +160,29 @@ def test_estimated_words_provenance_quality_and_registered_hashes(tmp_path,monke
     (folder/'render/short-rascunho.mp4').write_bytes(b'\0\0\0\x18ftypunit-fixture')
     evidence=json.loads((tmp_path/'pilot-measurements.json').read_text(encoding='utf-8'))
     evidence['video']={'duration_seconds':3.8,'width':540,'height':960,'frames':114}
+    expected_origin = 'system_voice' if provider=='windows_sapi' else 'local_tts_model'
+    for asset in evidence['assets']:
+        if asset['id'].startswith('section-') or asset['id']=='narration':
+            assert asset['origin']==expected_origin and asset['license']=='unverified'
+            assert asset['narration']['engine']==provider
+            if provider=='piper': assert asset['narration']['model']['sha256']=='a'*64
     pilot.write(tmp_path/'pilot-evidence.json',evidence)
     pilot.quality_report(tmp_path,folder,'unit-production')
     paths += [{'relative_path':'plan.json','kind':'plan'},
+              {'relative_path':'pilot-evidence.json','kind':'manifest'},
               {'relative_path':'quality-report.json','kind':'manifest'},
               {'relative_path':(folder/'render/short-rascunho.mp4').relative_to(tmp_path).as_posix(),'kind':'video'}]
     artifacts=[inspect_artifact(tmp_path,p['relative_path'],p['kind']) for p in paths]
+    confirmed = pilot.confirmed_metadata(tmp_path,artifacts)
+    assert confirmed['narration_kind']=='local_tts'
+    assert provider in confirmed['narration_disclosure'] and 'Voz fictícia do teste' in confirmed['narration_disclosure']
     metadata=pilot.confirmed_media(tmp_path,artifacts,'unit-production')
     assert metadata['speech_aligned'] is False
     assert metadata['quality_report']['status']=='warn'
     assert metadata['asset_provenance'] is not None
+    for asset in metadata['asset_provenance']['assets']:
+        if asset['kind']=='voice':
+            assert json.loads(asset['notes'])['engine']==provider
     assert all(a['status']=='unverified' and a['license']['commercial_use']=='unknown' for a in metadata['asset_provenance']['assets'])
     assert all(c['method']=='estimated' for c in metadata['quality_report']['checks'] if c['category']=='sync')
     # Somente fixture do contrato: nenhuma inferência acústica real é alegada neste teste.
