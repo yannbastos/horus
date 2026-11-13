@@ -13,9 +13,27 @@ export type ScriptSection = {
 
 export type ScriptDocument = {
   schema_version: 1;
-  simulated: true;
+  simulated: boolean;
   title: string;
   sections: ScriptSection[];
+};
+
+export type ScriptOrigin = 'simulated' | 'human';
+
+export type ScriptSectionChangeField = 'kind' | 'heading' | 'narration' | 'source_ids';
+
+export type ScriptSectionChange = {
+  id: string;
+  fields: ScriptSectionChangeField[];
+};
+
+export type ScriptChanges = {
+  previous_version: number;
+  title_changed: boolean;
+  sections_added: string[];
+  sections_removed: string[];
+  sections_changed: ScriptSectionChange[];
+  order_changed: boolean;
 };
 
 export type ScriptStatus = 'awaiting_review' | 'approved' | 'rejected' | 'changes_requested';
@@ -36,6 +54,9 @@ export type ScriptRecord = {
   proposal_content_hash: string;
   version: number;
   status: ScriptStatus;
+  origin?: ScriptOrigin;
+  authored_by?: ScriptOrigin;
+  changes?: ScriptChanges | null;
   document: ScriptDocument;
   created_at: string;
   review: ScriptReviewInfo | null;
@@ -50,11 +71,33 @@ export type CreateScriptPayload = {
   proposal_artifact_id: string;
 };
 
+export type CreateManualScriptPayload = {
+  source: 'manual';
+  expected_revision: number;
+  proposal_artifact_id: string;
+  document: ScriptDocument;
+};
+
+export type CreateScriptVersionPayload = {
+  expected_version: number;
+  document: ScriptDocument;
+};
+
 export type ReviewScriptPayload = {
   expected_version: number;
   decision: ScriptReviewDecision;
   feedback?: string;
 };
+
+export function getScriptOrigin(record: Pick<ScriptRecord, 'origin' | 'authored_by' | 'document'>): ScriptOrigin {
+  if (record.origin === 'human' || record.origin === 'simulated') {
+    return record.origin;
+  }
+  if (record.authored_by === 'human' || record.authored_by === 'simulated') {
+    return record.authored_by;
+  }
+  return record.document.simulated ? 'simulated' : 'human';
+}
 
 export function sortScriptsDesc(items: ScriptRecord[]): ScriptRecord[] {
   return [...items].sort((a, b) => b.version - a.version);
@@ -115,6 +158,44 @@ export async function createWorkflowScript(
     body: JSON.stringify({
       expected_revision: payload.expected_revision,
       proposal_artifact_id: payload.proposal_artifact_id,
+    }),
+    signal,
+  });
+}
+
+export async function createManualWorkflowScript(
+  connection: Connection,
+  workflowId: string,
+  payload: CreateManualScriptPayload,
+  idempotencyKey: string = crypto.randomUUID(),
+  signal?: AbortSignal
+): Promise<ScriptRecord> {
+  return api<ScriptRecord>(connection, `/v1/workflows/${encodeURIComponent(workflowId)}/scripts`, {
+    method: 'POST',
+    headers: { 'Idempotency-Key': idempotencyKey },
+    body: JSON.stringify({
+      source: 'manual',
+      expected_revision: payload.expected_revision,
+      proposal_artifact_id: payload.proposal_artifact_id,
+      document: payload.document,
+    }),
+    signal,
+  });
+}
+
+export async function createScriptVersion(
+  connection: Connection,
+  scriptId: string,
+  payload: CreateScriptVersionPayload,
+  idempotencyKey: string = crypto.randomUUID(),
+  signal?: AbortSignal
+): Promise<ScriptRecord> {
+  return api<ScriptRecord>(connection, `/v1/scripts/${encodeURIComponent(scriptId)}/versions`, {
+    method: 'POST',
+    headers: { 'Idempotency-Key': idempotencyKey },
+    body: JSON.stringify({
+      expected_version: payload.expected_version,
+      document: payload.document,
     }),
     signal,
   });
