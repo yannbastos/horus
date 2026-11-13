@@ -55,7 +55,9 @@ def main(path):
         settings = SimpleNamespace(data_dir=Path(path).parent, narration_paid_enabled=False,
             elevenlabs_price_per_1k_chars=None, elevenlabs_currency=None,
             piper_executable=os.environ.get('HORUS_PIPER_EXECUTABLE'),
-            piper_models=os.environ.get('HORUS_PIPER_MODELS'))
+            piper_models=os.environ.get('HORUS_PIPER_MODELS'),
+            kokoro_python=os.environ.get('HORUS_KOKORO_PYTHON'),
+            kokoro_model_dir=os.environ.get('HORUS_KOKORO_MODEL_DIR'))
         synthesize_sections(request, provider_registry(settings))
     except (ValueError, NarrationError) as error:
         # Somente códigos/estado controlados, nunca texto do roteiro ou erro bruto de ferramenta.

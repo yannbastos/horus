@@ -316,3 +316,47 @@ Novos caminhos locais preservados:
 ```
 
 O script de auditoria usa FFmpeg e Pillow já instalados pelos locks na sandbox da fábrica, somente para extrair/analisar o MP4 local. Não integra um segundo renderer nem copia o módulo QC ao backend. O relatório registra hash do módulo QC ensaiado e os valores observados; as capturas são artefatos externos de auditoria, sem alterar o registro da produção concluída.
+
+## Configuração opcional do Kokoro (HOR-132)
+
+O ambiente isolado da prova pode ser usado em prévias e na produção, sem instalar
+Kokoro no backend. Prepare os arquivos fora da produção conforme a seção 6 de
+[avaliação de vozes](avaliacao-vozes.md); o adaptador nunca baixa nada.
+
+```powershell
+$env:HORUS_KOKORO_PYTHON = "$env:LOCALAPPDATA/Horus/tools/kokoro-proof/venv/Scripts/python.exe"
+$env:HORUS_KOKORO_MODEL_DIR = "$env:LOCALAPPDATA/Horus/tools/kokoro-proof/model"
+$env:HORUS_PILOT_FACTORY = "$env:TEMP/horus-m4/backend-factory-demo"
+$env:HORUS_ALIGNMENT_MODEL = "$env:LOCALAPPDATA/Horus/models/whisper"
+$env:HORUS_FFMPEG = "$env:LOCALAPPDATA/Horus/tools/ffmpeg/n8.1.3-35-gf1acb0a266/ffmpeg-n8.1.3-35-gf1acb0a266-win64-gpl-8.1/bin/ffmpeg.exe"
+& backend/.venv/Scripts/python.exe -m pytest backend/tests/test_narration_kokoro.py -k real -q -s --basetemp "$env:TEMP/horus-kokoro-$([guid]::NewGuid().ToString('N'))"
+```
+
+Reinicie o backend após configurar. Em Ajustes/Narração, selecione Kokoro e uma
+voz (`pf_dora`, `pm_alex`, `pm_santa`), gere a prévia e salve a preferência.
+A seleção explícita na API é `narration:{provider:"kokoro",voice_id:"pf_dora"}`.
+Sem configuração o motor fica `not_installed`; hash divergente bloqueia com motivo.
+Pesos Apache-2.0, mas uso comercial permanece `unknown` e proveniência `unverified`
+por causa das dúvidas sobre dados de treino (TTS proprietários/CC BY).
+A síntese é em processo separado; veja [limites e proveniência](narracao-provedores.md#kokoro-local-opcional).
+Os testes reais geram somente artefatos locais fictícios e não aprovam/publicam o vídeo.
+
+### Evidência do incremento (13/11/2026)
+
+Comandos e resultados medidos neste worktree:
+
+- `& backend/.venv/Scripts/python.exe -m pytest backend/tests/test_narration.py backend/tests/test_narration_production.py backend/tests/test_narration_kokoro.py backend/tests/test_production.py backend/tests/test_pilot_quality.py backend/tests/test_av_quality.py backend/tests/test_speech_alignment.py -q`: **230 passed, 7 skipped**, 31,85 s (ensaios condicionais sem variáveis).
+- Após a última asserção do registro: os três arquivos `test_narration*.py` acima: **54 passed, 2 skipped**, 3,24 s.
+- Com as cinco variáveis explícitas da configuração acima, `-m pytest backend/tests/test_narration_kokoro.py -q -s --basetemp <pasta nova>`: **13 passed**, 101,37 s, incluindo prévia real e produção real `local_pilot`, voz `pf_dora`, versão final do adaptador.
+
+Prévia SHA-256: `d11096a4568cbd0345be8e3ff7fa5b4b3e059b7381c7d0d437374c719705419a`.
+Produção em `%TEMP%/horus-kokoro-final-a7cf91bc3ee24cb796733dd7d6280fca/test_real_kokoro_local_pilot0/data/productions/de073c38c00c41059d23026f23ebd24f`.
+Whisper: **77 palavras casadas, 0 interpoladas**, alinhamento real habilitado.
+QC: **warn**; proveniência não verificada por humano e loudness abaixo da faixa configurada.
+MP4 SHA-256: `d8456a3e313d4320c7a0d2f54fdf749f550284afbd73637f003675dd83f72b36`.
+Não houve aprovação/publicação. Áudio e vídeo não são bit a bit determinísticos entre execuções.
+
+Limites: não houve escuta/homologação humana, teste visual da UI, auditoria nativa
+ou de rede do SO, ensaio real de produção com as outras duas vozes, nem teste de
+fallback CPU neste incremento. A guarda Python de rede não cobre chamadas nativas.
+Nenhuma dependência foi instalada e o ambiente/modelos Kokoro permaneceram somente leitura.

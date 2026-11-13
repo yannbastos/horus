@@ -1,4 +1,4 @@
-﻿# Provedores de narração (HOR-132 / HOR-053)
+# Provedores de narração (HOR-132 / HOR-053)
 
 Implementado em 13/11/2026: registro extensível `NarrationProvider` com status,
 vozes, estimativa, prévia e síntese. Não depende do Hermes. A produção
@@ -20,12 +20,12 @@ pelo pedido padrão sem preferência; planos antigos mantêm o helper SAPI anter
 
 O worker chama `NarrationProvider.synthesize` uma vez por seção em um processo
 possuído, com timeout global de síntese de 1200 s e encerramento da árvore por
-cancelamento/timeout. Cada comando local do adaptador tem limite de 60 s.
+cancelamento/timeout. SAPI/Piper têm limite de 60 s por comando; Kokoro tem 120 s por seção/prévia.
 SAPI reutiliza o helper COM existente; Piper usa seu executável separado. As cenas
 continuam no helper Windows. Não há download, Hermes ou troca de renderer.
 
 Seções WAV e WAV combinado registram engine, voz, identificador e origem:
-`system_voice` para SAPI, `local_tts_model` para Piper. Modelos locais exigem
+`system_voice` para SAPI, `local_tts_model` para Piper e Kokoro. Modelos locais exigem
 identificador, versão de conteúdo (`sha256:<hash>`) e SHA-256 dos pesos, conferido
 antes/depois da síntese e entre seções. O manifesto de evidências guarda a
 estrutura; `asset-provenance.json` mantém o mesmo conteúdo em `notes`, sem alterar
@@ -120,3 +120,42 @@ Inclui cofre em memória, credenciais sem eco em respostas/validação/logs, err
 sanitizados, combinações dos três gates, erros mock 401/cota/timeout, estimativa,
 preferência e ciclo de vida da prévia. SAPI real é condicional ao Windows e às vozes
 instaladas; não há teste de Piper real sem instalação configurada nem serviço pago.
+
+## Kokoro local opcional
+
+Configurar `HORUS_KOKORO_PYTHON` com o Python do ambiente isolado e
+`HORUS_KOKORO_MODEL_DIR` com a pasta que contém `kokoro-v1_0.pth`, `config.json`
+e `voices/{pf_dora,pm_alex,pm_santa}.pt`. Não instala dependências nem baixa arquivos.
+Sem ambas as variáveis, o status é `not_installed`; configuração inválida ou arquivo
+faltante/divergente produz `blocked`, com código específico em `reason`.
+Os cinco SHA-256 são fixados conforme [avaliação, seção 6.1](avaliacao-vozes.md#61-ambiente-e-artefatos)
+e conferidos antes/depois de cada síntese e na descoberta das vozes.
+
+As três vozes pt-BR têm `preview=local`, pesos Apache-2.0 e
+`commercial_use=unknown`: o card cita treino com áudio sintético de TTS
+proprietários e dados CC BY. A disponibilidade técnica não aprova direitos nem
+naturalidade. O motor `kokoro==0.9.4` e o espeak-ng GPL são carregados apenas
+no Python externo (`-I`), nunca no backend. A fronteira troca JSON e WAV por arquivos.
+CUDA é usada quando disponível; caso contrário, CPU. Não há fallback após falha de síntese.
+
+O processo usa `OwnedProcess`, timeout de 120 s e encerramento da árvore em
+cancelamento/timeout; o timeout global da produção continua 1200 s. O ambiente
+mínimo não repassa tokens, proxies, credenciais, PYTHONPATH ou PATH do operador.
+Define `HF_HUB_OFFLINE=1`, `TRANSFORMERS_OFFLINE=1` e desabilita telemetria.
+Antes de importar o motor, recusa conexões, DNS e envio de datagramas pela API Python
+(socket e audit hook). Isso não equivale a firewall de SO: chamadas nativas não
+são auditadas nem bloqueadas por essa guarda. Não houve configuração global de rede.
+
+A prévia usa a rota existente com `{provider:"kokoro",voice_id:"pf_dora"}`;
+a produção `local_pilot` aceita `narration:{provider:"kokoro",voice_id:"pf_dora"}`.
+Whisper, QC, licenças `unverified` e revisão humana continuam obrigatórios.
+A proveniência registra engine/voz/origem `local_tts_model`; `model.sha256`
+é o hash dos pesos, `model.id` é o identificador da voz e `model.version`
+registra `kokoro-0.9.4/v1.0;config=<SHA-256>;voice=<SHA-256>`, preservando o
+contrato estrito existente sem campos extras. `publishable=false` e `demo_only=true`.
+
+Verificação: `backend/tests/test_narration_kokoro.py` cobre configuração ausente,
+hash divergente, licenças, sucesso/falha simulados, WAV inválido, timeout,
+cancelamento, mudança dos arquivos durante a síntese, guarda de rede e allowlist
+exato do worker de produção. Os dois testes reais pulam sem configuração explícita;
+o de produção também exige fábrica, FFmpeg e Whisper locais.

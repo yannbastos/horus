@@ -305,7 +305,9 @@ class ProductionService:
                 env["HORUS_SUBTITLE_FONT"] = str(self.settings.subtitle_font.resolve())
             if row["mode"] == "local_pilot":
                 for name, value in (("HORUS_PIPER_EXECUTABLE", self.settings.piper_executable),
-                                    ("HORUS_PIPER_MODELS", self.settings.piper_models)):
+                                    ("HORUS_PIPER_MODELS", self.settings.piper_models),
+                                    ("HORUS_KOKORO_PYTHON", self.settings.kokoro_python),
+                                    ("HORUS_KOKORO_MODEL_DIR", self.settings.kokoro_model_dir)):
                     if value: env[name] = str(value.resolve())
             manager.active_process = await OwnedProcess.start(command, env=env, cwd=root)
             process = manager.active_process.process

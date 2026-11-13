@@ -23,10 +23,10 @@ def isolated_environment(monkeypatch):
         monkeypatch.delenv(name, raising=False)
 
 
-@pytest.mark.parametrize('provider_id', ['windows_sapi','piper'])
+@pytest.mark.parametrize('provider_id', ['windows_sapi','piper','kokoro'])
 def test_each_section_uses_selected_provider_and_records_identity(tmp_path, monkeypatch, provider_id):
     calls = []
-    model = {'id':'voice','version':'1','sha256':'a'*64} if provider_id == 'piper' else None
+    model = {'id':'voice','version':'1','sha256':'a'*64} if provider_id in {'piper','kokoro'} else None
     class Provider:
         id, kind = provider_id, 'local'
         def status(self): return {'status':'available'}

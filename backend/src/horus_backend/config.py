@@ -121,6 +121,8 @@ class Settings:
     elevenlabs_currency: str | None = field(default_factory=lambda: os.environ.get("HORUS_ELEVENLABS_CURRENCY"))
     piper_executable: Path | None = field(default_factory=lambda: Path(os.environ["HORUS_PIPER_EXECUTABLE"]).expanduser() if os.environ.get("HORUS_PIPER_EXECUTABLE") else None)
     piper_models: Path | None = field(default_factory=lambda: Path(os.environ["HORUS_PIPER_MODELS"]).expanduser() if os.environ.get("HORUS_PIPER_MODELS") else None)
+    kokoro_python: Path | None = field(default_factory=lambda: Path(os.environ["HORUS_KOKORO_PYTHON"]).expanduser() if os.environ.get("HORUS_KOKORO_PYTHON") else None)
+    kokoro_model_dir: Path | None = field(default_factory=lambda: Path(os.environ["HORUS_KOKORO_MODEL_DIR"]).expanduser() if os.environ.get("HORUS_KOKORO_MODEL_DIR") else None)
     hermes_poll_seconds: float = 2.0
     hermes_run_timeout: float = 900.0
     origins: tuple[str, ...] = field(default_factory=frontend_origins)
