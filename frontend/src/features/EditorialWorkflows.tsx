@@ -54,7 +54,13 @@ function formatDate(iso: string | null | undefined): string {
   }
 }
 
-export default function EditorialWorkflows({ connection }: { connection: Connection | null }) {
+export default function EditorialWorkflows({
+  connection,
+  onOpenCenter,
+}: {
+  connection: Connection | null;
+  onOpenCenter?: () => void;
+}) {
   const [workflows, setWorkflows] = useState<WorkflowSummary[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [current, setCurrent] = useState<WorkflowDetail | null>(null);
@@ -642,6 +648,21 @@ export default function EditorialWorkflows({ connection }: { connection: Connect
                           <small className="muted">{formatDate(app.created_at)}</small>
                         </div>
                       ))}
+                    </div>
+                  </article>
+                )}
+
+                {current.status === 'approved' && onOpenCenter && (
+                  <article className="card" role="region" aria-label="Próxima ação da proposta aprovada">
+                    <p className="eyebrow good">PROPOSTA APROVADA</p>
+                    <p className="muted">
+                      Gere e revise o roteiro logo abaixo; depois acompanhe a produção e o histórico na
+                      Central de Produção.
+                    </p>
+                    <div className="actions">
+                      <button className="button" type="button" onClick={onOpenCenter}>
+                        Abrir Central de Produção
+                      </button>
                     </div>
                   </article>
                 )}

@@ -6,10 +6,12 @@ import type {
   ProductionArtifact,
   ProductionArtifactKind,
   ProductionMode,
+  ProductionNarrationSelection,
   ProductionRecord,
   ProductionReviewDecision,
   ProductionReviewNote,
   ProductionStage,
+  RenderQuality,
   SrtSegment,
 } from '../services/production';
 import {
@@ -34,6 +36,9 @@ import {
   summarizeJsonArtifact,
 } from '../services/production';
 import AssetProvenancePanel from './production/AssetProvenancePanel';
+import ProductionLaunchOptions from './production/ProductionLaunchOptions';
+import ProductionGlossary, { termTitle } from './production/ProductionGlossary';
+import ProductionProgress, { describeJobEvent } from './production/ProductionProgress';
 import QualityReportPanel from './production/QualityReportPanel';
 import TimecodeReviewWorkspace from './production/TimecodeReviewWorkspace';
 
@@ -51,6 +56,7 @@ const STAGE_LABELS: Record<ProductionStage, string> = {
   prepare: 'Preparação',
   narration: 'Narração',
   scenes: 'Cenas',
+  align: 'Alinhando fala',
   subtitles: 'Legendas',
   render: 'Render',
   quality: 'Qualidade (QC)',
@@ -99,6 +105,31 @@ const REVIEW_DECISION_LABELS: Record<ProductionReviewDecision, string> = {
   reject: 'Rejeitado na revisão final',
 };
 
+const LAUNCH_PREFS_KEY = 'horus.production.launchPrefs';
+
+// Preferência local de UI (modo e qualidade); falha de armazenamento nunca impede a tela.
+function readLaunchPrefs(): { mode: ProductionMode; quality: RenderQuality } {
+  const defaults = { mode: 'simulated' as ProductionMode, quality: 'draft' as RenderQuality };
+  try {
+    const raw = JSON.parse(window.localStorage.getItem(LAUNCH_PREFS_KEY) ?? 'null');
+    const modes: ProductionMode[] = ['simulated', 'local_demo', 'local_pilot'];
+    return {
+      mode: modes.includes(raw?.mode) ? raw.mode : defaults.mode,
+      quality: raw?.quality === 'final' ? 'final' : defaults.quality,
+    };
+  } catch {
+    return defaults;
+  }
+}
+
+function writeLaunchPrefs(prefs: { mode: ProductionMode; quality: RenderQuality }) {
+  try {
+    window.localStorage.setItem(LAUNCH_PREFS_KEY, JSON.stringify(prefs));
+  } catch {
+    /* armazenamento indisponível: a escolha vale apenas nesta sessão */
+  }
+}
+
 function formatDate(iso: string | null | undefined): string {
   if (!iso) return '—';
   try {
@@ -130,7 +161,18 @@ export default function ProductionRun({
 }) {
   const [productions, setProductions] = useState<ProductionRecord[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [mode, setMode] = useState<ProductionMode>('simulated');
+  const [initialPrefs] = useState(readLaunchPrefs);
+  const [mode, setModeState] = useState<ProductionMode>(initialPrefs.mode);
+  const [renderQuality, setRenderQualityState] = useState<RenderQuality>(initialPrefs.quality);
+  const setMode = (next: ProductionMode) => {
+    setModeState(next);
+    writeLaunchPrefs({ mode: next, quality: renderQuality });
+  };
+  const setRenderQuality = (next: RenderQuality) => {
+    setRenderQualityState(next);
+    writeLaunchPrefs({ mode, quality: next });
+  };
+  const [voice, setVoice] = useState<ProductionNarrationSelection | null>(null);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -177,6 +219,8 @@ export default function ProductionRun({
   const previewControllerRef = useRef<AbortController | null>(null);
   const activeBlobUrlRef = useRef<string | null>(null);
   const logsRef = useRef<HTMLPreElement>(null);
+  const previewPanelRef = useRef<HTMLDivElement>(null);
+  const revealPreviewRef = useRef(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const pendingSeekSecondsRef = useRef<number | null>(null);
 
@@ -525,6 +569,16 @@ export default function ProductionRun({
     pilotEvidenceReloadCount,
   ]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // J-11: depois de pedir uma prévia, leva a vista até ela (e o foco, sem nova rolagem).
+  useEffect(() => {
+    if (!previewTarget || !revealPreviewRef.current) return;
+    revealPreviewRef.current = false;
+    const panel = previewPanelRef.current;
+    if (!panel) return;
+    panel.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
+    panel.focus({ preventScroll: true });
+  }, [previewTarget]);
+
   // Auto-scroll job logs
   useEffect(() => {
     if (logsRef.current) {
@@ -681,7 +735,11 @@ export default function ProductionRun({
 
     cancelPendingInspect();
     const targetScriptId = latestScript.id;
-    const signature = `create:${targetScriptId}:${latestScript.version}:${mode}:${productions.length}`;
+    const pilotOptions =
+      mode === 'local_pilot'
+        ? { render_quality: renderQuality, ...(voice ? { narration: voice } : {}) }
+        : {};
+    const signature = `create:${targetScriptId}:${latestScript.version}:${mode}:${productions.length}:${JSON.stringify(pilotOptions)}`;
     const idempotencyKey = getOrCreateIdempotencyKey(signature);
 
     inFlightRef.current = true;
@@ -695,6 +753,7 @@ export default function ProductionRun({
         {
           expected_version: latestScript.version,
           mode,
+          ...pilotOptions,
         },
         idempotencyKey
       );
@@ -743,6 +802,7 @@ export default function ProductionRun({
 
   async function handlePreviewArtifact(artifact: ProductionArtifact) {
     if (!connection || !activeProduction) return;
+    revealPreviewRef.current = true;
     previewControllerRef.current?.abort();
     const controller = new AbortController();
     previewControllerRef.current = controller;
@@ -1031,8 +1091,9 @@ export default function ProductionRun({
         n.text.trim().length > 2000
     );
 
+  // `align` ocorre entre Cenas e Legendas e não consta da trilha: marca Cenas como concluída.
   const currentStageIndex = activeProduction
-    ? PRODUCTION_STAGES.indexOf(activeProduction.stage)
+    ? PRODUCTION_STAGES.indexOf(activeProduction.stage === 'align' ? 'subtitles' : activeProduction.stage)
     : -1;
 
   return (
@@ -1157,6 +1218,16 @@ export default function ProductionRun({
             </div>
           </div>
 
+          {mode === 'local_pilot' && (
+            <ProductionLaunchOptions
+              connection={connection}
+              disabled={submitting || hasActiveRun}
+              quality={renderQuality}
+              onQualityChange={setRenderQuality}
+              onVoiceChange={setVoice}
+            />
+          )}
+
           <small className="muted">
             {mode === 'simulated'
               ? 'Modo Simulado: gera plano de produção, cenas PNG, WAV de tom e SRT sintético sem renderizar vídeo MP4. Nunca apresentado como render real.'
@@ -1212,7 +1283,9 @@ export default function ProductionRun({
               <span style={{ overflowWrap: 'anywhere' }}>{activeProduction.job_id}</span>
             </div>
             <div className="info-block">
-              <span className="eyebrow">HASH DO ROTEIRO (M3)</span>
+              <span className="eyebrow" title={termTitle('sha256')}>
+                HASH DO ROTEIRO (M3)
+              </span>
               <span style={{ overflowWrap: 'anywhere' }}>{activeProduction.script_content_hash}</span>
             </div>
             <div className="info-block">
@@ -1220,6 +1293,16 @@ export default function ProductionRun({
               <span>{formatDate(activeProduction.updated_at)}</span>
             </div>
           </div>
+
+          <ProductionProgress
+            stage={activeProduction.stage}
+            status={activeProduction.status}
+            createdAt={activeProduction.created_at}
+            updatedAt={activeProduction.updated_at}
+            lastEvent={jobEvents.length > 0 ? jobEvents[jobEvents.length - 1] : null}
+            terminal={terminalStatuses.includes(activeProduction.status)}
+            showNarrationHint={activeProduction.mode === 'local_pilot'}
+          />
 
           <div
             className="fact-item"
@@ -1229,22 +1312,31 @@ export default function ProductionRun({
           >
             <div className="row spread">
               <span className="eyebrow warn">AVISOS DE PROVENIÊNCIA E ESCOPO TÉCNICO</span>
-              <span className="tag demo">NÃO PUBLICÁVEL (publishable: false)</span>
+              <span className="tag demo" title={termTitle('publishable')}>
+                NÃO PUBLICÁVEL (publishable: false)
+              </span>
             </div>
+            <ProductionGlossary />
             <div className="info-grid" style={{ marginTop: '4px' }}>
               <div className="info-block">
-                <span className="eyebrow">ESCOPO (demo_only)</span>
+                <span className="eyebrow" title={termTitle('demo_only')}>
+                  ESCOPO (demo_only)
+                </span>
                 <small>{describeDemoOnlyFlag(provenance.demoOnly)}</small>
               </div>
               <div className="info-block">
-                <span className="eyebrow">NARRAÇÃO (real_voice)</span>
+                <span className="eyebrow" title={termTitle('real_voice')}>
+                  NARRAÇÃO (real_voice)
+                </span>
                 <small>{provenance.narrationLabel}</small>
                 {provenance.narrationDisclosure && (
                   <small className="muted">{provenance.narrationDisclosure}</small>
                 )}
               </div>
               <div className="info-block">
-                <span className="eyebrow">LEGENDAS (speech_aligned)</span>
+                <span className="eyebrow" title={termTitle('speech_aligned')}>
+                  LEGENDAS (speech_aligned)
+                </span>
                 <small>{provenance.subtitleLabel}</small>
                 {provenance.subtitleDisclosure && (
                   <small className="muted">{provenance.subtitleDisclosure}</small>
@@ -1490,7 +1582,7 @@ export default function ProductionRun({
             <pre ref={logsRef} className="logs" aria-label="Logs da produção">
               {jobEvents.length > 0
                 ? jobEvents
-                    .map(ev => `${ev.kind === 'state' ? 'estado' : ev.kind}: ${ev.message}`)
+                    .map(ev => describeJobEvent(ev))
                     .join('\n')
                 : terminalStatuses.includes(activeProduction.status)
                 ? `Job ${activeProduction.job_id} em estado ${activeProduction.status}.`
@@ -1703,6 +1795,8 @@ export default function ProductionRun({
 
             {previewTarget && (
               <div
+                ref={previewPanelRef}
+                tabIndex={-1}
                 className="card"
                 role="region"
                 aria-label={`Prévia do artefato ${previewTarget.artifact.relative_path}`}
@@ -1916,6 +2010,7 @@ export default function ProductionRun({
               connection={connection}
               productionId={activeProduction?.id}
               onEffectiveProvenance={setEffectiveProvenance}
+              reloadKey={`${activeProduction?.status}:${activeProduction?.stage}:${activeProduction?.artifacts.length}`}
             />
           )}
 
