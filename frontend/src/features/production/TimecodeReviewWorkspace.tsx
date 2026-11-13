@@ -7,6 +7,7 @@ import type {
   TimecodeSubtitleNavItem,
 } from '../../services/production';
 import { formatTimecode } from '../../services/production';
+import WordTimeline from './WordTimeline';
 
 export default function TimecodeReviewWorkspace({
   currentTimeSeconds,
@@ -14,6 +15,7 @@ export default function TimecodeReviewWorkspace({
   subtitles,
   wordTimings,
   qualityChecksWithTimecode,
+  subtitlesCheck,
   notes,
   canEditNotes,
   onSeekTimecode,
@@ -27,6 +29,7 @@ export default function TimecodeReviewWorkspace({
   subtitles: TimecodeSubtitleNavItem[];
   wordTimings: NormalizedWordTimings;
   qualityChecksWithTimecode: NormalizedQualityCheck[];
+  subtitlesCheck: NormalizedQualityCheck | null;
   notes: ProductionReviewNote[];
   canEditNotes: boolean;
   onSeekTimecode: (seconds: number, reason?: string) => void;
@@ -207,36 +210,12 @@ export default function TimecodeReviewWorkspace({
               }`
             : ''}
         </small>
-        {wordTimings.available && wordTimings.words.length > 0 ? (
-          <div
-            style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '6px',
-              maxHeight: '160px',
-              overflowY: 'auto',
-              padding: '4px 0',
-            }}
-          >
-            {wordTimings.words.map(word => (
-              <button
-                key={`${word.index}_${word.start}`}
-                className="button"
-                type="button"
-                style={{ padding: '4px 8px', minHeight: '26px', fontSize: '10px' }}
-                aria-label={`Palavra ${word.index}: ${word.text} (${formatTimecode(word.start)})`}
-                onClick={() => onSeekTimecode(word.start, `Palavra: ${word.text}`)}
-              >
-                {word.text} <span className="muted">({word.start.toFixed(2)}s)</span>
-              </button>
-            ))}
-          </div>
-        ) : (
-          <small className="muted">
-            <code>word-timings.json</code> ausente nos artefatos desta produção — navegação fina por
-            palavra indisponível (<code>speech_aligned: false</code>).
-          </small>
-        )}
+        <WordTimeline
+          wordTimings={wordTimings}
+          currentTimeSeconds={currentTimeSeconds}
+          subtitlesCheck={subtitlesCheck}
+          onSeekTimecode={onSeekTimecode}
+        />
       </div>
 
       <div

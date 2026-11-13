@@ -1914,6 +1914,9 @@ export default function ProductionRun({
               subtitles={subtitleNavItems}
               wordTimings={normalizedWordTimings}
               qualityChecksWithTimecode={qualityChecksWithTimecode}
+              subtitlesCheck={
+                normalizedQuality?.checks.find(c => c.id === 'subtitles_vs_words') ?? null
+              }
               notes={reviewNotes}
               canEditNotes={canReviewFinal}
               onSeekTimecode={seconds => handleSeekTimecode(seconds)}
