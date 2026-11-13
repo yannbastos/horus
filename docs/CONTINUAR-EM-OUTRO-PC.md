@@ -170,7 +170,7 @@ A máquina nova **não** tem perfil `horus`. Recrie-o e endureça-o antes de qua
 O estado oficial está no Git e no GitHub Projects, não na máquina. Runs, mensagens e worktrees do Orca e memórias dos agentes são locais e não são transferidos.
 
 1. Concluir os passos 1–4 e 10; ler [AGENT-GOVERNANCE.md](AGENT-GOVERNANCE.md).
-2. Iniciar a sessão do Maestro (Claude Opus) na raiz do clone e pedir que retome a coordenação conforme a política.
+2. Iniciar a sessão do Maestro (Claude Opus) na raiz do clone e invocar `/horus-maestro` (procedimento em [RETOMADA-MAESTRO.md](RETOMADA-MAESTRO.md)).
 3. O Maestro confere `main`/`origin/main`, branches publicadas pendentes e os itens Em andamento, Em revisão e Bloqueado no Project; o último comentário de cada Issue é o ponto de retomada.
 4. Para cada item pendente, recria o worktree a partir da branch publicada (ou de `main`) pelo Orca e delega ao programador indicado no campo Agente, registrando a retomada na Issue.
 5. Trabalho apenas local na máquina antiga (commits não publicados ou alterações não commitadas) não existe na nova: publique a branch antes de trocar de computador ou registre na Issue o que ficou pendente.

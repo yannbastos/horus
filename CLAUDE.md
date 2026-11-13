@@ -10,6 +10,8 @@ Use o mapa de consulta do arquivo importado para selecionar o contexto da tarefa
 
 Leia `docs/AGENT-GOVERNANCE.md` antes de trabalhar.
 
+**Início de sessão do Maestro:** invoque a skill `/horus-maestro` (em `.claude/skills/horus-maestro/`). Se a skill não for carregada, siga manualmente `docs/RETOMADA-MAESTRO.md`. A inicialização é somente leitura até o resumo do estado.
+
 - **Claude Opus — Maestro:** arquitetura, planejamento de incrementos, delegação pelo Orca, worktrees, revisão, integração na `main`, push normal, resolução de conflitos e GitHub Projects. Evita implementar quando há programador disponível e reserva o próprio uso para coordenação e decisões complexas.
 - **Claude Sonnet — programador:** contratos, validadores, qualidade audiovisual, segurança, testes e refatorações delimitadas, nos arquivos atribuídos pela tarefa. Faz commits na própria branch; a integração na `main` é feita pelo Maestro após revisão.
 
