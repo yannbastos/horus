@@ -55,6 +55,31 @@ Extensão compatível (HOR-054), campos opcionais: `words[].timing` (`measured` 
 - `relative_path`: relativo e confinável (sem `..`, `.`, `\`, `:`, barra inicial, segmento vazio ou terminado em ponto/espaço); `asset_id` e caminho únicos (sem diferenciar maiúsculas).
 - Cruzamento: `validate_asset_provenance(data, artifacts={relative_path: sha256})` — todo asset declarado deve estar registrado com o mesmo hash (`asset_not_registered`, `hash_mismatch`) e todo artefato de mídia registrado precisa de proveniência (`artifact_without_provenance`). Assets não `verified` geram o aviso `unverified_assets_block_publication`.
 
+## 3.1 Revisão humana de licença por asset (HOR-097) — contrato da API
+
+Estado: **contrato (Fase A); implementação na Fase B** (`license_reviews.py`, migração v8, rotas em `api.py`). O `asset-provenance.json` registrado **nunca é reescrito**: a decisão humana vive em tabela própria e é combinada em leitura.
+
+**Rotas** (auth Bearer local como as demais; ambas sob `/v1/productions/{id}`):
+
+- `GET /v1/productions/{id}/license-reviews` → `{production_id, current:[review], history:[review], publishable:false}`. `current` = decisão vigente por `asset_id` (a mais recente); `history` = todas, da mais antiga à mais nova (append-only). Produção inexistente: 404. Produção sem `asset-provenance.json` válido: listas vazias (o que já foi gravado continua visível).
+- `POST /v1/productions/{id}/license-reviews`, cabeçalho `Idempotency-Key` (1..128, obrigatório), corpo estrito (`extra=forbid`):
+  `{asset_id, asset_sha256, decision: "verified"|"rejected", license:{id, name, url, commercial_use: "allowed"|"restricted", attribution_required: bool}, evidence: str 1..2000, reviewed_by: "human"}`.
+  Resposta `201` com a revisão criada (`200` na repetição idêntica da mesma chave): `{id, production_id, asset_id, asset_sha256, decision, license, evidence, reviewed_by:"human", reviewed_at, supersedes: <id|null>, idempotency_key_hash}`. `reviewed_at` é do servidor (UTC), nunca do cliente.
+
+**Regras de validação**
+
+- `asset_id` e `asset_sha256` precisam existir, juntos, no `asset-provenance.json` **registrado e validado** da produção (hash do arquivo conferido com o artefato registrado, `validate_asset_provenance` com os hashes de entrada). Asset ausente, hash divergente ou proveniência ausente/inválida: `409`.
+- `commercial_use` aceita só `allowed|restricted`: `unknown` nunca é `verified` (e não é aceito no pedido); `attribution_required` é booleano obrigatório. `license.id/name/url` obrigatórios; `url` https, sem credenciais. Para `origin` `stock_pexels`/`stock_pixabay`, `license.url` deve ser https do host oficial (`pexels.com`/`pixabay.com` ou subdomínio).
+- `decision=rejected` aceita `commercial_use=restricted|allowed`; é registro de que o uso foi recusado.
+- `reviewed_by` só `"human"`; `evidence` sem controles (exceto quebra de linha/tab), 1..2000 caracteres após validação estrita. A evidência é texto do operador (ex.: link da página de termos, captura anotada); o sistema não a verifica por rede.
+- Erros: `401` sem token; `404` produção inexistente; `409` asset/hash/proveniência, ou `Idempotency-Key` já usada com corpo diferente; `422` corpo inválido (sem eco do conteúdo).
+- Idempotência: mesma chave + mesmo corpo → mesma revisão, sem novo registro; mesma chave + corpo diferente → `409`. Decisão nova (chave nova) para o mesmo asset **substitui a vigente** e grava `supersedes`; nada é apagado ou alterado (gatilhos SQLite recusam `UPDATE`/`DELETE`).
+- Aprovar licença **não** altera `publishable=false`, não muda nenhum artefato registrado e não dispara publicação ou renderização.
+
+**Visão combinada (função pura)** `apply_license_reviews(provenance, reviews) -> dict` em `media_contracts.py`: recebe o `asset-provenance.json` validado e a lista de revisões; devolve uma cópia (o original não é tocado) em que, para cada asset com decisão vigente cujo `asset_sha256` coincide, `status` = `verified`/`rejected`, `license` recebe os campos da decisão humana e `verified_by="human"`, `verified_at=reviewed_at` (só em `verified`; em `rejected` ficam `null`). Decisões cujo hash não coincide com o asset são ignoradas (nunca aplicadas por engano). O resultado é revalidado por `validate_asset_provenance`; `commercial_use_permitted` só é verdadeiro para `allowed` verificado por humano. O documento efetivo não é gravado em disco e não substitui o registrado por hash.
+
+**Persistência (migração v8, aditiva)**: tabela `license_reviews(seq AUTOINCREMENT, id UNIQUE, production_id FK, asset_id, asset_sha256, decision CHECK, license JSON, evidence, reviewed_by CHECK, reviewed_at, supersedes, idempotency_key, request, UNIQUE(production_id, idempotency_key))`, índice por `(production_id, asset_id, seq)` e gatilhos de append-only.
+
 ## QC audiovisual (`av_quality.py`)
 
 `run_quality(root, *, production_id, ffmpeg=None, ffprobe=None, video_relative=None, timeout=180) -> dict` devolve um `quality-report.json` válido (já passado por `validate_quality_report`; se o próprio QC gerasse algo inválido, levanta `RuntimeError`). `run_quality_async` é a versão cancelável (`Task.cancel()` encerra a árvore do FFmpeg); `run_quality` é segura dentro de um loop em execução. Somente leitura, sem rede; subprocessos pelo `processes.OwnedProcess` (Job Object) com timeout (check `skipped` com o motivo se estourar).
