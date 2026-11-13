@@ -284,4 +284,49 @@ test.describe('Jornada de produção — backend real', () => {
     await expect(page.locator('text=/kokoro/i >> visible=true').first()).toBeVisible();
     await expect(page.locator('text=/pf_dora/ >> visible=true').first()).toBeVisible();
   });
+
+  test('roteiro escrito pelo usuário → produção (HOR-133)', async ({ page }) => {
+    await timed('manual: conectar ao backend', () => connect(page));
+
+    await timed('manual: iniciar e aprovar proposta', async () => {
+      await goTo(page, 'Radar');
+      await page.getByRole('button', { name: 'Carregar dados de demonstração' }).click();
+      await expect(page.getByText('4 de 4 elegíveis selecionados')).toBeVisible();
+      await page.getByLabel('Identificador do canal').fill('canal-manual-e2e');
+      await page.getByLabel('Resumo editorial do canal').fill('Canal de tecnologia com roteiros escritos pelo operador.');
+      await page.getByLabel('Objetivo editorial da análise').fill('Criar proposta para roteiro escrito manualmente pelo usuário.');
+      await page.getByRole('button', { name: 'Iniciar análise' }).click();
+      await expect(page.getByText('ANÁLISE INICIADA COM SUCESSO')).toBeVisible();
+
+      await goTo(page, 'Produção');
+      await page.getByRole('button', { name: /Autorizar uma execução/ }).click();
+      await expect(page.getByRole('button', { name: 'Aprovar', exact: true })).toBeVisible({ timeout: 60_000 });
+      await page.getByRole('button', { name: 'Aprovar', exact: true }).click();
+      await expect(page.getByRole('button', { name: 'Escrever roteiro do zero' })).toBeEnabled();
+    });
+
+    await timed('manual: escrever roteiro do zero e aprovar', async () => {
+      await page.getByRole('button', { name: 'Escrever roteiro do zero' }).click();
+      const editor = page.getByRole('region', { name: 'Editor de roteiro humano' });
+      await editor.getByLabel(/Título do roteiro/).fill('Roteiro Escrito pelo Usuário E2E');
+      await editor.getByLabel(/Título da seção #1/).fill('Gancho Manual');
+      await editor.getByLabel(/Narração da seção #1/).fill('Este roteiro foi escrito diretamente pelo usuário no Hórus.');
+      await editor.getByLabel(/Título da seção #2/).fill('Desenvolvimento Manual');
+      await editor.getByLabel(/Narração da seção #2/).fill('Sem geração simulada de texto, seguimos direto para a aprovação e produção.');
+      await editor.getByLabel(/Título da seção #3/).fill('Conclusão Manual');
+      await editor.getByLabel(/Narração da seção #3/).fill('Aprovação humana registrada antes da produção local.');
+      await editor.getByRole('button', { name: 'Salvar roteiro' }).click();
+
+      await expect(page.getByText('DOCUMENTO DO ROTEIRO · VERSÃO 1')).toBeVisible();
+      await expect(page.getByText('ESCRITO POR VOCÊ').first()).toBeVisible();
+      await page.getByRole('button', { name: 'Aprovar roteiro' }).click();
+      await expect(page.getByLabel('Modo de execução da produção')).toBeVisible();
+    });
+
+    await timed('manual: produção local_pilot até concluir', async () => {
+      const previous = await startPilotProduction(page);
+      timings['produção local_pilot (roteiro humano): duração observada pela tela'] = await waitProduction(page, previous);
+      await shot(page, '14-producao-roteiro-humano');
+    });
+  });
 });

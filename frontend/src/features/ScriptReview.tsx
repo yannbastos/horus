@@ -1,19 +1,28 @@
 import { useEffect, useRef, useState } from 'react';
+import { ApiError } from '../services/api';
 import type { Connection, WorkflowArtifact, WorkflowDetail } from '../services/api';
 import type {
+  ScriptChanges,
+  ScriptDocument,
   ScriptRecord,
   ScriptReviewDecision,
+  ScriptSectionChangeField,
   ScriptSectionKind,
   ScriptStatus,
 } from '../services/scripts';
 import {
+  createManualWorkflowScript,
+  createScriptVersion,
   createWorkflowScript,
   formatScriptError,
   getScript,
+  getScriptOrigin,
   getWorkflowScripts,
   reviewScript,
   sortScriptsDesc,
 } from '../services/scripts';
+import ScriptEditor from './script-editor/ScriptEditor';
+import { cloneDocumentForEditing, createBlankHumanDocument } from './script-editor/scriptContract';
 import ProductionRun from './ProductionRun';
 
 const SCRIPT_STATUS_LABELS: Record<ScriptStatus, string> = {
@@ -41,6 +50,35 @@ const DECISION_LABELS: Record<ScriptReviewDecision, string> = {
   reject: 'Rejeitado',
   request_changes: 'Alterações solicitadas',
 };
+
+const CHANGE_FIELD_LABELS: Record<ScriptSectionChangeField, string> = {
+  kind: 'tipo',
+  heading: 'título',
+  narration: 'narração',
+  source_ids: 'fontes',
+};
+
+function formatScriptChanges(changes: ScriptChanges): string {
+  const parts: string[] = [];
+  if (changes.title_changed) parts.push('título alterado');
+  if (changes.order_changed) parts.push('ordem das seções alterada');
+  if (changes.sections_added.length > 0) {
+    parts.push(`seções adicionadas: ${changes.sections_added.join(', ')}`);
+  }
+  if (changes.sections_removed.length > 0) {
+    parts.push(`seções removidas: ${changes.sections_removed.join(', ')}`);
+  }
+  if (changes.sections_changed.length > 0) {
+    const details = changes.sections_changed.map(
+      sec => `${sec.id} (${sec.fields.map(f => CHANGE_FIELD_LABELS[f] || f).join(', ')})`
+    );
+    parts.push(`seções alteradas: ${details.join('; ')}`);
+  }
+  if (parts.length === 0) {
+    return `Sem alterações estruturais em relação à v${changes.previous_version}.`;
+  }
+  return `Alterações em relação à v${changes.previous_version}: ${parts.join(' · ')}.`;
+}
 
 function formatDate(iso: string | null | undefined): string {
   if (!iso) return '—';
@@ -93,6 +131,13 @@ export default function ScriptReview({
   const [error, setError] = useState('');
   const [feedback, setFeedback] = useState('');
   const [feedbackError, setFeedbackError] = useState('');
+  const [editorSession, setEditorSession] = useState<
+    | { mode: 'create'; initialDocument: ScriptDocument }
+    | { mode: 'edit'; baseScriptId: string; baseVersion: number; initialDocument: ScriptDocument }
+    | null
+  >(null);
+  const [editorError, setEditorError] = useState('');
+  const [editorConflict, setEditorConflict] = useState(false);
 
   // Synchronous lock to prevent duplicate submissions on rapid double-clicks
   const inFlightRef = useRef(false);
@@ -142,6 +187,9 @@ export default function ScriptReview({
     setError('');
     setFeedback('');
     setFeedbackError('');
+    setEditorSession(null);
+    setEditorError('');
+    setEditorConflict(false);
     idempotencyCacheRef.current = null;
     return () => {
       cancelPendingInspect();
@@ -192,9 +240,17 @@ export default function ScriptReview({
   const canGenerateFirst = isProposalApproved && scripts.length === 0;
   const canGenerateNext =
     isProposalApproved && latestScript !== null && latestScript.status === 'changes_requested';
-  const canGenerate = (canGenerateFirst || canGenerateNext) && !loading && !submitting;
+  const canGenerate = (canGenerateFirst || canGenerateNext) && !loading && !submitting && !editorSession;
+  const canWriteFromScratch = canGenerateFirst && !loading && !submitting && !editorSession;
+  const canEditLatest =
+    isProposalApproved &&
+    latestScript !== null &&
+    (latestScript.status === 'awaiting_review' || latestScript.status === 'changes_requested') &&
+    !loading &&
+    !submitting &&
+    !editorSession;
 
-  async function handleRefreshList() {
+  async function handleRefreshList(selectLatest = false) {
     if (!connection || inFlightRef.current || submitting) return;
     cancelPendingInspect();
     setLoading(true);
@@ -204,7 +260,7 @@ export default function ScriptReview({
       if (mountedWorkflowRef.current !== workflow.id) return;
       setScripts(items);
       setSelectedVersion(prev => {
-        if (prev !== null && items.some(i => i.version === prev)) {
+        if (!selectLatest && prev !== null && items.some(i => i.version === prev)) {
           return prev;
         }
         return items[0]?.version ?? null;
@@ -349,11 +405,110 @@ export default function ScriptReview({
     }
   }
 
+  function handleOpenCreateEditor() {
+    if (!canWriteFromScratch) return;
+    setError('');
+    setEditorError('');
+    setEditorConflict(false);
+    setEditorSession({
+      mode: 'create',
+      initialDocument: createBlankHumanDocument(),
+    });
+  }
+
+  function handleOpenEditEditor() {
+    if (!canEditLatest || !latestScript) return;
+    setError('');
+    setEditorError('');
+    setEditorConflict(false);
+    setEditorSession({
+      mode: 'edit',
+      baseScriptId: latestScript.id,
+      baseVersion: latestScript.version,
+      initialDocument: cloneDocumentForEditing(latestScript.document),
+    });
+  }
+
+  async function handleSaveEditor(document: ScriptDocument) {
+    if (!connection || !editorSession || !isProposalApproved || !proposalArtifactId) return;
+    if (inFlightRef.current || submitting) return;
+
+    cancelPendingInspect();
+    const targetWorkflowId = workflow.id;
+    const serializedDoc = JSON.stringify(document);
+    const signature =
+      editorSession.mode === 'create'
+        ? `manual-create:${targetWorkflowId}:${workflow.revision}:${proposalArtifactId}:${latestScript?.version ?? 0}:${serializedDoc}`
+        : `manual-version:${editorSession.baseScriptId}:${editorSession.baseVersion}:${serializedDoc}`;
+    const idempotencyKey = getOrCreateIdempotencyKey(signature);
+
+    inFlightRef.current = true;
+    setSubmitting(true);
+    setError('');
+    setEditorError('');
+    setEditorConflict(false);
+
+    try {
+      const saved =
+        editorSession.mode === 'create'
+          ? await createManualWorkflowScript(
+              connection,
+              targetWorkflowId,
+              {
+                source: 'manual',
+                expected_revision: workflow.revision,
+                proposal_artifact_id: proposalArtifactId,
+                document,
+              },
+              idempotencyKey
+            )
+          : await createScriptVersion(
+              connection,
+              editorSession.baseScriptId,
+              {
+                expected_version: editorSession.baseVersion,
+                document,
+              },
+              idempotencyKey
+            );
+      clearIdempotencyKey(signature);
+      if (mountedWorkflowRef.current !== targetWorkflowId) return;
+      upsertScriptRecord(saved);
+      setEditorSession(null);
+      setFeedback('');
+      setFeedbackError('');
+    } catch (reason) {
+      if (reason && typeof reason === 'object' && 'status' in reason) {
+        clearIdempotencyKey(signature);
+      }
+      if (mountedWorkflowRef.current !== targetWorkflowId) return;
+      setEditorConflict(reason instanceof ApiError && reason.status === 409);
+      setEditorError(formatScriptError(reason));
+    } finally {
+      inFlightRef.current = false;
+      if (mountedWorkflowRef.current === targetWorkflowId) {
+        setSubmitting(false);
+      }
+    }
+  }
+
+  async function handleReloadOnConflict() {
+    setEditorError('');
+    setEditorConflict(false);
+    setEditorSession(null);
+    await handleRefreshList(true);
+  }
+
   const generateButtonLabel = canGenerateNext
     ? 'Gerar nova versão do roteiro'
     : isProposalApproved
-    ? 'Gerar roteiro simulado'
+    ? latestScript && getScriptOrigin(latestScript) === 'human'
+      ? 'Gerar nova versão do roteiro'
+      : 'Gerar roteiro simulado'
     : 'Gerar roteiro';
+
+  const activeOrigin = activeScript ? getScriptOrigin(activeScript) : null;
+  const isHumanContext = activeOrigin === 'human' || editorSession !== null;
 
   return (
     <article className="card" role="region" aria-label="Roteiro e revisão humana">
@@ -363,8 +518,15 @@ export default function ScriptReview({
           <h3>Roteiro estruturado e revisão humana</h3>
         </div>
         <div className="row">
-          {(isProposalApproved || activeScript?.document.simulated) && (
-            <span className="tag simulated">SIMULADO</span>
+          {activeScript ? (
+            activeOrigin === 'human' ? (
+              <span className="tag">ESCRITO POR VOCÊ</span>
+            ) : (
+              <span className="tag simulated">SIMULADO</span>
+            )
+          ) : (
+            isProposalApproved &&
+            editorSession?.mode !== 'create' && <span className="tag simulated">SIMULADO</span>
           )}
           {latestScript && (
             <span className={`tag ${SCRIPT_STATUS_TONE[latestScript.status] || ''}`}>
@@ -378,8 +540,9 @@ export default function ScriptReview({
       </div>
 
       <p className="muted">
-        Derivação local a partir da proposta aprovada, sem inferência externa, sem custos e sem acionar
-        renderização ou publicação na fábrica.
+        {isHumanContext
+          ? 'Roteiro escrito por você a partir da proposta aprovada, sem inferência externa, sem custos e sem acionar renderização ou publicação na fábrica.'
+          : 'Derivação local a partir da proposta aprovada, sem inferência externa, sem custos e sem acionar renderização ou publicação na fábrica.'}
       </p>
 
       {error && (
@@ -418,10 +581,32 @@ export default function ScriptReview({
             >
               {submitting ? 'Processando…' : generateButtonLabel}
             </button>
+            {canGenerateFirst && (
+              <button
+                className="button"
+                type="button"
+                disabled={!canWriteFromScratch}
+                onClick={handleOpenCreateEditor}
+              >
+                Escrever roteiro do zero
+              </button>
+            )}
+            {latestScript &&
+              (latestScript.status === 'awaiting_review' ||
+                latestScript.status === 'changes_requested') && (
+                <button
+                  className="button"
+                  type="button"
+                  disabled={!canEditLatest}
+                  onClick={handleOpenEditEditor}
+                >
+                  Editar roteiro
+                </button>
+              )}
             <button
               className="button"
               type="button"
-              disabled={loading || submitting}
+              disabled={loading || submitting || Boolean(editorSession)}
               onClick={() => void handleRefreshList()}
             >
               Atualizar roteiros
@@ -446,14 +631,32 @@ export default function ScriptReview({
         </p>
       )}
 
-      {isProposalApproved && !loading && scripts.length === 0 && !error && (
+      {isProposalApproved && !loading && scripts.length === 0 && !error && !editorSession && (
         <div className="fact-item">
-          <p className="eyebrow">PRONTO PARA GERAR</p>
+          <p className="eyebrow">PRONTO PARA GERAR OU ESCREVER</p>
           <p className="muted">
-            Proposta aprovada. Gere a primeira versão do roteiro estruturado para iniciar a revisão humana por
-            seções.
+            Proposta aprovada. Gere a primeira versão simulada ou escreva o roteiro do zero para iniciar a
+            revisão humana por seções.
           </p>
         </div>
+      )}
+
+      {editorSession && (
+        <ScriptEditor
+          mode={editorSession.mode}
+          initialDocument={editorSession.initialDocument}
+          targetVersion={editorSession.mode === 'edit' ? editorSession.baseVersion : undefined}
+          submitting={submitting}
+          apiError={editorError}
+          isConflictError={editorConflict}
+          onSave={handleSaveEditor}
+          onReloadOnConflict={handleReloadOnConflict}
+          onCancel={() => {
+            setEditorSession(null);
+            setEditorError('');
+            setEditorConflict(false);
+          }}
+        />
       )}
 
       {latestScript && latestScript.status === 'changes_requested' && (
@@ -473,7 +676,7 @@ export default function ScriptReview({
         </div>
       )}
 
-      {activeScript && (
+      {activeScript && !editorSession && (
         <div
           className="card sunken"
           role="region"
@@ -488,7 +691,11 @@ export default function ScriptReview({
               <h3>{activeScript.document.title}</h3>
             </div>
             <div className="row">
-              {activeScript.document.simulated && <span className="tag simulated">SIMULADO</span>}
+              {activeOrigin === 'human' ? (
+                <span className="tag">ESCRITO POR VOCÊ</span>
+              ) : (
+                <span className="tag simulated">SIMULADO</span>
+              )}
               <span className={`tag ${SCRIPT_STATUS_TONE[activeScript.status] || ''}`}>
                 {SCRIPT_STATUS_LABELS[activeScript.status] || activeScript.status}
               </span>
@@ -574,7 +781,7 @@ export default function ScriptReview({
         </div>
       )}
 
-      {latestScript && latestScript.status === 'awaiting_review' && (
+      {latestScript && latestScript.status === 'awaiting_review' && !editorSession && (
         <div className="card sunken" role="region" aria-label="Revisão humana do roteiro">
           <div className="row spread">
             <p className="eyebrow accent">DECISÃO HUMANA DO ROTEIRO</p>
@@ -642,6 +849,7 @@ export default function ScriptReview({
           <p className="eyebrow">HISTÓRICO DE VERSÕES DO ROTEIRO ({scripts.length})</p>
           {scripts.map(item => {
             const isSelected = activeScript?.version === item.version;
+            const itemOrigin = getScriptOrigin(item);
             return (
               <div
                 key={item.id}
@@ -653,7 +861,11 @@ export default function ScriptReview({
                 <div className="row spread">
                   <div className="row">
                     <span className="eyebrow accent">Versão {item.version}</span>
-                    {item.document.simulated && <span className="tag simulated">SIMULADO</span>}
+                    {itemOrigin === 'human' ? (
+                      <span className="tag">Escrito por você</span>
+                    ) : (
+                      <span className="tag simulated">Gerado pela simulação</span>
+                    )}
                     <span className={`tag ${SCRIPT_STATUS_TONE[item.status] || ''}`}>
                       {SCRIPT_STATUS_LABELS[item.status] || item.status}
                     </span>
@@ -675,6 +887,9 @@ export default function ScriptReview({
                     )}
                   </div>
                 </div>
+                {item.changes && (
+                  <small className="muted">{formatScriptChanges(item.changes)}</small>
+                )}
                 {item.review && (
                   <div className="row spread">
                     <small className="muted">
