@@ -31,6 +31,36 @@ class ScriptReviewRequest(BaseModel):
         return self
 
 
+class ManualScriptRequest(BaseModel):
+    """Primeiro roteiro escrito pelo usuário; mesmas exigências de proposta aprovada da geração simulada."""
+    model_config = ConfigDict(extra="forbid")
+    source: Literal["manual"]
+    expected_revision: int = Field(ge=1, strict=True)
+    proposal_artifact_id: str = Field(pattern=r"^[a-f0-9]{32}$")
+    document: dict
+
+
+class ScriptVersionRequest(BaseModel):
+    """Nova versão com o texto do usuário. O documento é validado depois, pelo contrato, com erro sanitizado."""
+    model_config = ConfigDict(extra="forbid")
+    expected_version: int = Field(ge=1, strict=True)
+    document: dict
+
+
+def diff_documents(previous, document):
+    """Diferença de campos entre duas versões; só ids e nomes de campos, nunca o texto."""
+    before = {section["id"]: section for section in previous["sections"]}
+    after = {section["id"]: section for section in document["sections"]}
+    changed = [{"id": key, "fields": [field for field in ("kind", "heading", "narration", "source_ids")
+                                       if before[key][field] != after[key][field]]}
+               for key in after if key in before and before[key] != after[key]]
+    return {"title_changed": previous["title"] != document["title"],
+            "sections_added": [key for key in after if key not in before],
+            "sections_removed": [key for key in before if key not in after],
+            "sections_changed": changed,
+            "order_changed": [k for k in before if k in after] != [k for k in after if k in before]}
+
+
 def simulate_script(proposal, feedback, allowed_source_ids):
     """Transformação fixa do snapshot, sem inferência ou acesso externo."""
     recommendation = proposal.get("recommendation") or {}
@@ -55,6 +85,8 @@ class ScriptService:
         item = dict(row)
         item["document"] = json.loads(item["document"])
         item["review"] = json.loads(item["review"]) if item["review"] else None
+        item["origin"] = item.get("origin", "simulated")  # esquema anterior à v9
+        item["authored_by"] = item["origin"]
         return item
 
     @staticmethod
@@ -98,10 +130,41 @@ class ScriptService:
         with self.store.connect() as db:
             db.execute("BEGIN")
             WorkflowService._require(db, workflow_id)
-            return {"items": [self._record(row) for row in db.execute(
-                "SELECT * FROM scripts WHERE workflow_id=? ORDER BY version DESC", (workflow_id,))]}
+            items = [self._record(row) for row in db.execute(
+                "SELECT * FROM scripts WHERE workflow_id=? ORDER BY version DESC", (workflow_id,))]
+            for index, item in enumerate(items):
+                older = items[index + 1] if index + 1 < len(items) else None
+                item["changes"] = ({"previous_version": older["version"], **diff_documents(older["document"], item["document"])}
+                                   if older else None)
+            return {"items": items}
 
-    def create(self, workflow_id, request: ScriptRequest, key):
+    def _allowed_sources(self, db, workflow_id, proposal, revision):
+        # Proveniência de artefatos não é referência de fonte editorial.
+        allowed = set()
+        if proposal.get("schema_version") == 2:
+            refs = proposal.get("source_artifact_ids", [])
+            if len(refs) != 1:
+                raise WorkflowConflict("Snapshot da análise inválido.")
+            _, analysis = self._artifact(db, refs[0], workflow_id, revision, "analysis")
+            allowed = {source["id"] for source in analysis["result"]["sources"]}
+        return allowed
+
+    def _insert(self, db, scope, key, encoded, workflow_id, revision, artifact, version, document, origin):
+        script_id, timestamp = uuid.uuid4().hex, now()
+        # Simulado usa o INSERT legado (origin assume o padrão), compatível com bancos de esquema anterior.
+        db.execute("""INSERT INTO scripts(id,workflow_id,workflow_revision,proposal_artifact_id,proposal_content_hash,
+            version,status,document,created_at,review) VALUES(?,?,?,?,?,?, 'awaiting_review',?,?,NULL)""",
+            (script_id, workflow_id, revision, artifact["id"], artifact["content_hash"], version, encode(document), timestamp))
+        if origin != "simulated":
+            db.execute("UPDATE scripts SET origin=? WHERE id=?", (origin, script_id))
+        record = self._record(self._require(db, script_id))
+        self._receipt(db, scope, key, encoded, record)
+        WorkflowService._event(db, workflow_id, revision, "script.created",
+                               {"script_id": script_id, "version": version, "origin": origin})
+        return record
+
+    def create(self, workflow_id, request: ScriptRequest | ManualScriptRequest, key):
+        manual = isinstance(request, ManualScriptRequest)
         encoded, scope = encode(request.model_dump()), f"generate:{workflow_id}"
         with self.store.connect() as db:
             db.execute("BEGIN IMMEDIATE")
@@ -109,9 +172,9 @@ class ScriptService:
             replay = self._replay(db, scope, key, encoded)
             if replay is not None:
                 return replay, False
+            redacted = radar_redacted(json.loads(workflow["payload"]))
             if (workflow["status"] != "approved" or workflow["revision"] != request.expected_revision
-                    or workflow["current_artifact_id"] != request.proposal_artifact_id
-                    or radar_redacted(json.loads(workflow["payload"]))):
+                    or workflow["current_artifact_id"] != request.proposal_artifact_id or (redacted and not manual)):
                 raise WorkflowConflict("Proposta aprovada e revisão atual são necessárias.")
             approval = db.execute("""SELECT 1 FROM approvals WHERE workflow_id=? AND revision=? AND artifact_id=?
                 AND decision='approve' AND operator_id='local-operator' AND scope='editorial_proposal'""",
@@ -122,23 +185,43 @@ class ScriptService:
             previous = db.execute("SELECT * FROM scripts WHERE workflow_id=? ORDER BY version DESC LIMIT 1", (workflow_id,)).fetchone()
             if previous and previous["status"] != "changes_requested":
                 raise WorkflowConflict("O roteiro atual não permite nova geração.")
-            # Proveniência de artefatos não é referência de fonte editorial.
-            allowed = set()
-            if proposal.get("schema_version") == 2:
-                refs = proposal.get("source_artifact_ids", [])
-                if len(refs) != 1:
-                    raise WorkflowConflict("Snapshot da análise inválido.")
-                _, analysis = self._artifact(db, refs[0], workflow_id, request.expected_revision, "analysis")
-                allowed = {source["id"] for source in analysis["result"]["sources"]}
-            feedback = json.loads(previous["review"])["feedback"] if previous else ""
-            document = validate_script(simulate_script(proposal, feedback, allowed), allowed).model_dump(mode="json")
-            script_id, timestamp = uuid.uuid4().hex, now()
+            if manual:
+                # Texto do usuário é dado: não é interpretado nem enviado a nenhum executor.
+                allowed = set() if redacted else self._allowed_sources(db, workflow_id, proposal, request.expected_revision)
+                document = validate_script(request.document, allowed)
+            else:
+                allowed = self._allowed_sources(db, workflow_id, proposal, request.expected_revision)
+                feedback = json.loads(previous["review"])["feedback"] if previous else ""
+                document = validate_script(simulate_script(proposal, feedback, allowed), allowed)
             version = previous["version"] + 1 if previous else 1
-            db.execute("""INSERT INTO scripts VALUES(?,?,?,?,?,?, 'awaiting_review',?,?,NULL)""",
-                (script_id, workflow_id, request.expected_revision, artifact["id"], artifact["content_hash"], version, encode(document), timestamp))
-            record = self._record(self._require(db, script_id))
-            self._receipt(db, scope, key, encoded, record)
-            WorkflowService._event(db, workflow_id, request.expected_revision, "script.created", {"script_id": script_id, "version": version})
+            record = self._insert(db, scope, key, encoded, workflow_id, request.expected_revision, artifact, version,
+                                  document.model_dump(mode="json"), "human" if manual else "simulated")
+            return record, True
+
+    def new_version(self, script_id, request: ScriptVersionRequest, key):
+        """Versão N+1 escrita pelo usuário; nunca aprova: a decisão continua em `review`."""
+        encoded, scope = encode(request.model_dump()), f"version:{script_id}"
+        with self.store.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = self._require(db, script_id)
+            replay = self._replay(db, scope, key, encoded)
+            if replay is not None:
+                return replay, False
+            workflow = WorkflowService._require(db, row["workflow_id"])
+            latest = db.execute("SELECT MAX(version) FROM scripts WHERE workflow_id=?", (row["workflow_id"],)).fetchone()[0]
+            if row["version"] != request.expected_version or row["version"] != latest:
+                raise WorkflowConflict("Versão obsoleta: edite a versão mais recente do roteiro.")
+            if row["status"] not in ("awaiting_review", "changes_requested"):
+                raise WorkflowConflict("Roteiro aprovado ou rejeitado não aceita nova versão.")
+            if (workflow["status"] != "approved" or workflow["revision"] != row["workflow_revision"]
+                    or workflow["current_artifact_id"] != row["proposal_artifact_id"]):
+                raise WorkflowConflict("Proposta aprovada e revisão atual são necessárias.")
+            artifact, proposal = self._artifact(db, row["proposal_artifact_id"], row["workflow_id"], row["workflow_revision"], "proposal")
+            allowed = (set() if radar_redacted(json.loads(workflow["payload"]))
+                       else self._allowed_sources(db, row["workflow_id"], proposal, row["workflow_revision"]))
+            document = validate_script(request.document, allowed)
+            record = self._insert(db, scope, key, encoded, row["workflow_id"], row["workflow_revision"], artifact,
+                                  row["version"] + 1, document.model_dump(mode="json"), "human")
             return record, True
 
     def review(self, script_id, request: ScriptReviewRequest, key):

@@ -220,9 +220,10 @@ def test_migration_v8_preserves_data_is_idempotent_and_adds_only_table(settings,
         migrate(path)
         with sqlite3.connect(path) as db:
             db.execute('PRAGMA foreign_keys=ON')
-            assert db.execute('PRAGMA user_version').fetchone()[0] == 8
+            assert db.execute('PRAGMA user_version').fetchone()[0] == 9
             for name, rows in tables.items():
-                assert [tuple(r) for r in db.execute(f'SELECT * FROM {name} ORDER BY 1')] == rows
+                # v9 acrescenta scripts.origin (HOR-133); os valores anteriores permanecem intactos.
+                assert [tuple(r)[:len(rows[0])] if rows else tuple(r) for r in db.execute(f'SELECT * FROM {name} ORDER BY 1')] == rows
             assert db.execute('PRAGMA foreign_key_check').fetchall() == []
             assert db.execute('SELECT COUNT(*) FROM license_reviews').fetchone()[0] == 0
             with pytest.raises(sqlite3.IntegrityError):  # FK de produção

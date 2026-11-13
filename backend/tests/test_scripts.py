@@ -55,7 +55,7 @@ def test_versioned_review_and_restart(settings):
         assert len(client.get(f"/v1/workflows/{workflow['id']}").json()['approvals']) == 1
     with client_for(settings) as client:
         assert client.get(f"/v1/scripts/{second['id']}").json() == result
-        assert client.get(f"/v1/workflows/{workflow['id']}/scripts").json()['items'] == [result, changed.json()]
+        assert [{k: v for k, v in item.items() if k != 'changes'} for item in client.get(f"/v1/workflows/{workflow['id']}/scripts").json()['items']] == [result, changed.json()]
         assert generate(client, workflow).json() == first
         assert decide(client, second, key='approve-2').json() == result
 

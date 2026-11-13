@@ -31,7 +31,7 @@ from .radar_youtube.state import RadarState
 from .radar_workflow import RadarWorkflowRequest, adapt, demo, eligibility, summary
 from .security import SecurityGate, require_secure, security_status
 from .production import ProductionRequest, ProductionReviewRequest
-from .scripts import ScriptRequest, ScriptReviewRequest, ScriptService
+from .scripts import ManualScriptRequest, ScriptRequest, ScriptReviewRequest, ScriptService, ScriptVersionRequest
 from .storage import Store
 from .workflows import AuthorizationRequest, ReviewRequest, RevisionRequest, WorkflowConflict, WorkflowRequest
 
@@ -151,7 +151,7 @@ def create_app(settings: Settings, shutdown=None, ready=None):
             raise HTTPException(422, "Estrutura do roteiro inválida.") from error
 
     @app.post("/v1/workflows/{workflow_id}/scripts", status_code=201)
-    def generate_script(workflow_id: str, request: ScriptRequest,
+    def generate_script(workflow_id: str, request: ScriptRequest | ManualScriptRequest,
                         idempotency_key: str = Header(min_length=1, max_length=128)):
         record, created = script_call(lambda: scripts.create(workflow_id, request, idempotency_key))
         return JSONResponse(record, status_code=201 if created else 200)
@@ -163,6 +163,12 @@ def create_app(settings: Settings, shutdown=None, ready=None):
     @app.get("/v1/scripts/{script_id}")
     def inspect_script(script_id: str):
         return script_call(lambda: scripts.get(script_id))
+
+    @app.post("/v1/scripts/{script_id}/versions", status_code=201)
+    def write_script_version(script_id: str, request: ScriptVersionRequest,
+                             idempotency_key: str = Header(min_length=1, max_length=128)):
+        record, created = script_call(lambda: scripts.new_version(script_id, request, idempotency_key))
+        return JSONResponse(record, status_code=201 if created else 200)
 
     @app.post("/v1/scripts/{script_id}/review")
     def review_script(script_id: str, request: ScriptReviewRequest,

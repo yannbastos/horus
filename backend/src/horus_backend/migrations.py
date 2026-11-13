@@ -6,7 +6,7 @@ import uuid
 from contextlib import closing
 from pathlib import Path
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 MIGRATIONS = {
     1: (
         """CREATE TABLE jobs (
@@ -156,6 +156,11 @@ MIGRATIONS = {
             BEGIN SELECT RAISE(ABORT, 'license_reviews é append-only'); END""",
         """CREATE TRIGGER license_reviews_no_delete BEFORE DELETE ON license_reviews
             BEGIN SELECT RAISE(ABORT, 'license_reviews é append-only'); END""",
+    ),
+    # Origem do roteiro (HOR-133): coluna aditiva; versões anteriores foram todas geradas pela simulação.
+    9: (
+        """ALTER TABLE scripts ADD COLUMN origin TEXT NOT NULL DEFAULT 'simulated'
+            CHECK(origin IN ('simulated','human'))""",
     ),
 }
 
