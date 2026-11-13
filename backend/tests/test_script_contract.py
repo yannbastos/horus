@@ -221,3 +221,46 @@ def test_section_model_is_exported_and_strict_on_its_own():
     with pytest.raises(ValidationError):
         ScriptSection(id='a', kind='body', heading='h', narration='n', source_ids=['x'], extra=1)
     assert ScriptSection(id='a', kind='body', heading='h', narration='n').source_ids == []
+
+
+def test_json_round_trip_is_stable_and_strict_json_input_works():
+    script = validate_script(VALID, ALLOWED)
+    dumped = script.model_dump_json()
+    assert validate_script(json.loads(dumped), ALLOWED) == script
+    assert ScriptDocument.model_validate_json(dumped) == script
+    assert json.loads(dumped) == VALID
+
+
+def test_unicode_counts_code_points_and_keeps_text():
+    value = copy.deepcopy(VALID)
+    value['sections'][1]['narration'] = '\U0001F600' * 8000
+    assert validate_script(value, ALLOWED).sections[1].narration == '\U0001F600' * 8000
+    value['sections'][1]['narration'] = '\U0001F600' * 8001
+    with pytest.raises(ValueError):
+        validate_script(value, ALLOWED)
+
+
+@pytest.mark.parametrize('bad', [float('nan'), float('inf'), b'x', object(), {'a': 1}])
+def test_non_string_values_in_text_fields_rejected(bad):
+    value = copy.deepcopy(VALID)
+    value['sections'][1]['narration'] = bad
+    with pytest.raises(ValueError):
+        validate_script(value, ALLOWED)
+
+
+def test_allowed_set_with_non_string_members_does_not_admit_other_values():
+    value = copy.deepcopy(VALID)
+    value['sections'][1]['source_ids'] = ['src_a']
+    assert validate_script(value, frozenset({'src_a', 5}))
+    value['sections'][1]['source_ids'] = ['5']
+    with pytest.raises(ValueError):
+        validate_script(value, {5})
+
+
+def test_unknown_reference_error_lists_only_ids_not_narration():
+    value = copy.deepcopy(VALID)
+    value['sections'][1]['narration'] = 'TEXTO-SENSIVEL-ORIGINAL'
+    value['sections'][1]['source_ids'] = ['src_x']
+    with pytest.raises(ValueError) as error:
+        validate_script(value, ALLOWED)
+    assert 'src_x' in str(error.value) and 'TEXTO-SENSIVEL' not in str(error.value)

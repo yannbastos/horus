@@ -41,3 +41,4 @@ Testes offline cobrem tipos, tamanhos nos limites (inclusive), ordem/cardinalida
 - Não valida qualidade, coerência ou fidelidade do texto às fontes, apenas estrutura e referências.
 - O contrato de ids do Hermes (`Id`, regex terminada em `$`) aceitaria uma quebra de linha final; aqui isso é neutralizado porque o espaço final é removido antes. Os contratos Hermes não foram alterados.
 - Contagem de caracteres em pontos de código Unicode, não bytes.
+- Erros de estrutura levantados pelo Pydantic (`ValidationError`) incluem `input_value` com trecho do texto recusado; o serviço/API não deve devolver `str(erro)` ao cliente. Os erros de referência (`ValueError`) listam apenas ids, nunca a narração.
