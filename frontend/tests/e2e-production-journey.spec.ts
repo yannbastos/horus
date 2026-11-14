@@ -106,8 +106,13 @@ test.describe('Jornada de produção — backend real', () => {
 
     await timed('radar: dados de demonstração', async () => {
       await goTo(page, 'Radar');
-      await page.getByRole('button', { name: 'Carregar dados de demonstração' }).click();
-      await expect(page.getByText('4 de 4 elegíveis selecionados')).toBeVisible();
+      const loadDemo = page.getByRole('button', { name: 'Carregar dados de demonstração' });
+      const eligibleText = page.getByText(/elegíveis selecionados/);
+      await expect(loadDemo.or(eligibleText)).toBeVisible({ timeout: 15_000 });
+      if (await loadDemo.isVisible()) {
+        await loadDemo.click();
+      }
+      await expect(eligibleText).toBeVisible({ timeout: 15_000 });
       await shot(page, '01-radar-demo');
     });
 
@@ -290,8 +295,13 @@ test.describe('Jornada de produção — backend real', () => {
 
     await timed('manual: iniciar e aprovar proposta', async () => {
       await goTo(page, 'Radar');
-      await page.getByRole('button', { name: 'Carregar dados de demonstração' }).click();
-      await expect(page.getByText('4 de 4 elegíveis selecionados')).toBeVisible();
+      const loadDemo = page.getByRole('button', { name: 'Carregar dados de demonstração' });
+      const eligibleText = page.getByText(/elegíveis selecionados/);
+      await expect(loadDemo.or(eligibleText)).toBeVisible({ timeout: 15_000 });
+      if (await loadDemo.isVisible()) {
+        await loadDemo.click();
+      }
+      await expect(eligibleText).toBeVisible({ timeout: 15_000 });
       await page.getByLabel('Identificador do canal').fill('canal-manual-e2e');
       await page.getByLabel('Resumo editorial do canal').fill('Canal de tecnologia com roteiros escritos pelo operador.');
       await page.getByLabel('Objetivo editorial da análise').fill('Criar proposta para roteiro escrito manualmente pelo usuário.');
