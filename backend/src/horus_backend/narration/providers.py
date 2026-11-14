@@ -3,16 +3,20 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Protocol
+from ..processes import failure_detail
 
 # Registro de origens dos motores locais; novos adaptadores declaram aqui sua origem.
 PRODUCTION_ORIGINS = {'windows_sapi': 'system_voice', 'piper': 'local_tts_model', 'kokoro': 'local_tts_model'}
 
 
 class NarrationError(Exception):
-    def __init__(self, code, status=503):
+    def __init__(self, code, status=503, *, detail=None):
         self.code, self.status = code, status
+        self.detail = detail or failure_detail(code, 'narration')
+        self.message = ('Narração indisponível (' + code + '); confira a voz, os modelos e o executável em Ajustes antes de tentar novamente.')
         super().__init__(code)
 
 
@@ -34,11 +38,18 @@ def run(command, payload=None, text=None):
     env = {k: v for k, v in os.environ.items() if k.upper() in {'PATH', 'SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP'}}
     env['PYTHONUTF8'] = '1'
     env['PYTHONPATH'] = str(Path(__file__).resolve().parents[2])
+    started = time.monotonic()
     try:
         return subprocess.run(command, input=json.dumps(payload) if payload else text,
                               capture_output=True, text=True, encoding='utf-8', env=env, timeout=60, check=True).stdout
-    except (OSError, subprocess.SubprocessError):
-        raise NarrationError('local_narration_failed') from None
+    except (OSError, subprocess.SubprocessError) as error:
+        private = [text] if text else []
+        if payload:
+            private += [payload.get('text')]
+        detail = failure_detail('local_narration_failed', 'narration', started=started, error=error, private=private)
+        detail['reason'] = ('timeout' if isinstance(error, subprocess.TimeoutExpired) else
+                            'executable_unavailable' if isinstance(error, OSError) else 'nonzero_exit')
+        raise NarrationError('local_narration_failed', detail=detail) from None
 
 
 class LocalProvider:
@@ -65,8 +76,11 @@ class WindowsSapi(LocalProvider):
     license = {'name': 'Microsoft Windows', 'url': 'https://www.microsoft.com/useterms', 'notes': 'Licença da voz deve ser verificada separadamente.'}
     def voices(self):
         if sys.platform != 'win32': return []
-        items = json.loads(run([sys.executable, '-m', 'horus_backend.narration.sapi_worker'], {'action': 'voices'}))
-        return [voice(v['id'], v['name'], v['language']) for v in items]
+        try:
+            items = json.loads(run([sys.executable, '-m', 'horus_backend.narration.sapi_worker'], {'action': 'voices'}))
+            return [voice(v['id'], v['name'], v['language']) for v in items]
+        except (ValueError, KeyError, TypeError):
+            raise NarrationError('local_narration_failed') from None
     def synthesize(self, text, voice_id, output, authorization=None):
         if voice_id not in {v['id'] for v in self.voices()}: raise NarrationError('voice_not_found', 422)
         run([sys.executable, '-m', 'horus_backend.narration.sapi_worker'],

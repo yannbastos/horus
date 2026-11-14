@@ -62,7 +62,8 @@ def main(path):
     except (ValueError, NarrationError) as error:
         # Somente códigos/estado controlados, nunca texto do roteiro ou erro bruto de ferramenta.
         code = error.code if isinstance(error, NarrationError) else str(error)
-        Path(path).with_suffix('.error.json').write_text(json.dumps({'error': code}), encoding='utf-8')
+        detail = error.detail if isinstance(error, NarrationError) else None
+        Path(path).with_suffix('.error.json').write_text(json.dumps({'error': code, 'failure': detail}), encoding='utf-8')
         sys.exit(1)
 
 

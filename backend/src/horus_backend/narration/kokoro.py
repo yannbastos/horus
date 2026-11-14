@@ -8,8 +8,9 @@ import os
 from pathlib import Path
 import tempfile
 import wave
+import time
 
-from ..processes import OwnedProcess
+from ..processes import OwnedProcess, failure_detail
 from .providers import LocalProvider, NarrationError, voice
 
 # docs/avaliacao-vozes.md, seção 6.1; revisão f3ff3571791e39611d31c381e3a41a3af07b4987.
@@ -83,12 +84,16 @@ class Kokoro(LocalProvider):
                 'output': str(output), 'model_dir': str(self.model_dir)}), encoding='utf-8')
             owned = None
             valid = False
+            started = time.monotonic()
+            stderr = b''
             try:
                 owned = await OwnedProcess.start([str(self.python), '-I',
                     str(Path(__file__).with_name('kokoro_worker.py')), str(request)], env=env, cwd=folder)
-                await asyncio.wait_for(owned.process.communicate(), timeout=self.timeout)
+                _, stderr = await asyncio.wait_for(owned.process.communicate(), timeout=self.timeout)
                 if owned.process.returncode:
-                    raise NarrationError('kokoro_synthesis_failed')
+                    raise NarrationError('kokoro_synthesis_failed', detail=failure_detail(
+                        'kokoro_synthesis_failed', 'narration', started=started, stderr=stderr,
+                        exit_code=owned.process.returncode, private=[text]))
                 self.verify()
                 if output.is_symlink() or not output.is_file() or output.stat().st_size > 200_000_000:
                     raise NarrationError('kokoro_invalid_wav')
@@ -101,8 +106,17 @@ class Kokoro(LocalProvider):
                 except (OSError, EOFError, wave.Error, ValueError):
                     raise NarrationError('kokoro_invalid_wav') from None
                 valid = True
-            except TimeoutError:
-                raise NarrationError('kokoro_timeout', 504) from None
+            except NarrationError as error:
+                if error.detail.get('duration_seconds') is None:
+                    error.detail = failure_detail(error.code, 'narration', started=started, error=error,
+                        stderr=stderr, private=[text], exit_code=owned.process.returncode if owned else None)
+                raise
+            except TimeoutError as error:
+                raise NarrationError('kokoro_timeout', 504, detail=failure_detail(
+                    'kokoro_timeout', 'narration', started=started, error=error)) from None
+            except OSError as error:
+                raise NarrationError('kokoro_synthesis_failed', detail=failure_detail(
+                    'kokoro_synthesis_failed', 'narration', started=started, error=error)) from None
             finally:
                 if owned:
                     await owned.stop()

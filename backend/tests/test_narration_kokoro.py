@@ -86,7 +86,11 @@ def test_owned_synthesizer(provider, tmp_path, monkeypatch, mode):
             assert result['publishable'] is False
         else:
             error = asyncio.CancelledError if mode == 'cancel' else NarrationError
-            with pytest.raises(error): await task
+            with pytest.raises(error) as caught: await task
+            if mode != 'cancel':
+                assert caught.value.detail['stage'] == 'narration'
+                assert caught.value.detail['duration_seconds'] >= 0
+                assert len(caught.value.detail['stderr_tail'].encode()) <= 8192
             assert not output.exists()
         assert processes[0].process.returncode is not None
     asyncio.run(run())

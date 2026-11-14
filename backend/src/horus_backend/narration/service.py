@@ -146,7 +146,10 @@ def narration_router(service):
     router = APIRouter(prefix='/v1/narration')
     def call(action):
         try: return action()
-        except NarrationError as error: return JSONResponse({'code': error.code}, status_code=error.status)
+        except NarrationError as error:
+            if error.code == 'paid_provider_not_authorized':
+                return JSONResponse({'code': error.code}, status_code=error.status)
+            return JSONResponse({'code': error.code, 'message': error.message, 'failure': error.detail}, status_code=error.status)
     @router.get('/providers')
     def providers(): return call(lambda: [p.status() for p in service.providers.values()])
     @router.post('/estimate')

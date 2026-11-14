@@ -5,6 +5,42 @@ import asyncio
 import ctypes
 import os
 import signal
+import re
+import time
+
+
+def sanitized_tail(value, *, private=(), limit=8192):
+    """Diagnóstico limitado; nunca persistir entradas de roteiro, tokens ou caminhos locais."""
+    text = value.decode('utf-8', errors='replace') if isinstance(value, bytes) else str(value or '')
+    for item in sorted((str(v) for v in private if v), key=len, reverse=True):
+        text = text.replace(item, '[conteúdo omitido]')
+    text = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', text)
+    text = re.sub(r'''(?i)\b(?:authorization["']?\s*[=:]\s*["']?(?:bearer\s+)?|bearer\s+|[\w-]*(?:api[_-]?key|token|secret|password)["']?\s*[=:]\s*["']?)[^\s,;"']+''', '[credencial omitida]', text)
+    text = re.sub(r'''(?i)(?:[a-z]:[\\/]|\\\\|/(?=[\w.~-]))[^\r\n<>"']+''', '[caminho omitido]', text)
+    # Tracebacks exibem linhas de código que podem conter entradas privadas.
+    text = re.sub(r'(?m)^\s*(?:File |Traceback|\^|.*(?:"text"|"narration")\s*:).*$', '[conteúdo omitido]', text)
+    text = ''.join(c for c in text if c in '\n\t' or ord(c) >= 32)
+    return text.encode('utf-8')[-limit:].decode('utf-8', errors='ignore')
+
+
+def failure_detail(code, stage, *, started=None, error=None, stderr=None, private=(), exit_code=None):
+    return {'code': code, 'stage': stage, 'type': type(error).__name__ if error else 'ProcessError',
+            'exit_code': exit_code if exit_code is not None else getattr(error, 'returncode', None),
+            'duration_seconds': round(max(0, time.monotonic()-started), 3) if started is not None else None,
+            'stderr_tail': sanitized_tail(stderr if stderr is not None else getattr(error, 'stderr', ''), private=private),
+            'stderr_limit_bytes': 8192}
+
+
+class ProductionFailure(ValueError):
+    def __init__(self, code, stage, message, **diagnostic):
+        self.detail = failure_detail(code, stage, **diagnostic)
+        super().__init__(message)
+
+
+class ProductionTimeout(TimeoutError):
+    def __init__(self, code, stage, message, **diagnostic):
+        self.detail = failure_detail(code, stage, **diagnostic)
+        super().__init__(message)
 
 
 class WindowsJob:
@@ -79,7 +115,8 @@ class OwnedProcess:
     async def stop(self):
         if self.job:
             self.job.close()
-        elif self.process.returncode is None:
+        elif os.name != 'nt':
+            # O líder pode ter terminado deixando filhos no grupo que criamos.
             try:
                 os.killpg(self.process.pid, signal.SIGTERM)
             except ProcessLookupError:
@@ -95,6 +132,11 @@ class OwnedProcess:
             elif self.process.returncode is None:
                 self.process.kill()
             await self.process.wait()
+        if os.name != 'nt':
+            try:
+                os.killpg(self.process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
 
     def close(self):
         if self.job:
