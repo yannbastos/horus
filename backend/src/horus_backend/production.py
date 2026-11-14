@@ -343,6 +343,12 @@ class ProductionService:
             with self.store.connect() as db:
                 db.execute("UPDATE productions SET artifacts=? WHERE id=?", (encode(artifacts), production_id))
             if process.returncode != 0 or result.get("blocked"):
+                detail = result.get('audit_error')
+                if (isinstance(detail,dict) and set(detail)=={'code','type','message'}
+                        and all(isinstance(v,str) and len(v)<=400 for v in detail.values())):
+                    current = self.store.get_job(job_id)['result'] or {}
+                    self.store.update(job_id, self.store.get_job(job_id)['status'], result={**current,'audit_error':detail})
+                    await manager.emit(job_id, 'error', result.get('error','Auditoria de rede inválida.'))
                 self.store.update(job_id, "blocked" if result.get("blocked") else "failed",
                     result=self.store.get_job(job_id)["result"], error=result.get("error", "Falha técnica no render offline."))
                 return

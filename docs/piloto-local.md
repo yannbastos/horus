@@ -69,6 +69,27 @@ Validações focadas: `python -m pytest backend/tests/test_manual_script_flow.py
 
 Limites: API e arquivos reais verificados; frontend, instalador, Linux, naturalidade vocal e aceite humano editorial não foram validados. Um frame foi inspecionado e estava legível, sem recorte aparente; isso não é inspeção integral nem escuta. `publishable=false` e `demo_only=true` permanecem.
 
+### Auditoria de rede com renders simultâneos — HOR-133
+
+O worker escolhe uma porta HTTP explícita pelo sistema operacional para cada render (`--port`), registrada em `render/validation.json`. Isso evita a disputa pelo início da faixa padrão 3000: o lock do seletor do Remotion instalado é apenas interno ao processo Node. A porta de teste é liberada antes de o Node escutar; se outro processo a ocupar nesse intervalo, o Remotion falha, sem reutilizar o servidor alheio. O proxy continua local, com porta atribuída pelo SO e bloqueio de destinos externos.
+
+Cada browser possui manifesto e NetLog com PID do Node e UUID próprios, mesmo quando mais de um browser nasce na mesma produção. A auditoria valida todos os manifestos e logs, em vez de aceitar somente o último escritor. O PID efetivamente criado pelo `spawn` é registrado; o callback de saída do Node ou uma consulta de término do processo ao SO confirma o encerramento antes da leitura. No Windows, a consulta usa `OpenProcess(SYNCHRONIZE)`/`WaitForSingleObject`, sem encerrar processos nem mudar permissões.
+
+Leitura aguarda até 5 s por arquivo para fechamento/flush e falhas transitórias de compartilhamento. Mantém a política anterior de aceitar somente a falta do sufixo estrutural `]}` quando todos os eventos armazenados são JSON íntegro; isso só ocorre ao fim da espera, após estabilização e término confirmado do browser, com `netlog_complete=false` explícito. Nunca elimina um registro parcial nem inventa eventos. NetLog ausente, evento cortado, esquema inválido, browser sem término confirmado ou TCP externo continuam impedindo a entrega. Essa auditoria de browser/Node não equivale a captura de rede de todo o sistema.
+
+Falhas registram `audit_error: {code,type,message}` em `result.json` e no resultado do job, além de um evento `error` e do artefato `network-failure.json`. A mensagem inclui papel do arquivo e linha/coluna JSON ou errno/winerror, sem conteúdo bruto, caminhos privados, URLs ou tokens. Não se presumiu a causa exata da falha anterior da main, que não tinha esse diagnóstico.
+
+Reprodução real concorrente (fábrica local já preparada, sem TTS/Whisper, dois `local_demo` de roteiro humano curto em bancos temporários independentes):
+
+```powershell
+$env:HORUS_PILOT_FACTORY = "$env:TEMP/horus-m4/backend-factory-demo"
+& backend/.venv/Scripts/python.exe -m pytest backend/tests/test_production_network.py::test_real_concurrent_render_audits_are_isolated -q -s --tb=short --basetemp "$env:TEMP/hna-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+```
+
+**1 passed em 157,98 s**, relatório `%TEMP%/hna-7531216b/test_real_concurrent_render_au0/concurrent-audit-report.json`: produções `4a71d2b53ce14d50b62898c6c5d1997a` e `c7996477e3474ca3a8cd7a71b76eeba5`, portas HTTP **63901 / 63900**, proxies **59099 / 59098**, **1586 / 1589 eventos**, logs distintos e nenhum TCP externo registrado. Ambos os browsers estavam terminados por confirmação do SO; os NetLogs ficaram honestamente `netlog_complete=false` por falta do sufixo JSON, sem perder registros. O primeiro ensaio falhou fechado (**1 failed em 84,68 s**) ao depender só do callback de saída do Node: os manifestos permaneceram `browser_closed=false` mesmo após término real. Isso motivou a confirmação pelo SO; nenhum critério foi afrouxado para passar.
+
+Os testes também reproduzem NetLog ausente, JSON no meio de um evento, falha de compartilhamento seguida de flush, evento externo que chega depois de um prefixo aparentemente íntegro, múltiplos browsers e propagação da causa para job/evento. Após a correção do relógio capturado antes de uma leitura lenta, a repetição final passou: **1 passed, 1 warning em 170,55 s**, relatório `%TEMP%/hnf-bbd3a10d/test_real_concurrent_render_au0/concurrent-audit-report.json`; produções `e82df6442a2a4a8ca365895dc9d5a178` / `caf3b09b5a524cb99e8e3899971e755c`, portas HTTP **51885 / 51886**, proxies **51883 / 51884**, **1648 / 1626 eventos**, sem TCP externo. O aviso Pydantic sobre alias `request` foi registrado no ensaio concorrente e não provocou falha. Regressão final: `& backend/.venv/Scripts/python.exe -m pytest backend/tests/test_production_network.py backend/tests/test_production.py -q --tb=short`: **65 passed, 4 skipped em 62,66 s**. Suíte completa final: `& backend/.venv/Scripts/python.exe -m pytest backend/tests -q --tb=short`: **1121 passed, 16 skipped, 1 warning em 267,36 s**. O aviso é o teste deliberado de tipo inválido do contrato de produção; os ensaios reais condicionais foram executados separadamente. `git diff --check` aprovado.
+
 ## Provedor e voz na produção — HOR-132, 13/11/2026
 
 O pedido aceita `narration: {provider, voice_id}` opcional em `local_pilot`.

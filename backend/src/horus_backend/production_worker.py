@@ -8,6 +8,7 @@ import math
 import os
 from pathlib import Path
 import shutil
+import socket
 import struct
 import subprocess
 import sys
@@ -63,6 +64,7 @@ const cp = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 const net = require('node:net');
+const crypto = require('node:crypto');
 const loopback = h => ['localhost','127.0.0.1','::1','[::1]'].includes(h);
 const connect = net.Socket.prototype.connect;
 net.Socket.prototype.connect = function(...args) {
@@ -77,15 +79,31 @@ net.Socket.prototype.connect = function(...args) {
 };
 const spawn = cp.spawn;
 cp.spawn = function(command, args, options) {
+  let manifest;
+  let launch;
   if (path.resolve(command).toLowerCase() === path.resolve(process.env.HORUS_DEMO_BROWSER).toLowerCase()) {
+    const id = process.pid + '-' + crypto.randomUUID();
+    const folder = path.dirname(process.env.HORUS_DEMO_NETLOG);
+    const netlog = 'browser-netlog-' + id + '.json';
     args = args.filter(a => !a.startsWith('--proxy-') && a !== '--no-proxy-server');
     args.push('--proxy-server=http://' + process.env.HORUS_DEMO_PROXY, '--proxy-bypass-list=localhost;127.0.0.1;[::1]',
       '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost', '--disable-quic',
-      '--log-net-log=' + process.env.HORUS_DEMO_NETLOG, '--net-log-capture-mode=Default');
-    fs.writeFileSync(process.env.HORUS_DEMO_LAUNCH, JSON.stringify({browser_guard_applied:true,
-      external_proxy:process.env.HORUS_DEMO_PROXY, dns_external:'NOTFOUND', node_loopback_only:true}));
+      '--log-net-log=' + path.join(folder,netlog), '--net-log-capture-mode=Default');
+    manifest = path.join(folder,'browser-launch-' + id + '.json');
+    launch = {browser_guard_applied:true, browser_closed:false,
+      netlog_file:netlog,
+      external_proxy:process.env.HORUS_DEMO_PROXY, dns_external:'NOTFOUND', node_loopback_only:true};
   }
-  return spawn.call(this,command,args,options);
+  const child = spawn.call(this,command,args,options);
+  if (manifest) {
+    launch.browser_pid = child.pid;
+    fs.writeFileSync(manifest, JSON.stringify(launch));
+    child.once('exit', () => {
+      launch.browser_closed = true;
+      fs.writeFileSync(manifest, JSON.stringify(launch));
+    });
+  }
+  return child;
 };
 """
 
@@ -108,37 +126,130 @@ def deny_proxy():
     return server, thread, rejected
 
 
-def network_summary(root, rejected):
-    from urllib.parse import urlsplit
-    launch = json.loads((root / 'browser-launch.json').read_text())
-    raw = (root / 'browser-netlog.json').read_text(encoding='utf-8')
+class NetworkAuditError(ValueError):
+    def __init__(self, code, message, error_type='ValueError'):
+        self.detail = {'code':code, 'type':error_type, 'message':message}
+        super().__init__(f'{error_type}: {message}')
+
+
+def browser_has_exited(pid):
+    """Consulta somente o PID capturado pelo spawn; nunca encerra processos."""
+    if type(pid) is not int or not 0 < pid < 2**31:
+        return False
+    if os.name == 'nt':
+        import ctypes
+        from ctypes import wintypes
+        kernel = ctypes.WinDLL('kernel32',use_last_error=True)
+        kernel.OpenProcess.argtypes = [wintypes.DWORD,wintypes.BOOL,wintypes.DWORD]
+        kernel.OpenProcess.restype = wintypes.HANDLE
+        kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE,wintypes.DWORD]
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        handle = kernel.OpenProcess(0x100000,False,pid)  # SYNCHRONIZE, sem escrita
+        if not handle:
+            return ctypes.get_last_error() == 87  # ERROR_INVALID_PARAMETER: PID inexistente
+        try:
+            return kernel.WaitForSingleObject(handle,0) == 0
+        finally:
+            kernel.CloseHandle(handle)
     try:
-        netlog = json.loads(raw)
-        complete = True
-    except ValueError:
-        # NetLog pode terminar sem sufixo no shutdown; não inventar eventos ausentes.
-        netlog = json.loads(raw.rstrip().rstrip(',') + '] }')
-        complete = False
-    events = netlog.get('events', [])
-    constants = netlog['constants']['logEventTypes']
-    names = {value:key for key,value in constants.items()}
+        os.kill(pid,0)  # POSIX: consulta; nunca executar esta chamada no Windows
+    except ProcessLookupError:
+        return True
+    except PermissionError:
+        return False
+    return False
+
+
+def read_audit_json(path, *, deadline, allow_unclosed_events=False, require_closed=False):
+    """Espera flush/fechamento sem descartar evento nem reconstruir evento parcial."""
+    previous, stable_since = None, None
+    role = 'NetLog' if 'netlog' in path.name else 'manifesto de lançamento'
+    while True:
+        now = time.monotonic()
+        try:
+            raw = path.read_text(encoding='utf-8')
+            try:
+                value = json.loads(raw)
+                if not require_closed:
+                    return value, True
+                if isinstance(value,dict):
+                    if value.get('browser_closed') is True:
+                        return {**value,'exit_confirmation':'node_exit_event'}, True
+                    if browser_has_exited(value.get('browser_pid')):
+                        return {**value,'exit_confirmation':'os_process_handle'}, True
+                failure = NetworkAuditError('browser_not_closed', 'Encerramento do browser ainda não confirmado')
+            except json.JSONDecodeError as error:
+                # Chromium pode ser encerrado à força pelo Remotion. Só o sufixo
+                # estrutural pode faltar; nenhum byte de evento é removido.
+                partial = None
+                if allow_unclosed_events and raw.rstrip().rstrip(',').endswith('}'):
+                    try:
+                        partial = json.loads(raw.rstrip().rstrip(',') + ']}')
+                    except json.JSONDecodeError:
+                        pass
+                if raw != previous:
+                    previous, stable_since = raw, now
+                if partial is not None and time.monotonic()-stable_since >= .5 and time.monotonic() >= deadline:
+                    return partial, False
+                failure = NetworkAuditError('audit_json_incomplete',
+                    f'{role} JSON incompleto/inválido (linha {error.lineno}, coluna {error.colno})',
+                    type(error).__name__)
+        except OSError as error:
+            failure = NetworkAuditError('audit_file_unavailable',
+                f'{role} indisponível (errno={error.errno}, winerror={getattr(error,"winerror",None)})', type(error).__name__)
+        except (UnicodeError, ValueError) as error:
+            failure = NetworkAuditError('audit_encoding_invalid', 'Arquivo de auditoria não é UTF-8 válido', type(error).__name__)
+        if time.monotonic() >= deadline:
+            raise failure
+        time.sleep(.05)
+
+
+def network_summary(root, rejected, *, timeout=5):
+    from urllib.parse import urlsplit
+    launches = sorted(root.glob('browser-launch-*.json')) or [root/'browser-launch.json']
     url_hosts, remote_addresses = set(), set()
-    for event in events:
-        params = event.get('params', {})
-        url = params.get('url')
-        if isinstance(url, str):
-            host = urlsplit(url).hostname
-            if host:
-                url_hosts.add(host)
-        if names.get(event['type']) == 'TCP_CONNECT_ATTEMPT' and 'address' in params:
-            remote_addresses.add(params['address'])
+    browsers = []
+    for manifest in launches:
+        launch, _ = read_audit_json(manifest, deadline=time.monotonic()+timeout,
+                                    require_closed=manifest.name != 'browser-launch.json')
+        if not isinstance(launch, dict) or launch.get('browser_guard_applied') is not True:
+            raise NetworkAuditError('browser_guard_missing', 'Guard do browser ausente ou inválido')
+        name = launch.get('netlog_file', 'browser-netlog.json' if manifest.name == 'browser-launch.json' else None)
+        if not isinstance(name,str) or Path(name).name != name or not name.startswith('browser-netlog') or not name.endswith('.json'):
+            raise NetworkAuditError('netlog_reference_invalid', 'Referência local do NetLog inválida')
+        netlog, complete = read_audit_json(root/name, deadline=time.monotonic()+timeout, allow_unclosed_events=True)
+        try:
+            constants, events = netlog['constants']['logEventTypes'], netlog['events']
+            if not isinstance(constants,dict) or not constants or not isinstance(events,list) or not events:
+                raise ValueError()
+            if not all(isinstance(k,str) and type(v) is int for k,v in constants.items()):
+                raise ValueError()
+            names = {value:key for key,value in constants.items()}
+            for event in events:
+                if type(event['type']) is not int or not isinstance(event.get('params',{}),dict):
+                    raise ValueError()
+                params = event.get('params', {})
+                url = params.get('url')
+                if isinstance(url, str):
+                    host = urlsplit(url).hostname
+                    if host:
+                        url_hosts.add(host)
+                if names.get(event['type']) == 'TCP_CONNECT_ATTEMPT' and 'address' in params:
+                    if not isinstance(params['address'],str):
+                        raise ValueError()
+                    remote_addresses.add(params['address'])
+        except (KeyError, TypeError, ValueError, AttributeError) as error:
+            raise NetworkAuditError('netlog_schema_invalid', 'Estrutura de eventos/constantes do NetLog inválida', type(error).__name__) from None
+        browsers.append({'launch_file':manifest.name,'netlog_file':name,'netlog_complete':complete,'event_count':len(events),
+                         'exit_confirmation':launch.get('exit_confirmation','legacy_manifest')})
     external_tcp = [a for a in remote_addresses if not a.startswith(('127.0.0.1:', '[::1]:'))]
-    summary = {**launch, 'netlog_complete': complete, 'event_count':len(events),
+    summary = {**launch, 'browser_guard_applied':True, 'netlog_complete':all(b['netlog_complete'] for b in browsers),
+               'event_count':sum(b['event_count'] for b in browsers), 'browsers':browsers,
                'url_hosts': sorted(url_hosts), 'tcp_destinations':sorted(remote_addresses),
                'external_tcp_destinations':external_tcp, 'proxy_denied_hosts':sorted(rejected), 'scope':'Browser NetLog + Node loopback guard; não é captura do sistema inteiro.'}
     write_json(root / 'network-summary.json', summary)
-    if not launch['browser_guard_applied'] or external_tcp:
-        raise ValueError('Auditoria do render encontrou destino TCP externo ou guard ausente.')
+    if external_tcp:
+        raise NetworkAuditError('external_tcp_detected', 'Auditoria do render encontrou destino TCP externo')
 
 
 def render(root, source):
@@ -157,6 +268,12 @@ def render(root, source):
     # Reutiliza o renderer real. Browser explícito impede download automático;
     # npx só resolve pacote já instalado e npm permanece offline.
     original_run = subprocess.run
+    # O lock do seletor padrão 3000 do Remotion é apenas interno ao Node.
+    # Uma porta explícita escolhida pelo SO evita a disputa entre worktrees.
+    # Se outro processo a ocupar antes do bind, Remotion falha, sem reusar servidor.
+    with socket.socket() as listener:
+        listener.bind(('127.0.0.1',0))
+        render_port = listener.getsockname()[1]
     overlay_enabled = plan['mode']=='local_pilot' and (root/'caption-overlay.json').is_file()
     def offline_run(command, **kwargs):
         if overlay_enabled:
@@ -164,7 +281,7 @@ def render(root, source):
             props = json.loads(props_path.read_text(encoding='utf-8'))
             props['palavras'] = []  # entrada suportada; alinhamento e fonte permanecem intactos
             write_json(props_path,props)
-        command += [f"--browser-executable={os.environ['HORUS_DEMO_BROWSER']}", '--concurrency=1', '--log=error']
+        command += [f"--browser-executable={os.environ['HORUS_DEMO_BROWSER']}", f'--port={render_port}', '--concurrency=1', '--log=error']
         return original_run(command, **kwargs)
     renderer.subprocess.run = offline_run
     started = time.monotonic()
@@ -217,7 +334,7 @@ def render(root, source):
                     '-i',str(video),'-frames:v','1',str(folder/f'render/subtitles-compare-{i}.png')],capture_output=True,check=True)
         original_run([os.environ['HORUS_DEMO_FFMPEG'], '-v', 'error', '-ss', str(alignment.duracao_audio / 2),
             '-i', str(video), '-frames:v', '1', str(folder / 'render/subtitles-frame.png')], capture_output=True, check=True)
-    write_json(folder / 'render/validation.json', {'factory_render_seconds':factory_seconds, 'total_render_seconds':round(time.monotonic()-started,3), 'caption_overlay':overlay_result, 'stream': stream, 'audio_stream': audio_stream, 'demo_only': True, 'real_voice': False,
+    write_json(folder / 'render/validation.json', {'render_port':render_port, 'factory_render_seconds':factory_seconds, 'total_render_seconds':round(time.monotonic()-started,3), 'caption_overlay':overlay_result, 'stream': stream, 'audio_stream': audio_stream, 'demo_only': True, 'real_voice': False,
                'speech_aligned': False, 'sha256': hashlib.sha256(video.read_bytes()).hexdigest()})
 
 
@@ -358,8 +475,14 @@ def main():
             sys.exit(1)
         try:
             network_summary(root, rejected)
-        except (ValueError, KeyError, OSError):
-            write_json(root / 'result.json', {'error':'Não foi possível validar a auditoria de rede do browser; vídeo não liberado.', 'artifacts':artifacts})
+        except (ValueError, KeyError, OSError, TypeError) as error:
+            detail = (error.detail if isinstance(error, NetworkAuditError) else
+                      {'code':'audit_invalid', 'type':type(error).__name__, 'message':'Evidência de auditoria inválida'})
+            write_json(root/'network-failure.json', detail)
+            artifacts.append({'kind':'manifest','relative_path':'network-failure.json'})
+            write_json(root / 'result.json', {'error':
+                f"Não foi possível validar a auditoria de rede do browser; vídeo não liberado ({detail['type']}: {detail['message']}).",
+                'audit_error':detail, 'artifacts':artifacts})
             sys.exit(1)
         artifacts.append({'kind':'manifest', 'relative_path':'network-summary.json'})
         name = 'short' if plan.get('render_quality','draft')=='final' else 'short-rascunho'
