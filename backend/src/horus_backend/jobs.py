@@ -6,6 +6,7 @@ import json
 import logging
 from datetime import datetime, timezone
 import os
+import time
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -14,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator,
 from .config import Settings
 from .radar_youtube.state import RadarState
 from .retention import run_retention
-from .processes import OwnedProcess
+from .processes import OwnedProcess, failure_detail, sanitized_tail
 from .storage import Store
 from .transcriber import FILE_MARKER, LANGUAGES, MODELS, is_youtube_url
 from .worker_lock import WorkerLock
@@ -94,6 +95,17 @@ class JobManager:
         self.worker_lock.acquire()
         try:
             self.store.recover()
+            with self.store.connect() as db:
+                interrupted = [row['id'] for row in db.execute(
+                    "SELECT id,payload FROM jobs WHERE status='interrupted'")
+                    if json.loads(row['payload']).get('operation') == 'production.run']
+            for job_id in interrupted:
+                result = self.store.get_job(job_id)['result'] or {}
+                if result.get('failure'):
+                    continue
+                self.store.update(job_id, 'interrupted', result={**result, 'failure':failure_detail(
+                    'production_interrupted', result.get('stage','prepare'))},
+                    error='Backend encerrado durante a produção; revise os artefatos e crie nova produção explicitamente. Nenhuma etapa foi repetida.')
             self.workflows.recover()
             await self.run_retention()
             for job_id in self.store.queued_ids():
@@ -211,6 +223,8 @@ class JobManager:
                 "--composicao", "short", "--rascunho"]
 
     async def _line(self, job_id: str, kind: str, line: str, notes: dict | None, failures: list[str] | None = None):
+        if notes is None:
+            line = sanitized_tail(line)
         # O CLI da fábrica escreve recusas `ERRO:` em stdout; stderr também é diagnóstico.
         # Manter somente um resumo limitado, além do histórico completo de eventos.
         if failures is not None and (kind == 'stderr' or line.lstrip().startswith('ERRO:')):
@@ -246,7 +260,7 @@ class JobManager:
                 if line.strip():
                     await self._line(job_id, kind, line, notes, failures)
             if len(pending) > 4000:
-                await self.emit(job_id, kind, pending[:2000])
+                await self.emit(job_id, kind, sanitized_tail(pending, limit=2000) if notes is None else pending[:2000])
                 pending = ""
         pending += decoder.decode(b"", final=True)
         if pending.strip():
@@ -274,6 +288,7 @@ class JobManager:
     async def _run(self, job):
         job_id = job["id"]
         self.active_id = job_id
+        started = time.monotonic()
         try:
             request = _parse_request(job["payload"])
             command = self.command(request)
@@ -311,7 +326,9 @@ class JobManager:
                 self.store.update(job_id, "cancelled", result=partial)
             elif process.returncode != 0:
                 detail = " ".join(failures) if failures else "Consulte os logs."
-                self.store.update(job_id, "failed", result=partial,
+                diagnostic = {'failure':failure_detail('factory_command_failed', 'render' if request.operation == 'factory.render.preview' else 'prepare',
+                    started=started, exit_code=process.returncode, stderr='\n'.join(failures))} if factory else partial
+                self.store.update(job_id, "failed", result=diagnostic,
                                   error=f"O comando encerrou com código {process.returncode}. {detail}")
             else:
                 self.store.update(job_id, "succeeded", result=self._result(request, output, notes))
@@ -328,9 +345,19 @@ class JobManager:
             self.store.update(job_id, "failed", result=self.store.get_job(job_id)["result"],
                               error="Tempo limite da operação excedido.")
         except Exception as error:
+            factory_job = job['payload'].get('operation', '').startswith('factory.')
             self.store.update(job_id, "failed", result=self.store.get_job(job_id)["result"],
-                              error=f"Falha na execução: {type(error).__name__}: {error}")
+                              error=(f'Falha na execução da fábrica ({type(error).__name__}); confira as dependências locais antes de tentar novamente.'
+                                     if factory_job else f"Falha na execução: {type(error).__name__}: {error}"))
         finally:
+            current = self.store.get_job(job_id)
+            if job['payload'].get('operation', '').startswith('factory.') and current['status'] in {'failed','blocked','interrupted'}:
+                result = current['result'] or {}
+                if 'failure' not in result:
+                    self.store.update(job_id, current['status'], error=current['error'], result={**result,
+                        'failure':failure_detail('factory_'+current['status'],
+                            'render' if job['payload']['operation'] == 'factory.render.preview' else 'prepare',
+                            started=started, exit_code=self.active_process.process.returncode if self.active_process else None)})
             if self.active_process:
                 self.active_process.close()
             self.active_process = None

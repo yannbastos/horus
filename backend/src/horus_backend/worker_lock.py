@@ -11,6 +11,8 @@ class WorkerLock:
         self.handle = None
 
     def acquire(self):
+        if self.handle is not None:
+            raise RuntimeError("Trava do executor já adquirida por esta instância.")
         handle = self.path.open("a+b")
         try:
             handle.seek(0)

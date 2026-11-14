@@ -1,5 +1,11 @@
 # Piloto audiovisual local — HOR-054 / HOR-056
 
+## Quando a produção falha
+
+Consulte `error` (orientação ao operador) e `failure` na produção, ou `result.failure` no job: código estável, etapa, tipo de falha, código de saída e duração quando disponíveis. O trecho final de stderr é limitado a 8192 bytes e sanitizado; `render-failure.json` preserva o diagnóstico do render, incluindo falha da ferramenta quando disponível. Confira voz/modelos em Ajustes e as variáveis locais de FFmpeg/fábrica antes de criar outra produção; não há download automático nem fallback para provedor pago.
+
+Após reinício, jobs em execução ou com cancelamento solicitado ficam `interrupted`, preservando a última etapa. Nenhuma etapa é repetida automaticamente; a mesma chave recupera a produção anterior e o retry direto é recusado. Revise os arquivos locais e crie uma nova produção explicitamente: os diretórios anteriores são preservados para conciliação e MP4 de uma tentativa que falhou não é registrado como vídeo válido. A próxima produção da fila pode continuar independentemente.
+
 ## Meu primeiro vídeo com roteiro próprio — HOR-133
 
 1. Em **Radar**, carregue a demonstração e use **Iniciar análise** com Hermes simulado. Em **Editorial**, autorize a execução simulada e aprove a proposta resultante. Isso não chama o Hermes real.

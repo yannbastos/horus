@@ -5,11 +5,13 @@ import asyncio
 import contextlib
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
 import sys
 import uuid
+import time
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -19,7 +21,7 @@ from .script_contract import ScriptDocument
 from .scripts import ScriptService
 from .storage import now
 from .workflows import WorkflowConflict, digest, encode
-from .processes import OwnedProcess
+from .processes import OwnedProcess, failure_detail, sanitized_tail
 
 
 class NarrationSelection(BaseModel):
@@ -122,7 +124,7 @@ class ProductionService:
         return {key: row[key] for key in ("id", "script_id", "script_version", "script_content_hash", "job_id", "mode", "created_at")} | {
             "updated_at": max(job["updated_at"], (json.loads(row["review"]) or {}).get("reviewed_at", "")) if row["review"] else job["updated_at"], "stage": result.get("stage", "prepare"), "status": job["status"],
             "artifacts": json.loads(row["artifacts"]), "review": json.loads(row["review"]) if row["review"] else None,
-            "error": job["error"], "demo_only": True, "real_voice": False, **media,
+            "error": job["error"], "failure": result.get('failure'), "demo_only": True, "real_voice": False, **media,
             "quality_acknowledgement_required":acknowledgement_required,
             "publishable": False, "narration_kind": result.get("narration_kind"),
             "narration_disclosure": result.get("narration_disclosure"), "alignment_method": result.get("alignment_method")}
@@ -264,6 +266,10 @@ class ProductionService:
     async def run(self, job):
         manager, job_id = self.manager, job["id"]
         manager.active_id = job_id
+        started = time.monotonic()
+        def fail(status, message, detail):
+            current = self.store.get_job(job_id)['result'] or {}
+            self.store.update(job_id, status, result={**current, 'failure': detail}, error=message)
         try:
             production_id = job["payload"]["production_id"]
             with self.store.connect() as db:
@@ -339,43 +345,76 @@ class ProductionService:
             if not (root / "result.json").is_file():
                 raise RuntimeError("Worker encerrou sem resultado validável.")
             result = json.loads(confined(root, "result.json").read_text(encoding="utf-8"))
-            artifacts = [inspect_artifact(root, a["relative_path"], a["kind"]) for a in result.get("artifacts", [])]
-            with self.store.connect() as db:
-                db.execute("UPDATE productions SET artifacts=? WHERE id=?", (encode(artifacts), production_id))
-            if process.returncode != 0 or result.get("blocked"):
+            failed = process.returncode != 0 or result.get('blocked') or bool(result.get('error'))
+            # Um resultado de erro nunca registra um MP4 parcial como prévia válida.
+            artifacts = [inspect_artifact(root, a["relative_path"], a["kind"]) for a in result.get("artifacts", [])
+                         if not failed or a['kind'] != 'video']
+            if failed:
+                with self.store.connect() as db:
+                    db.execute("UPDATE productions SET artifacts=? WHERE id=?", (encode(artifacts), production_id))
                 detail = result.get('audit_error')
                 if (isinstance(detail,dict) and set(detail)=={'code','type','message'}
                         and all(isinstance(v,str) and len(v)<=400 for v in detail.values())):
                     current = self.store.get_job(job_id)['result'] or {}
                     self.store.update(job_id, self.store.get_job(job_id)['status'], result={**current,'audit_error':detail})
                     await manager.emit(job_id, 'error', result.get('error','Auditoria de rede inválida.'))
-                self.store.update(job_id, "blocked" if result.get("blocked") else "failed",
-                    result=self.store.get_job(job_id)["result"], error=result.get("error", "Falha técnica no render offline."))
+                detail = result.get('failure')
+                if not isinstance(detail, dict):
+                    detail = failure_detail('production_worker_failed', (self.store.get_job(job_id)['result'] or {}).get('stage','prepare'),
+                                            started=started, exit_code=process.returncode)
+                fail('blocked' if result.get('blocked') else 'failed',
+                     sanitized_tail(result.get('error', 'Falha técnica no render offline; confira as dependências e crie nova produção.')),
+                     detail)
                 return
             if row["mode"] == "simulated" and any(a["kind"] == "video" for a in artifacts):
                 raise WorkflowConflict("Simulação não pode registrar vídeo.")
             if row["mode"] in {"local_demo", "local_pilot"} and not any(a["kind"] == "video" for a in artifacts):
                 raise WorkflowConflict("Render sem vídeo real verificável.")
+            if row['mode'] in {'local_demo', 'local_pilot'}:
+                from .local_pilot import registered_json
+                validation = registered_json(root, artifacts, 'canais/demo/videos/fixture/render/validation.json')
+                video = next(a for a in artifacts if a['kind'] == 'video')
+                try:
+                    valid = (validation['sha256'] == video['sha256']
+                             and int(validation['stream']['nb_read_frames']) >= 2
+                             and int(validation['audio_stream']['nb_read_frames']) >= 1
+                             and all(math.isfinite(float(validation[key]['duration'])) and float(validation[key]['duration']) > 0
+                                     for key in ('stream', 'audio_stream')))
+                except (TypeError, ValueError, KeyError):
+                    valid = False
+                if not valid:
+                    raise WorkflowConflict('Vídeo sem validação física íntegra de áudio/frames; confira o diagnóstico e crie nova produção.')
             if row["mode"] == "local_pilot":
                 from .local_pilot import confirmed_metadata
                 metadata = confirmed_metadata(root, artifacts)
             else:
                 metadata = {"narration_kind": "fixture_tone", "narration_disclosure": "Tom sintético local; sem narração."}
             with self.store.connect() as db:
+                # Registro dos artefatos e sucesso precisam sobreviver juntos a um crash.
+                db.execute('BEGIN IMMEDIATE')
+                if db.execute('SELECT status FROM jobs WHERE id=?', (job_id,)).fetchone()['status'] == 'cancel_requested':
+                    db.execute("UPDATE jobs SET status='cancelled',updated_at=?,error=NULL WHERE id=?", (now(), job_id))
+                    return
                 db.execute("UPDATE productions SET artifacts=? WHERE id=?", (encode(artifacts), production_id))
-            self.store.update(job_id, "succeeded", result={"stage": "review", "demo_only": True,
-                **metadata})
+                db.execute("UPDATE jobs SET status='succeeded',updated_at=?,result=?,error=NULL WHERE id=?",
+                           (now(), encode({'stage':'review', 'demo_only':True, **metadata}), job_id))
         except asyncio.CancelledError:
             if manager.active_process:
                 await manager.active_process.stop()
-            self.store.update(job_id, "interrupted", result=self.store.get_job(job_id)["result"], error="Execução interrompida; concilie antes de repetir.")
+            fail('interrupted', 'Execução interrompida; concilie os artefatos antes de criar nova produção.',
+                 failure_detail('production_interrupted', (self.store.get_job(job_id)['result'] or {}).get('stage','prepare'), started=started))
             raise
         except WorkflowConflict as error:
-            self.store.update(job_id, "blocked", result=self.store.get_job(job_id)["result"], error=str(error))
-        except Exception:
-            self.store.update(job_id, "failed", result=self.store.get_job(job_id)["result"], error="Falha na produção offline; revise dependências e artefatos locais.")
+            fail('blocked', str(error), failure_detail('production_precondition_failed',
+                 (self.store.get_job(job_id)['result'] or {}).get('stage','prepare'), started=started, error=error))
+        except Exception as error:
+            fail('failed', 'Falha na produção offline; revise dependências e artefatos locais antes de criar nova produção.',
+                 failure_detail('production_timeout' if isinstance(error, TimeoutError) else 'production_failed',
+                    (self.store.get_job(job_id)['result'] or {}).get('stage','prepare'), started=started, error=error,
+                    exit_code=manager.active_process.process.returncode if manager.active_process else None))
         finally:
             if manager.active_process:
+                await manager.active_process.stop()
                 manager.active_process.close()
             manager.active_process, manager.active_id = None, None
             await manager.emit(job_id, "state", self.store.get_job(job_id)["status"])
