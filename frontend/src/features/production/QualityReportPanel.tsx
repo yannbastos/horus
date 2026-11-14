@@ -10,21 +10,22 @@ const SEVERITY_ORDER: Record<string, number> = {
 };
 
 const CHECK_SHORT_EXPLANATION: Record<string, string> = {
+  asset_hashes: 'Conferência de integridade (SHA-256) dos arquivos de mídia e fontes usados.',
   asset_provenance: 'Há mídia, fonte ou voz sem verificação humana de licença.',
-  subtitles_vs_words: 'Diferença de tempo entre legendas e palavras faladas.',
+  audio_clipping: 'Distorção por saturação ou pico excessivo no áudio.',
+  audio_level: 'Nível de sinal de áudio muito baixo ou próximo de zero.',
+  audio_loudness: 'Volume médio fora da faixa de referência de fala.',
+  audio_silence: 'Trecho de silêncio prolongado inesperado no áudio.',
+  duration_narration: 'Duração da narração fora do esperado para o roteiro.',
+  duration_video_audio: 'Diferença de duração entre o vídeo e o áudio da narração.',
+  evidence_manifest: 'Registro técnico de evidências e artefatos da produção.',
+  script_coverage: 'Cobertura das seções do roteiro no áudio e nas legendas.',
   subtitles_vs_sections: 'Legendas fora dos limites da seção correspondente.',
+  subtitles_vs_words: 'Diferença de tempo entre legendas e palavras faladas.',
+  video_present: 'Presença e leitura válida do arquivo de vídeo MP4.',
+  visual_black_frames: 'Quadros escuros ou pretos detectados no vídeo.',
+  visual_freeze: 'Imagem congelada sem variação entre quadros.',
   word_timings: 'Alinhamento das palavras faladas com o áudio.',
-  loudness: 'Volume médio (LUFS) fora da faixa recomendada (-26 a -12 LUFS).',
-  true_peak: 'Pico real de áudio próximo ou acima do teto.',
-  clipping: 'Distorção por saturação no áudio.',
-  audio_clipping: 'Distorção por saturação no áudio.',
-  silence: 'Trecho de silêncio prolongado inesperado.',
-  black_frames: 'Quadros escuros ou pretos detectados no vídeo.',
-  freeze_frames: 'Imagem congelada sem variação entre quadros.',
-  duration: 'Duração total fora do intervalo esperado.',
-  integrity: 'Integridade técnica dos fluxos de áudio e vídeo do MP4.',
-  resolution: 'Resolução diferente do esperado para o perfil escolhido.',
-  subtitle_safe_area: 'Legenda próxima da borda ou área de risco.',
 };
 
 function explainCheck(id: string): string | null {

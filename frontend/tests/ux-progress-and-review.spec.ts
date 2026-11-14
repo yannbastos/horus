@@ -65,14 +65,14 @@ test.describe('UX primeiro vídeo — Progresso e Revisão (HOR-087 / HOR-101)',
             tool: { name: 'horus-qc', version: '1.0' },
             checks: [
               {
-                id: 'duration',
+                id: 'duration_video_audio',
                 category: 'video',
                 status: 'pass',
                 method: 'measured',
                 detail: 'Duração 48.7 s dentro do esperado.',
               },
               {
-                id: 'loudness',
+                id: 'audio_loudness',
                 category: 'audio',
                 status: 'warn',
                 method: 'measured',
@@ -140,13 +140,14 @@ test.describe('UX primeiro vídeo — Progresso e Revisão (HOR-087 / HOR-101)',
     await installBackend(page, state);
     const region = await openProduction(page);
 
-    // QC ordena fail -> warn -> pass na tabela e exibe explicação curta
+    // QC ordena fail -> warn -> pass na tabela e exibe explicação curta de checks reais
     const qcPanel = region.getByRole('region', { name: 'Painel de qualidade (QC)' });
-    await expect(qcPanel).toContainText('O que significa: Distorção por saturação no áudio.');
+    await expect(qcPanel).toContainText('O que significa: Distorção por saturação ou pico excessivo no áudio.');
+    await expect(qcPanel).toContainText('O que significa: Volume médio fora da faixa de referência de fala.');
     const rows = qcPanel.getByRole('table', { name: 'Tabela de checks de qualidade' }).locator('tbody tr');
     await expect(rows.nth(0)).toContainText('audio_clipping');
-    await expect(rows.nth(1)).toContainText('loudness');
-    await expect(rows.nth(2)).toContainText('duration');
+    await expect(rows.nth(1)).toContainText('audio_loudness');
+    await expect(rows.nth(2)).toContainText('duration_video_audio');
 
     // Clicar no timecode do erro posiciona no trecho do vídeo
     await qcPanel.getByRole('button', { name: 'Ir para timecode do erro audio_clipping (00:12.400)' }).click();
