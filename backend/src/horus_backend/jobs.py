@@ -72,7 +72,13 @@ TIMEOUTS = {"factory.profile": 30, "factory.render.preview": 3600}
 # Base do SO; HOME/USERPROFILE/LOCALAPPDATA/APPDATA são necessários para caches de usuário
 # (Hugging Face, yt-dlp, npm/Remotion) e não carregam segredos por si.
 _BASE_ENV = {"PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "COMSPEC", "PATHEXT",
-             "USERPROFILE", "HOME", "LOCALAPPDATA", "APPDATA"}
+             "USERPROFILE", "HOME", "LOCALAPPDATA", "APPDATA",
+             # Variáveis de SO sem segredo que Node/Remotion/Chrome e ctranslate2 usam no Windows
+             # (localizar Program Files/ProgramData, detectar CPU/SO e dimensionar threads).
+             "SYSTEMDRIVE", "PROGRAMFILES", "PROGRAMFILES(X86)", "PROGRAMW6432", "PROGRAMDATA",
+             "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE", "OS"}
+# GPU na transcrição: o ctranslate2 localiza as DLLs do CUDA por CUDA_PATH e CUDA_PATH_V*.
+_CUDA_PREFIX = "CUDA_PATH"
 # Ferramentas e opções lidas por dependencies.find_tool e transcriber.py.
 _TOOL_ENV = {"HORUS_FFMPEG", "HORUS_FFPROBE", "HORUS_TOOLS_DIR"}
 _OPERATION_ENV = {
@@ -86,7 +92,9 @@ _OPERATION_ENV = {
 
 def job_environment(request, settings: Settings) -> dict[str, str]:
     allowed = _BASE_ENV | _OPERATION_ENV[request.operation]
-    env = {k: v for k, v in os.environ.items() if k.upper() in allowed}
+    cuda = request.operation == "transcription.run"
+    env = {k: v for k, v in os.environ.items()
+           if k.upper() in allowed or (cuda and k.upper().startswith(_CUDA_PREFIX))}
     env.update(PYTHONUNBUFFERED="1", PYTHONUTF8="1")
     if isinstance(request, FactoryRequest) and settings.factory_root:
         env["FABRICA_HOME"] = str(settings.factory_root)

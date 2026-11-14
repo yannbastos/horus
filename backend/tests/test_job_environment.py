@@ -15,7 +15,7 @@ TOKEN = "test-only-connection-token-0123456789"
 SECRETS = {"YOUTUBE_API_KEY": "s1", "HF_TOKEN": "s2", "OPENAI_API_KEY": "s3", "GITHUB_TOKEN": "s4",
            "HORUS_API_TOKEN": "s5", "HORUS_MANAGED": "1", "HORUS_ELEVENLABS_API_KEY": "s6",
            "ELEVENLABS_API_KEY": "s7", "HORUS_HERMES_CONFIG": "x", "AWS_SECRET_ACCESS_KEY": "s8"}
-ALLOWED = {"PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "COMSPEC", "PATHEXT", "USERPROFILE", "HOME",
+ALLOWED = {"SYSTEMDRIVE", "PROGRAMFILES", "PROGRAMFILES(X86)", "PROGRAMW6432", "PROGRAMDATA", "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE", "OS", "PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "COMSPEC", "PATHEXT", "USERPROFILE", "HOME",
            "LOCALAPPDATA", "APPDATA", "PYTHONUNBUFFERED", "PYTHONUTF8"}
 
 
@@ -100,3 +100,16 @@ if args[0] == "download":
     seen = {n.upper() for n in json.loads(Path(out).read_text())}
     assert not set(SECRETS) & seen
     assert "HORUS_FFMPEG" in seen and "HORUS_WHISPER_DEVICE" in seen
+
+
+def test_os_variables_and_cuda_scoped_to_transcription(planted, monkeypatch, tmp_path):
+    monkeypatch.setenv("PROGRAMDATA", "C:/ProgramData")
+    monkeypatch.setenv("NUMBER_OF_PROCESSORS", "8")
+    monkeypatch.setenv("CUDA_PATH", "C:/cuda")
+    monkeypatch.setenv("CUDA_PATH_V12_4", "C:/cuda12")
+    trans = {k.upper() for k in job_environment(REQUESTS["transcription.run"], settings(tmp_path))}
+    assert {"CUDA_PATH", "CUDA_PATH_V12_4", "NUMBER_OF_PROCESSORS"} <= trans
+    for operation in ("youtube.download", "factory.profile", "factory.render.preview"):
+        names = {k.upper() for k in job_environment(REQUESTS[operation], settings(tmp_path))}
+        assert not {n for n in names if n.startswith("CUDA_PATH")}
+        assert "NUMBER_OF_PROCESSORS" in names
