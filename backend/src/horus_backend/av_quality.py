@@ -592,7 +592,12 @@ def _check_provenance(ctx: _Context) -> dict:
                       + (f" ({len(unverified)} sem licença verificada)." if unverified else "."),
                       {"source": "pilot-evidence.assets", "inputs": len(ctx.inputs), "unverified": len(unverified)})
     registered = {path: digest for path, digest in ctx.inputs.items() if digest}
-    verdict = mc.validate_asset_provenance(raw, artifacts=registered)
+    return provenance_check(raw, registered)
+
+
+def provenance_check(provenance: dict, artifacts: dict) -> dict:
+    """Mesmo check para a proveniência registrada ou sua visão efetiva em leitura."""
+    verdict = mc.validate_asset_provenance(provenance, artifacts=artifacts)
     if not verdict["ok"]:
         return _check("asset_provenance", "provenance", "fail", "measured",
                       "; ".join(f"{e['code']}@{e['path']}" for e in verdict["errors"][:4]),
