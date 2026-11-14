@@ -24,7 +24,49 @@ export const STAGE_HINTS: Record<string, string> = {
   review: 'Aguardando sua revisão humana e aprovação.',
 };
 
-export function suggestFailureAction(stage: string, errorMessage?: string | null): string {
+const FAILURE_CODE_ACTIONS: Record<string, string> = {
+  narration_timeout:
+    'A síntese da narração excedeu o tempo limite. Tente um trecho mais curto ou verifique o motor de voz local em Ajustes → Narração antes de iniciar uma nova produção.',
+  narration_truncated_wav:
+    'O áudio gerado pela narração ficou incompleto ou corrompido. Teste a voz em Ajustes → Narração e inicie uma nova produção.',
+  narration_unavailable:
+    'O provedor local de narração está indisponível. Confira a configuração da voz em Ajustes → Narração e tente novamente.',
+  kokoro_synthesis_failed:
+    'A síntese local do Kokoro falhou. Confira se o modelo e o ambiente do Kokoro estão íntegros em Ajustes → Narração ou escolha outra voz local.',
+  kokoro_timeout:
+    'A síntese local do Kokoro excedeu o tempo limite. Tente novamente ou escolha outra voz local em Ajustes → Narração.',
+  local_narration_failed:
+    'A narração local falhou. Verifique a voz selecionada em Ajustes → Narração e o diagnóstico técnico abaixo antes de tentar novamente.',
+  local_tool_failed:
+    'Uma ferramenta local (como FFmpeg ou utilitário da fábrica) retornou erro. Verifique o código de saída e o diagnóstico técnico abaixo e tente novamente.',
+  render_failed:
+    'A renderização do vídeo falhou na fábrica local. Confira o diagnóstico técnico abaixo (Remotion/FFmpeg) para corrigir a causa e inicie uma nova produção.',
+  render_dependencies_missing:
+    'Faltam dependências locais para renderizar o vídeo (FFmpeg, Remotion, browser ou pasta da fábrica). Instale ou configure o ambiente antes de tentar novamente.',
+  production_interrupted:
+    'A produção foi interrompida antes de concluir (por reinício do backend ou encerramento do processo). Revise os artefatos e o diagnóstico técnico abaixo e inicie uma nova produção.',
+  production_timeout:
+    'A produção excedeu o tempo limite de execução. Verifique o diagnóstico técnico abaixo e tente novamente.',
+  production_precondition_failed:
+    'Uma pré-condição local não foi atendida antes de iniciar a execução. Confira a mensagem acima e o ambiente local antes de tentar novamente.',
+  production_worker_failed:
+    'O processo executor da produção encerrou inesperadamente. Confira o diagnóstico técnico abaixo e inicie uma nova produção.',
+  production_stage_failed:
+    'Uma etapa da produção falhou. Confira a etapa e o diagnóstico técnico abaixo antes de iniciar uma nova produção.',
+  local_pilot_blocked:
+    'A execução em Piloto local foi bloqueada por uma restrição ou dependência local. Confira a mensagem acima e os ajustes do ambiente.',
+  local_pilot_unavailable:
+    'O modo Piloto local está indisponível no momento. Verifique as dependências locais ou utilize o modo Demo local/Simulado.',
+};
+
+export function suggestFailureAction(
+  stage: string,
+  errorMessage?: string | null,
+  failureCode?: string | null
+): string {
+  if (failureCode && FAILURE_CODE_ACTIONS[failureCode]) {
+    return FAILURE_CODE_ACTIONS[failureCode];
+  }
   const msg = (errorMessage ?? '').toLowerCase();
   if (msg.includes('ffmpeg') || msg.includes('libass')) {
     return 'Verifique o executável do FFmpeg com suporte a libass em Ajustes ou na variável HORUS_FFMPEG e tente uma nova produção.';

@@ -1,4 +1,6 @@
 import type { Connection } from './api';
+import { parseFailureDetail } from './production';
+import type { FailureDetail } from './production';
 
 // Cliente tipado do contrato de provedores de narração (HOR-132).
 // Rotas: /v1/narration/{providers,estimate,preview,providers/elevenlabs/credential,preference}.
@@ -30,9 +32,23 @@ export type NarrationEstimate = {
 };
 export type DefaultVoice = { provider: string; voice_id: string };
 
+export type { FailureDetail } from './production';
+
 export class NarrationError extends Error {
-  status: number; code: string | null;
-  constructor(message: string, status: number, code: string | null = null) { super(message); this.status = status; this.code = code; }
+  status: number;
+  code: string | null;
+  failure: FailureDetail | null;
+  constructor(
+    message: string,
+    status: number,
+    code: string | null = null,
+    failure: FailureDetail | null = null,
+  ) {
+    super(message);
+    this.status = status;
+    this.code = code;
+    this.failure = failure;
+  }
 }
 
 const PROVIDER_STATUSES = ['available', 'not_installed', 'not_configured', 'disabled', 'blocked'];
@@ -121,10 +137,19 @@ async function request(connection: Connection, path: string, init: RequestInit =
       headers: { Authorization: `Bearer ${connection.token}`, ...(init.body ? { 'Content-Type': 'application/json' } : {}), ...init.headers },
     });
     if (!response.ok) {
-      const body = await response.json().catch(() => null) as { code?: unknown } | null;
-      const code = typeof body?.code === 'string' ? body.code : null;
-      const message = `Não foi possível concluir a operação (${response.status}${code ? `, ${code}` : ''}).`;
-      throw new NarrationError(message, response.status, code);
+      const body = await response.json().catch(() => null) as {
+        code?: unknown;
+        message?: unknown;
+        failure?: unknown;
+      } | null;
+      const code = typeof body?.code === 'string' && body.code.trim() ? body.code.trim() : null;
+      const serverMessage =
+        typeof body?.message === 'string' && body.message.trim() ? body.message.trim() : null;
+      const failure = parseFailureDetail(body?.failure);
+      const message =
+        serverMessage ??
+        `Não foi possível concluir a operação (${response.status}${code ? `, ${code}` : ''}).`;
+      throw new NarrationError(message, response.status, code, failure);
     }
     return response;
   } finally { clearTimeout(timeout); signal?.removeEventListener('abort', abort); }

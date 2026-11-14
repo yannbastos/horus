@@ -39,6 +39,7 @@ import AssetProvenancePanel from './production/AssetProvenancePanel';
 import ProductionLaunchOptions from './production/ProductionLaunchOptions';
 import ProductionGlossary, { termTitle } from './production/ProductionGlossary';
 import ProductionProgress, { describeJobEvent, suggestFailureAction } from './production/ProductionProgress';
+import FailureDiagnostics from './production/FailureDiagnostics';
 import QualityReportPanel from './production/QualityReportPanel';
 import ProductionCompare from './production/ProductionCompare';
 import TimecodeReviewWorkspace from './production/TimecodeReviewWorkspace';
@@ -1465,6 +1466,10 @@ export default function ProductionRun({
                 local) ou utilize o modo Simulado para validar o contrato e o plano sem renderização de
                 vídeo.
               </small>
+              <FailureDiagnostics
+                failure={activeProduction.failure}
+                error={activeProduction.error}
+              />
             </div>
           )}
 
@@ -1480,8 +1485,16 @@ export default function ProductionRun({
               </p>
               <small className="muted">
                 <strong>O que fazer:</strong>{' '}
-                {suggestFailureAction(activeProduction.stage, activeProduction.error)}
+                {suggestFailureAction(
+                  activeProduction.stage,
+                  activeProduction.error,
+                  activeProduction.failure?.code
+                )}
               </small>
+              <FailureDiagnostics
+                failure={activeProduction.failure}
+                error={activeProduction.error}
+              />
             </div>
           )}
 
@@ -1497,8 +1510,18 @@ export default function ProductionRun({
               </p>
               <small className="muted">
                 <strong>O que fazer:</strong>{' '}
-                Confira os artefatos e logs abaixo; se o vídeo não foi concluído, inicie uma nova produção.
+                {activeProduction.failure?.code
+                  ? suggestFailureAction(
+                      activeProduction.stage,
+                      activeProduction.error,
+                      activeProduction.failure.code
+                    )
+                  : 'Confira os artefatos e logs abaixo; se o vídeo não foi concluído, inicie uma nova produção.'}
               </small>
+              <FailureDiagnostics
+                failure={activeProduction.failure}
+                error={activeProduction.error}
+              />
             </div>
           )}
 
