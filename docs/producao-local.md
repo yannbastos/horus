@@ -10,6 +10,40 @@ do plano persistido no banco. São as escolhas da produção, não a preferênci
 nem uma certificação do MP4. Registros antigos sem informação explícita retornam
 `null`; não se presume rascunho nem voz padrão. Nenhuma migração é necessária.
 
+### Exportar um pacote local aprovado
+
+Após a aprovação humana, `POST /v1/productions/{id}/export`, autenticado e com
+`Idempotency-Key`, cria um ZIP em `exports/<produção>/<exportação>/package.zip`
+dentro da pasta de dados. A API não recebe caminho de destino. Retorna 201 na
+criação e 200 na repetição da mesma chave; `GET /v1/productions/{id}/exports`
+lista os pacotes e `GET /v1/productions/{id}/exports/{export_id}/file` baixa o ZIP
+pela conexão local autenticada. As respostas incluem caminho relativo, tamanho
+e SHA-256 do pacote; não há upload ou publicação.
+
+O pacote inclui vídeo aprovado, SRT, roteiro aprovado em JSON e texto, QC,
+proveniência original e efetiva com histórico das revisões humanas de licença,
+revisão do roteiro e da produção. `manifest.json` contém versões do Hórus/schema
+e SHA-256/tamanho de cada arquivo de conteúdo (o manifesto não inclui seu próprio
+hash; o hash do ZIP cobre o pacote inteiro). QC ausente em produção antiga é
+identificado como `not_run`; proveniência ausente aparece como `null`, sem
+inventar licença ou medição. O pacote preserva `publishable=false`.
+
+Produção não aprovada ou sem vídeo/legendas registrados retorna 409, assim como
+adulteração, links, caminhos inseguros ou roteiro/SRT com caminho absoluto/possível
+credencial. Metadados de auditoria têm esses trechos omitidos na cópia exportada,
+com `metadata_redacted` no manifesto; decisões e artefatos originais não são alterados.
+Os artefatos registrados são conferidos antes de exportar; apenas
+os arquivos selecionados entram no ZIP, sem logs, configurações ou ambiente.
+O roteiro vem do recibo de aprovação correspondente à versão produzida.
+
+Cada chave conserva um retrato das revisões daquele momento, inclusive após
+reinício. Após nova revisão de licença, use outra chave para obter um novo pacote.
+Uma tentativa interrompida não é sobrescrita: preserve-a e use outra chave.
+Exportar é preparar arquivos para auditoria e publicação manual, não autorização
+de uso comercial nem substituição da conferência humana de QC e licenças.
+
+### Contrato existente de produção
+
 Todas as rotas exigem a autenticação local existente. Os POSTs abaixo exigem `Idempotency-Key` (1–128 caracteres):
 
 | Operação | Entrada / resposta |
