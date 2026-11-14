@@ -4,16 +4,19 @@ import { describeLoadError, filterAndSort, loadProductionCenter } from '../servi
 import type { CenterRow, StageFilter } from '../services/productionCenter';
 import CenterFilters from './production-center/CenterFilters';
 import CenterTable from './production-center/CenterTable';
+import FirstVideoGuide from './production-center/FirstVideoGuide';
 
-export default function ProductionCenter({ connection, onOpenProduction }: {
+export default function ProductionCenter({ connection, onOpenProduction, onOpenSettings }: {
   connection: Connection | null;
   onOpenProduction: () => void;
+  onOpenSettings?: () => void;
 }) {
   const [rows, setRows] = useState<CenterRow[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [stage, setStage] = useState<StageFilter>('all');
   const [onlyBlocked, setOnlyBlocked] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const reload = useCallback(async (signal?: AbortSignal) => {
     if (!connection) return;
@@ -46,8 +49,14 @@ export default function ProductionCenter({ connection, onOpenProduction }: {
           <h2 id="production-center-title">Cada vídeo, sua etapa e o próximo passo humano</h2>
           <p className="muted">Proposta, roteiro, produção e revisão humana. Estados vêm do backend local; o que não vem aparece como “não informado”. Não há publicação.</p>
         </div>
-        <button type="button" className="button" onClick={() => void reload()} disabled={!connection || loading}>ATUALIZAR</button>
+        <button type="button" className="button" onClick={() => { setRefreshKey(value => value + 1); void reload(); }} disabled={!connection || loading}>ATUALIZAR</button>
       </div>
+      <FirstVideoGuide
+        connection={connection}
+        refreshKey={refreshKey}
+        onOpenSettings={onOpenSettings ?? (() => {})}
+        onOpenProduction={onOpenProduction}
+      />
       {!connection && <p className="muted" role="status">Conecte o backend local em Ajustes para ver a Central de Produção.</p>}
       {connection && loading && <p className="loading" role="status">Carregando vídeos…</p>}
       {error && <p className="error" role="alert">{error}</p>}
