@@ -1,5 +1,20 @@
 # Piloto audiovisual local — HOR-054 / HOR-056
 
+## Conferir o ambiente antes de produzir
+
+Consulte `GET /v1/diagnostics` autenticado. O grupo aditivo `production` contém
+`checks` com disponibilidade, orientação e `required_for`, além de `ready` e
+`missing` (IDs indisponíveis). `ready` exige as dependências comuns de rascunho/final
+e ao menos uma voz pt-BR (SAPI ou Kokoro); a ausência do outro provedor continua
+em `missing`, sem bloquear a alternativa disponível. Configure as variáveis abaixo
+e reinicie o backend antes de consultar novamente.
+
+A consulta inspeciona arquivos, enumera vozes SAPI locais e verifica os hashes
+Kokoro existentes. Não sintetiza, renderiza, carrega Whisper, baixa arquivos ou
+acessa a rede. Presença não certifica execução, filtro libass, qualidade, licença
+ou aprovação humana. A enumeração SAPI usa o helper local já existente (timeout
+do provedor); os caminhos privados não são devolvidos no grupo `production`.
+
 ## Quando a produção falha
 
 Consulte `error` (orientação ao operador) e `failure` na produção, ou `result.failure` no job: código estável, etapa, tipo de falha, código de saída e duração quando disponíveis. O trecho final de stderr é limitado a 8192 bytes e sanitizado; `render-failure.json` preserva o diagnóstico do render, incluindo falha da ferramenta quando disponível. Confira voz/modelos em Ajustes e as variáveis locais de FFmpeg/fábrica antes de criar outra produção; não há download automático nem fallback para provedor pago.

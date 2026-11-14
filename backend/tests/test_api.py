@@ -79,6 +79,9 @@ def test_diagnostics_reports_presence_without_running_tools(client, monkeypatch)
         pytest.fail("O diagnóstico não deve executar ferramentas.")
 
     monkeypatch.setattr(subprocess, "Popen", unexpected_process)
+    # A enumeração SAPI do grupo production é local e não sintetiza áudio.
+    from horus_backend.diagnostics import WindowsSapi
+    monkeypatch.setattr(WindowsSapi, "voices", lambda self: [])
     monkeypatch.setattr(dependencies.shutil, "which", lambda name: "/private/bin/node" if name == "node" else None)
     response = client.get("/v1/diagnostics")
     assert response.status_code == 200

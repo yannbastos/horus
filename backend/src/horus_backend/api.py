@@ -322,7 +322,7 @@ def create_app(settings: Settings, shutdown=None, ready=None):
 
     @app.get("/v1/diagnostics")
     async def diagnostics():
-        return diagnose(settings)
+        return await asyncio.to_thread(diagnose, settings)
 
     @app.post("/v1/jobs", status_code=202)
     async def submit(request: JobRequest, idempotency_key: str | None = Header(default=None, max_length=128)):
