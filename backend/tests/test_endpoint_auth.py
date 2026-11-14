@@ -234,7 +234,7 @@ def test_oversized_json_body_is_rejected_with_valid_token(client):
     big = json.dumps({"objective": "x" * (40 * 1024 * 1024)})
     response = client.post("/v1/workflows", content=big, headers={**GOOD, "Content-Type": "application/json",
                                                                     "Idempotency-Key": "grande"})
-    assert response.status_code in {413, 422}, response.status_code
+    assert response.status_code == 413, response.status_code
 
 
 # --- 3. mídia e arquivos servidos -----------------------------------------------------------------------------

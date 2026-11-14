@@ -33,6 +33,7 @@ from .radar_workflow import RadarWorkflowRequest, adapt, demo, eligibility, summ
 from .security import SecurityGate, require_secure, security_status
 from .production import ProductionRequest, ProductionReviewRequest
 from .scripts import ManualScriptRequest, ScriptRequest, ScriptReviewRequest, ScriptService, ScriptVersionRequest
+from .body_limit import BodyLimitMiddleware
 from .storage import Store
 from .workflows import AuthorizationRequest, ReviewRequest, RevisionRequest, WorkflowConflict, WorkflowRequest
 
@@ -82,6 +83,7 @@ def create_app(settings: Settings, shutdown=None, ready=None):
     app.state.narration = narration
     app.state.radar = radar_state
     app.state.store, app.state.manager = store, manager
+    app.add_middleware(BodyLimitMiddleware)  # interno à autenticação: sem token, o corpo nem é lido
     app.add_middleware(CORSMiddleware, allow_origins=list(settings.origins), allow_methods=["GET", "POST", "PUT", "DELETE"],
                        allow_headers=["Authorization", "Content-Type", "Idempotency-Key"])
 
