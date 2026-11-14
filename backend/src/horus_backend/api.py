@@ -23,6 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from .narration.service import NarrationService, narration_router
 from .config import Settings
 from .diagnostics import diagnose
+from .exports import ExportService
 from .dependencies import transcription_capabilities
 from .hermes import HermesConnector
 from .license_reviews import LicenseReviewRequest, LicenseReviewService
@@ -60,6 +61,7 @@ def create_app(settings: Settings, shutdown=None, ready=None):
     hermes = HermesConnector(settings)
     scripts = ScriptService(store)
     license_reviews = LicenseReviewService(store, settings.data_dir)
+    exports = ExportService(manager.productions)
     narration = NarrationService(settings, store)
 
     @asynccontextmanager
@@ -209,6 +211,20 @@ def create_app(settings: Settings, shutdown=None, ready=None):
     @app.get("/v1/productions/{production_id}/license-reviews")
     def list_license_reviews(production_id: str):
         return script_call(lambda: license_reviews.list(production_id))
+
+    @app.post("/v1/productions/{production_id}/export")
+    def export_production(production_id: str, idempotency_key: str = Header(min_length=1, max_length=128)):
+        record, created = script_call(lambda: exports.create(production_id, idempotency_key))
+        return JSONResponse(record, status_code=201 if created else 200)
+
+    @app.get("/v1/productions/{production_id}/exports")
+    def list_exports(production_id: str):
+        return script_call(lambda: exports.list(production_id))
+
+    @app.get("/v1/productions/{production_id}/exports/{export_id}/file")
+    def export_file(production_id: str, export_id: str):
+        path = script_call(lambda: exports.file(production_id, export_id))
+        return FileResponse(path, filename=f'horus-{production_id}-{export_id[:12]}.zip')
 
     @app.post("/v1/productions/{production_id}/license-reviews")
     def create_license_review(production_id: str, request: LicenseReviewRequest,
