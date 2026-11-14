@@ -1,6 +1,37 @@
 import type { NormalizedQualityReport } from '../../services/production';
 import { formatTimecode } from '../../services/production';
 
+const SEVERITY_ORDER: Record<string, number> = {
+  fail: 0,
+  warn: 1,
+  not_checked: 2,
+  skipped: 3,
+  pass: 4,
+};
+
+const CHECK_SHORT_EXPLANATION: Record<string, string> = {
+  asset_hashes: 'Conferência de integridade (SHA-256) dos arquivos de mídia e fontes usados.',
+  asset_provenance: 'Há mídia, fonte ou voz sem verificação humana de licença.',
+  audio_clipping: 'Distorção por saturação ou pico excessivo no áudio.',
+  audio_level: 'Nível de sinal de áudio muito baixo ou próximo de zero.',
+  audio_loudness: 'Volume médio fora da faixa de referência de fala.',
+  audio_silence: 'Trecho de silêncio prolongado inesperado no áudio.',
+  duration_narration: 'Duração da narração fora do esperado para o roteiro.',
+  duration_video_audio: 'Diferença de duração entre o vídeo e o áudio da narração.',
+  evidence_manifest: 'Registro técnico de evidências e artefatos da produção.',
+  script_coverage: 'Cobertura das seções do roteiro no áudio e nas legendas.',
+  subtitles_vs_sections: 'Legendas fora dos limites da seção correspondente.',
+  subtitles_vs_words: 'Diferença de tempo entre legendas e palavras faladas.',
+  video_present: 'Presença e leitura válida do arquivo de vídeo MP4.',
+  visual_black_frames: 'Quadros escuros ou pretos detectados no vídeo.',
+  visual_freeze: 'Imagem congelada sem variação entre quadros.',
+  word_timings: 'Alinhamento das palavras faladas com o áudio.',
+};
+
+function explainCheck(id: string): string | null {
+  return CHECK_SHORT_EXPLANATION[id] ?? null;
+}
+
 function formatDate(iso: string | null | undefined): string {
   if (!iso) return '—';
   try {
@@ -126,6 +157,11 @@ export default function QualityReportPanel({
                       )}
                     </div>
                     <small>{item.detail}</small>
+                    {explainCheck(item.id) && (
+                      <small className="muted" style={{ display: 'block', marginTop: '2px' }}>
+                        O que significa: {explainCheck(item.id)}
+                      </small>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -176,6 +212,11 @@ export default function QualityReportPanel({
                       )}
                     </div>
                     <small>{item.detail}</small>
+                    {explainCheck(item.id) && (
+                      <small className="muted" style={{ display: 'block', marginTop: '2px' }}>
+                        O que significa: {explainCheck(item.id)}
+                      </small>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -197,7 +238,9 @@ export default function QualityReportPanel({
                   </tr>
                 </thead>
                 <tbody>
-                  {quality.checks.map(check => {
+                  {[...quality.checks]
+                    .sort((a, b) => (SEVERITY_ORDER[a.status] ?? 9) - (SEVERITY_ORDER[b.status] ?? 9))
+                    .map(check => {
                     const statusTone =
                       check.status === 'pass'
                         ? 'good'

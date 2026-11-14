@@ -38,7 +38,7 @@ import {
 import AssetProvenancePanel from './production/AssetProvenancePanel';
 import ProductionLaunchOptions from './production/ProductionLaunchOptions';
 import ProductionGlossary, { termTitle } from './production/ProductionGlossary';
-import ProductionProgress, { describeJobEvent } from './production/ProductionProgress';
+import ProductionProgress, { describeJobEvent, suggestFailureAction } from './production/ProductionProgress';
 import QualityReportPanel from './production/QualityReportPanel';
 import TimecodeReviewWorkspace from './production/TimecodeReviewWorkspace';
 
@@ -915,6 +915,7 @@ export default function ProductionRun({
           // Ignore browser media seek error on synthetic test buffers
         }
       }
+      previewPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       return;
     }
     const vidArt = activeProduction?.artifacts.find(a => a.kind === 'video') ?? null;
@@ -1476,6 +1477,10 @@ export default function ProductionRun({
                 {activeProduction.error ||
                   'A tarefa de produção encerrou com erro no executor local.'}
               </p>
+              <small className="muted">
+                <strong>O que fazer:</strong>{' '}
+                {suggestFailureAction(activeProduction.stage, activeProduction.error)}
+              </small>
             </div>
           )}
 
@@ -1489,6 +1494,10 @@ export default function ProductionRun({
                 {activeProduction.error ||
                   'A produção estava em andamento quando o backend foi reiniciado. Revise os artefatos antes de tentar novamente.'}
               </p>
+              <small className="muted">
+                <strong>O que fazer:</strong>{' '}
+                Confira os artefatos e logs abaixo; se o vídeo não foi concluído, inicie uma nova produção.
+              </small>
             </div>
           )}
 
@@ -2102,6 +2111,41 @@ export default function ProductionRun({
                 </small>
               </div>
 
+              {hasUnverifiedLicense && normalizedAssetProvenance && (
+                <div
+                  className="fact-item"
+                  role="note"
+                  aria-label="Pendências de licença antes de aprovar"
+                  style={{ borderColor: 'var(--Warn)' }}
+                >
+                  <span className="eyebrow warn">
+                    PENDÊNCIAS DE LICENÇA ANTES DE APROVAR
+                  </span>
+                  <small className="muted">
+                    Revise ou registre a verificação humana no Painel de Licenças acima antes de
+                    aprovar, ou confirme ciência explícita abaixo (<code>publishable: false</code>):
+                  </small>
+                  <ul className="blocker-items-list">
+                    {normalizedAssetProvenance.assets
+                      .filter(
+                        item =>
+                          item.status === 'unverified' ||
+                          item.status === 'rejected' ||
+                          item.commercialUse === 'unknown' ||
+                          item.commercialUse === 'restricted' ||
+                          !item.verifiedBy
+                      )
+                      .map(item => (
+                        <li key={item.assetId} className="blocker-item warning">
+                          <strong>{item.assetId}</strong> ({item.kindLabel}) · status:{' '}
+                          <code>{item.status}</code> · uso comercial:{' '}
+                          <code>{item.commercialUse}</code>
+                        </li>
+                      ))}
+                  </ul>
+                </div>
+              )}
+
               {requiresApprovalConfirmation && (
                 <div
                   className={`blocker-item ${hasQcFail ? 'critical' : 'warning'}`}
@@ -2182,6 +2226,22 @@ export default function ProductionRun({
                   Rejeitar produção
                 </button>
               </div>
+              {(() => {
+                const reasons: string[] = [];
+                if (submitting) reasons.push('Envio da revisão em andamento.');
+                if (hasInvalidDraftNotes) reasons.push('Há notas de revisão incompletas ou com timecode inválido.');
+                if (requiresApprovalConfirmation && !approvalConfirmationChecked) {
+                  reasons.push(
+                    'Marque a caixa de ciência explícita acima (pendências de QC e/ou licenças não verificadas).'
+                  );
+                }
+                if (reasons.length === 0) return null;
+                return (
+                  <p className="muted" role="status" aria-label="Motivo do bloqueio de aprovação">
+                    <strong>Aprovação bloqueada:</strong> {reasons.join(' ')}
+                  </p>
+                );
+              })()}
             </div>
           )}
 

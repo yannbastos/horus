@@ -22,7 +22,13 @@ import {
   sortScriptsDesc,
 } from '../services/scripts';
 import ScriptEditor from './script-editor/ScriptEditor';
-import { cloneDocumentForEditing, createBlankHumanDocument } from './script-editor/scriptContract';
+import {
+  cloneDocumentForEditing,
+  countWords,
+  createBlankHumanDocument,
+  estimateNarrationSeconds,
+  formatEstimatedDuration,
+} from './script-editor/scriptContract';
 import ProductionRun from './ProductionRun';
 
 const SCRIPT_STATUS_LABELS: Record<ScriptStatus, string> = {
@@ -721,6 +727,18 @@ export default function ScriptReview({
             <div className="info-block">
               <span className="eyebrow">CRIADO EM</span>
               <span>{formatDate(activeScript.created_at)}</span>
+            </div>
+            <div className="info-block">
+              <span className="eyebrow">EXTENSÃO E ESTIMATIVA</span>
+              <span>
+                {(() => {
+                  const words = activeScript.document.sections.reduce(
+                    (acc, sec) => acc + countWords(sec.narration),
+                    0
+                  );
+                  return `${words} palavras · ${formatEstimatedDuration(estimateNarrationSeconds(words))} (estimativa)`;
+                })()}
+              </span>
             </div>
           </div>
 

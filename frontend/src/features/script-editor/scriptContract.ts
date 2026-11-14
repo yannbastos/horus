@@ -22,6 +22,7 @@ export type SectionValidationErrors = {
 
 export type ScriptValidationResult = {
   valid: boolean;
+  titleError?: string;
   documentErrors: string[];
   sectionErrors: Record<number, SectionValidationErrors>;
 };
@@ -100,12 +101,13 @@ export function normalizeHumanDocument(document: ScriptDocument): ScriptDocument
 export function validateHumanScriptDocument(document: ScriptDocument): ScriptValidationResult {
   const documentErrors: string[] = [];
   const sectionErrors: Record<number, SectionValidationErrors> = {};
+  let titleError: string | undefined;
 
   const title = document.title.trim();
   if (!title) {
-    documentErrors.push('O título do roteiro é obrigatório.');
+    titleError = 'O título do roteiro é obrigatório. Informe um título curto para identificar o vídeo.';
   } else if (title.length > MAX_TITLE_LENGTH) {
-    documentErrors.push(`O título deve ter no máximo ${MAX_TITLE_LENGTH} caracteres.`);
+    titleError = `O título deve ter no máximo ${MAX_TITLE_LENGTH} caracteres. Reduza ${title.length - MAX_TITLE_LENGTH} caractere(s).`;
   }
 
   const sections = document.sections;
@@ -147,15 +149,15 @@ export function validateHumanScriptDocument(document: ScriptDocument): ScriptVal
     seenIds.add(id);
 
     if (!heading) {
-      errors.heading = 'O título da seção é obrigatório.';
+      errors.heading = 'O título da seção é obrigatório. Preencha este campo para identificar a seção.';
     } else if (heading.length > MAX_HEADING_LENGTH) {
-      errors.heading = `O título da seção deve ter no máximo ${MAX_HEADING_LENGTH} caracteres.`;
+      errors.heading = `O título da seção deve ter no máximo ${MAX_HEADING_LENGTH} caracteres. Reduza ${heading.length - MAX_HEADING_LENGTH} caractere(s).`;
     }
 
     if (!narration) {
-      errors.narration = 'A narração da seção é obrigatória.';
+      errors.narration = 'A narração da seção é obrigatória. Escreva o texto que será falado neste trecho.';
     } else if (narration.length > MAX_SECTION_NARRATION) {
-      errors.narration = `A narração da seção deve ter no máximo ${MAX_SECTION_NARRATION} caracteres.`;
+      errors.narration = `A narração da seção deve ter no máximo ${MAX_SECTION_NARRATION} caracteres. Reduza ${narration.length - MAX_SECTION_NARRATION} caractere(s).`;
     }
     totalNarrationChars += narration.length;
 
@@ -176,6 +178,6 @@ export function validateHumanScriptDocument(document: ScriptDocument): ScriptVal
     );
   }
 
-  const valid = documentErrors.length === 0 && Object.keys(sectionErrors).length === 0;
-  return { valid, documentErrors, sectionErrors };
+  const valid = !titleError && documentErrors.length === 0 && Object.keys(sectionErrors).length === 0;
+  return { valid, titleError, documentErrors, sectionErrors };
 }

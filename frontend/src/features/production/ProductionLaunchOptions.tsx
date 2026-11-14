@@ -20,10 +20,10 @@ export const RENDER_QUALITY_OPTIONS: Record<
   },
 };
 
-const COMMERCIAL_LABELS: Record<CommercialUse, string> = {
-  allowed: 'Uso comercial: permitido',
-  restricted: 'Uso comercial: restrito',
-  unknown: 'Uso comercial: desconhecido (trate como não permitido)',
+const COMMERCIAL_LABELS: Record<CommercialUse, { label: string; tone: string }> = {
+  allowed: { label: 'Uso comercial: permitido', tone: 'good' },
+  restricted: { label: 'Uso comercial: restrito', tone: 'bad' },
+  unknown: { label: 'Uso comercial: desconhecido (trate como não permitido)', tone: 'warn' },
 };
 
 const PROVIDER_STATUS_LABELS: Record<string, string> = {
@@ -190,14 +190,26 @@ export default function ProductionLaunchOptions({
       )}
 
       {provider && voice && isSelectableProvider(provider) && (
-        <div role="note" aria-label="Licença da voz escolhida">
+        <div
+          role="note"
+          aria-label="Licença da voz escolhida"
+          style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}
+        >
           <small className="muted">
-            {source === 'preference' && <strong>Pré-selecionada pela sua preferência de voz. </strong>}
-            Licença da voz: <strong>{voice.license.name}</strong> ·{' '}
-            <strong>{COMMERCIAL_LABELS[voice.commercial_use]}</strong>
-            {voice.notes ? ` · ${voice.notes}` : ''} · Licença do motor:{' '}
-            <strong>{provider.engine_license.name}</strong>
+            {source === 'preference'
+              ? 'Escolha da voz: pré-selecionada pela sua preferência salva em Ajustes → Narração.'
+              : source === 'first_available'
+              ? 'Escolha da voz: nenhuma preferência salva em Ajustes; selecionamos a primeira voz local disponível.'
+              : 'Escolha da voz: selecionada manualmente para esta produção (não altera a voz padrão nos Ajustes).'}
           </small>
+          <div className="row" style={{ flexWrap: 'wrap', gap: '6px' }}>
+            <span className={`tag ${COMMERCIAL_LABELS[voice.commercial_use].tone}`}>
+              {COMMERCIAL_LABELS[voice.commercial_use].label}
+            </span>
+            <span className="tag">Licença da voz: {voice.license.name}</span>
+            <span className="tag">Licença do motor: {provider.engine_license.name}</span>
+          </div>
+          {voice.notes && <small className="muted">{voice.notes}</small>}
         </div>
       )}
 

@@ -13,6 +13,46 @@ export const STAGE_TEXT: Record<string, string> = {
   review: 'Revisão',
 };
 
+export const STAGE_HINTS: Record<string, string> = {
+  prepare: 'Preparando roteiro e conferindo pré-condições locais.',
+  narration: 'Gerando o áudio da narração localmente.',
+  scenes: 'Montando as cenas visuais de cada seção.',
+  align: 'Alinhando o texto narrado com os tempos reais do áudio.',
+  subtitles: 'Gerando e sincronizando as legendas.',
+  render: 'Renderizando o vídeo MP4 na fábrica local.',
+  quality: 'Executando as verificações automáticas de qualidade (QC).',
+  review: 'Aguardando sua revisão humana e aprovação.',
+};
+
+export function suggestFailureAction(stage: string, errorMessage?: string | null): string {
+  const msg = (errorMessage ?? '').toLowerCase();
+  if (msg.includes('ffmpeg') || msg.includes('libass')) {
+    return 'Verifique o executável do FFmpeg com suporte a libass em Ajustes ou na variável HORUS_FFMPEG e tente uma nova produção.';
+  }
+  if (msg.includes('fabrica_home') || msg.includes('horus_pilot_factory') || msg.includes('remotion') || msg.includes('browser')) {
+    return 'Confirme a pasta da fábrica local (FABRICA_HOME / HORUS_PILOT_FACTORY) e as dependências do Remotion/browser antes de tentar novamente.';
+  }
+  if (msg.includes('kokoro') || msg.includes('piper') || msg.includes('sapi') || msg.includes('voz') || msg.includes('narration')) {
+    return 'Confira a disponibilidade da voz em Ajustes → Narração ou escolha outra voz local instalada para iniciar uma nova produção.';
+  }
+  if (msg.includes('whisper') || msg.includes('alignment') || msg.includes('alinhamento')) {
+    return 'Verifique o modelo local de alinhamento (HORUS_ALIGNMENT_MODEL) e inicie uma nova produção.';
+  }
+  switch (stage) {
+    case 'narration':
+      return 'Confira a voz selecionada em Ajustes → Narração, verifique os logs do job abaixo e inicie uma nova produção.';
+    case 'align':
+    case 'subtitles':
+      return 'Confira os logs do job abaixo para detalhes do alinhamento/legendas e tente iniciar uma nova produção.';
+    case 'render':
+      return 'Confira os logs do job abaixo (fábrica/Remotion/FFmpeg) e tente iniciar uma nova produção.';
+    case 'quality':
+      return 'Verifique os logs do job abaixo para identificar a falha de QC antes de gerar novamente.';
+    default:
+      return 'Confira os logs reais do job abaixo para identificar a causa, ajuste o necessário e inicie uma nova produção.';
+  }
+}
+
 export function formatElapsed(totalSeconds: number): string {
   const seconds = Math.max(0, Math.floor(totalSeconds));
   const minutes = Math.floor(seconds / 60);
@@ -82,12 +122,15 @@ export default function ProductionProgress({
   })();
 
   return (
-    <div className="fact-item" role="status" aria-label="Progresso da execução">
+    <div className="fact-item" role="status" aria-live="polite" aria-label="Progresso da execução">
       <span className="eyebrow">{terminal ? 'RESUMO DA EXECUÇÃO' : 'PROGRESSO DA EXECUÇÃO'}</span>
       <div className="info-grid">
         <div className="info-block">
           <span className="eyebrow">ETAPA ATUAL</span>
           <span>{STAGE_TEXT[stage] ?? stage}</span>
+          {!terminal && STAGE_HINTS[stage] && (
+            <small className="muted">{STAGE_HINTS[stage]}</small>
+          )}
         </div>
         <div className="info-block">
           <span className="eyebrow">{terminal ? 'DURAÇÃO TOTAL' : 'TEMPO DECORRIDO'}</span>

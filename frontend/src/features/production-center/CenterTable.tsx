@@ -65,7 +65,13 @@ export default function CenterTable({ rows, onOpen }: { rows: CenterRow[]; onOpe
                 </ul>
                 {row.incomplete && <p className="error" role="note">Dados incompletos: {row.incomplete}</p>}
               </td>
-              <td>{LICENSE_LABEL[row.license]}</td>
+              <td>
+                {row.license === 'unverified' ? (
+                  <span className="tag warn">{LICENSE_LABEL[row.license]}</span>
+                ) : (
+                  LICENSE_LABEL[row.license]
+                )}
+              </td>
               <td>{formatDate(row.updatedAt)}</td>
               <td>
                 {row.action

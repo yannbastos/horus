@@ -41,19 +41,64 @@ function VoiceRow({ connection, provider, voice, text, isDefault, onDefault }: {
 }) {
   const [audio, setAudio] = useState('');
   const [busy, setBusy] = useState(false);
+  const [previewState, setPreviewState] = useState<'idle' | 'generating' | 'playing' | 'paused' | 'error'>('idle');
   const [error, setError] = useState('');
   const [estimate, setEstimate] = useState<NarrationEstimate | null>(null);
   const [estimating, setEstimating] = useState(false);
   const player = useRef<HTMLAudioElement>(null);
+  const previewAbortRef = useRef<AbortController | null>(null);
+
   useEffect(() => () => { if (audio) URL.revokeObjectURL(audio); }, [audio]);
-  async function listen() {
-    setBusy(true); setError('');
-    try {
-      const blob = await previewNarration(connection, { provider: provider.id, voice_id: voice.id, text });
-      setAudio(URL.createObjectURL(blob));
-    } catch (reason) { setError(reasonText(reason)); } finally { setBusy(false); }
+  useEffect(() => () => { previewAbortRef.current?.abort(); }, []);
+
+  function stopPreview() {
+    previewAbortRef.current?.abort();
+    previewAbortRef.current = null;
+    if (player.current) {
+      player.current.pause();
+      player.current.currentTime = 0;
+    }
+    setBusy(false);
+    setPreviewState('idle');
   }
-  useEffect(() => { if (audio) void player.current?.play().catch(() => undefined); }, [audio]);
+
+  async function listen() {
+    previewAbortRef.current?.abort();
+    const controller = new AbortController();
+    previewAbortRef.current = controller;
+    setBusy(true);
+    setPreviewState('generating');
+    setError('');
+    try {
+      const blob = await previewNarration(
+        connection,
+        { provider: provider.id, voice_id: voice.id, text },
+        controller.signal
+      );
+      if (controller.signal.aborted) return;
+      setAudio(prev => {
+        if (prev) URL.revokeObjectURL(prev);
+        return URL.createObjectURL(blob);
+      });
+    } catch (reason) {
+      if (controller.signal.aborted) return;
+      setError(reasonText(reason));
+      setPreviewState('error');
+    } finally {
+      if (previewAbortRef.current === controller) {
+        previewAbortRef.current = null;
+      }
+      setBusy(false);
+    }
+  }
+  useEffect(() => {
+    if (!audio || !player.current) return;
+    player.current.currentTime = 0;
+    void player.current.play().then(
+      () => setPreviewState('playing'),
+      () => setPreviewState('paused')
+    );
+  }, [audio]);
   async function estimateCost() {
     setEstimating(true); setError('');
     try { setEstimate(await estimateNarration(connection, { provider: provider.id, voice_id: voice.id, text })); }
@@ -61,6 +106,7 @@ function VoiceRow({ connection, provider, voice, text, isDefault, onDefault }: {
   }
   const commercial = COMMERCIAL[voice.commercial_use];
   const label = `${voice.name} (${provider.name})`;
+  const canStop = busy || previewState === 'playing' || previewState === 'paused' || Boolean(audio);
   return <li className={`narration-voice ${isDefault ? 'is-default' : ''}`} aria-label={label}>
     <div className="row spread"><h4>{voice.name}</h4><span className="tag">{voice.language}</span></div>
     <div className="narration-actions">
@@ -72,12 +118,39 @@ function VoiceRow({ connection, provider, voice, text, isDefault, onDefault }: {
     {voice.notes && <p className="muted">{voice.notes}</p>}
     <div className="narration-actions">
       {voice.preview === 'local' && <button className="button" disabled={busy || !text.trim()} onClick={() => void listen()} aria-label={`Ouvir prévia de ${label}`}>{busy ? 'GERANDO PRÉVIA…' : 'OUVIR PRÉVIA'}</button>}
+      {voice.preview === 'local' && canStop && <button className="button" type="button" onClick={stopPreview} aria-label={`Parar prévia de ${label}`}>PARAR PRÉVIA</button>}
       <button className="button" disabled={estimating || !text.trim()} onClick={() => void estimateCost()} aria-label={`Estimar custo de ${label}`}>{estimating ? 'ESTIMANDO…' : 'ESTIMAR CUSTO'}</button>
       <button className="button primary" aria-pressed={isDefault} onClick={onDefault} aria-label={`Usar ${label} como voz padrão`}>{isDefault ? 'VOZ PADRÃO' : 'USAR COMO PADRÃO'}</button>
     </div>
+    {previewState !== 'idle' && (
+      <p className={previewState === 'error' ? 'error' : 'muted'} role="status" aria-live="polite">
+        Estado da prévia:{' '}
+        {previewState === 'generating'
+          ? 'gerando áudio…'
+          : previewState === 'playing'
+          ? 'tocando'
+          : previewState === 'paused'
+          ? 'pausada / parada'
+          : 'erro na prévia'}
+      </p>
+    )}
     {voice.preview === 'requires_authorization' && <p className="muted">A prévia desta voz exige autorização por geração e custa créditos. Nenhuma chamada é feita aqui.</p>}
     {voice.preview === 'unavailable' && <p className="muted">Prévia indisponível para esta voz.</p>}
-    {audio && <audio ref={player} controls src={audio} aria-label={`Prévia de ${label}`} />}
+    {audio && (
+      <audio
+        ref={player}
+        controls
+        src={audio}
+        aria-label={`Prévia de ${label}`}
+        onPlay={() => setPreviewState('playing')}
+        onPause={() => setPreviewState(prev => (prev === 'idle' ? 'idle' : 'paused'))}
+        onEnded={() => setPreviewState('idle')}
+        onError={() => {
+          setPreviewState('error');
+          setError('Não foi possível reproduzir o áudio da prévia.');
+        }}
+      />
+    )}
     {estimate && <EstimateView estimate={estimate} />}
     {error && <p className="error" role="alert">{error}</p>}
   </li>;
@@ -170,7 +243,25 @@ function NarrationPanel({ connection }: { connection: Connection | null }) {
           <option value="all">Todos</option>{languages.map(l => <option key={l} value={l}>{l}</option>)}</select></label>
         <button className="button" disabled={loading} onClick={() => setRevision(v => v + 1)}>ATUALIZAR</button>
       </div>
-      {defaultVoice && <p role="status">Voz padrão atual: {defaultVoice.provider} / {defaultVoice.voice_id}</p>}
+      {(() => {
+        if (!defaultVoice) {
+          return (
+            <p className="muted" role="status">
+              Nenhuma voz padrão salva. Escolha uma voz abaixo com <strong>USAR COMO PADRÃO</strong> (sem preferência, o piloto local usa a primeira voz local disponível).
+            </p>
+          );
+        }
+        const matchedProvider = providers?.find(p => p.id === defaultVoice.provider);
+        const matchedVoice = matchedProvider?.voices.find(v => v.id === defaultVoice.voice_id);
+        const friendly = matchedVoice && matchedProvider
+          ? `${matchedVoice.name} (${matchedProvider.name}) — `
+          : '';
+        return (
+          <p role="status">
+            <strong>Voz padrão atual:</strong> {friendly}{defaultVoice.provider} / {defaultVoice.voice_id}
+          </p>
+        );
+      })()}
       {defaultMessage && <p role="status">{defaultMessage}</p>}
       {loading && <p role="status">Carregando provedores…</p>}
       {error && <p className="error" role="alert">{error}</p>}
