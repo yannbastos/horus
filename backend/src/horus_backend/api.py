@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import secrets
 import sqlite3
 import tempfile
@@ -49,6 +50,9 @@ class TranscriptSave(BaseModel):
     text: str = Field(max_length=20_000_000)
 
 
+LOOPBACK_HOST = re.compile(r"(?:127\.0\.0\.1|localhost)(?::[0-9]{1,5})?")
+
+
 def create_app(settings: Settings, shutdown=None, ready=None):
     if len(settings.token) < 24:
         raise ValueError("A API exige um token local aleatório de pelo menos 24 caracteres.")
@@ -90,7 +94,8 @@ def create_app(settings: Settings, shutdown=None, ready=None):
 
     @app.middleware("http")
     async def authorize(request: Request, call_next):
-        if request.url.hostname not in {"127.0.0.1", "localhost"}:
+        host = request.headers.get("host")
+        if (not LOOPBACK_HOST.fullmatch(host) if host is not None else request.url.hostname not in {"127.0.0.1", "localhost"}):
             return JSONResponse({"detail": "Host não permitido."}, status_code=403)
         origin = request.headers.get("origin")
         if origin and origin not in settings.origins:
@@ -98,7 +103,8 @@ def create_app(settings: Settings, shutdown=None, ready=None):
         if request.method == "OPTIONS":
             return await call_next(request)
         is_stream = request.url.path.startswith("/v1/media/") and request.url.path.endswith("/stream")
-        if not is_stream and not secrets.compare_digest(request.headers.get("authorization", ""), f"Bearer {settings.token}"):
+        if not is_stream and not secrets.compare_digest(request.headers.get("authorization", "").encode("utf-8", "replace"),
+                                                         f"Bearer {settings.token}".encode()):
             return JSONResponse({"detail": "Autenticação local necessária."}, status_code=401)
         response = await call_next(request)
         response.headers["Cache-Control"] = "no-store"
@@ -430,12 +436,14 @@ def create_app(settings: Settings, shutdown=None, ready=None):
     @app.get("/v1/media/{media_id}/stream")
     async def media_stream(media_id: str, expires: int = 0, ticket: str = ""):
         expected = hmac.new(settings.token.encode(), f"{media_id}:{expires}".encode(), hashlib.sha256).hexdigest()
-        if expires < time.time() or not secrets.compare_digest(ticket, expected):
+        if expires < time.time() or not secrets.compare_digest(ticket.encode("utf-8", "replace"), expected.encode()):
             raise HTTPException(401, "Acesso à mídia expirado. Selecione-a novamente.")
         item = store.media(media_id)
         if not item:
             raise HTTPException(404, "Mídia não encontrada.")
         path = Path(item["path"])
+        if path.is_symlink():  # o registro resolve links; um link posterior é troca do arquivo
+            raise HTTPException(409, "O arquivo mudou. Selecione-o novamente antes de reproduzir.")
         try:
             stat = path.stat()
         except OSError as error:
