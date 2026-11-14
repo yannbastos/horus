@@ -52,6 +52,7 @@ Extensão compatível (HOR-054), campos opcionais: `words[].timing` (`measured` 
 - Assets externos (stock_*, licensed_manual) não rejeitados exigem `source_url`, `author` e licença (`id`, `name`, `url` dos termos). URLs: https, sem credenciais; stock_pexels/stock_pixabay exigem host `pexels.com`/`pixabay.com` (ou subdomínio).
 - `status=verified` exige `verified_by="human"` + `verified_at`, `commercial_use != unknown` e `attribution_required` conhecido. `verified_by` e `verified_at` vêm juntos.
 - `commercial_use=unknown` nunca equivale a permitido: `commercial_use_permitted(asset)` só é verdadeiro com `allowed` + `verified` + humano.
+- Texto livre (`author`, `notes`, `license.id`, `license.name`) e URLs recusam controles ASCII/C1, separadores de linha Unicode e marcas bidirecionais (`unsafe_text`).
 - `relative_path`: relativo e confinável (sem `..`, `.`, `\`, `:`, barra inicial, segmento vazio ou terminado em ponto/espaço); `asset_id` e caminho únicos (sem diferenciar maiúsculas).
 - Cruzamento: `validate_asset_provenance(data, artifacts={relative_path: sha256})` — todo asset declarado deve estar registrado com o mesmo hash (`asset_not_registered`, `hash_mismatch`) e todo artefato de mídia registrado precisa de proveniência (`artifact_without_provenance`). Assets não `verified` geram o aviso `unverified_assets_block_publication`.
 
@@ -91,9 +92,10 @@ Entradas em `root`: `pilot-evidence.json`, assets de entrada, SRT ao lado da nar
 | `video_present`, `evidence_manifest` (declared), `asset_hashes` | integrity | sistema de arquivos; `validate_pilot_evidence`; sha256 de cada asset de entrada |
 | `audio_clipping`, `audio_level`, `audio_silence` | audio | WAV da narração em Python puro (`pilot_quality.analyze_wav`): pico, RMS, clipping, silêncios ≥ 2 s internos / bordas > 1,5 s (com timecode) |
 | `audio_loudness` | audio | FFmpeg do MP4: `ebur128` se o build tiver; senão análise do `loudnorm` (`source` declara qual). Faixa de aviso −26…−12 LUFS e true peak ≤ −1 dBTP: referência, não requisito do produto |
-| `duration_narration`, `duration_video_audio` | duration | cabeçalho `wave` (concatenado e seções × cenas) e `ffprobe` (vídeo = narração + 0,8 s ± 0,15; faixas de áudio/vídeo presentes) |
+| `duration_narration`, `duration_video_audio` | duration | cabeçalho `wave` (concatenado e seções × cenas) e `ffprobe` (vídeo = narração + 0,8 s ± 0,15; faixas de áudio/vídeo presentes; faixa de áudio do MP4 não pode ser mais curta que a narração). WAV da narração truncado/ilegível e MP4 rejeitado pelo `ffprobe` são `fail`; só ferramenta ausente, timeout ou WAV que não é PCM 16 bits ficam `skipped` |
+| `video_format` | duration | `ffprobe` (só com dimensões na saída): resolução e fps do MP4 contra o `video` do manifesto (fps ± 0,5); divergência = `fail` |
 | `subtitles_vs_sections` | subtitles | cues do SRT × cenas (seções medidas): ordem, sem sobreposição, dentro da cena |
-| `script_coverage` | subtitles | palavras de `plan.json` presentes, em ordem, nas cues; `skipped` sem `plan.json` |
+| `script_coverage` | subtitles | palavras de `plan.json` presentes, em ordem, nas cues (subsequência por blocos: palavra ausente que reaparece adiante não arrasta o restante); `skipped` sem `plan.json` ou sem palavras comparáveis |
 | `word_timings`, `subtitles_vs_words` | sync | `validate_word_timings` com hash, duração, roteiro e seções reais; desvio máximo/médio por cue. `skipped` com motivo se `word-timings.json` ausente; `method=estimated` se a fonte é `estimated` |
 | `visual_black_frames`, `visual_freeze` | visual | miniaturas em cinza 64×112 a 10 fps extraídas pelo FFmpeg (scale+format+PNG via pipe) e analisadas em Python; preto = luma < 16 por ≥ 0,5 s; congelado = diferença média < 0,05 por ≥ 4 s (aviso: cena estática pode ser intencional) |
 | `asset_provenance` | provenance | `asset-provenance.json` cruzado com os hashes; sem o arquivo, `declared` a partir do manifesto (aviso se houver licença não verificada) |

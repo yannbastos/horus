@@ -32,6 +32,9 @@ MAX_INTERPOLATED_RUN_SECONDS = 2.0  # maior trecho contínuo de palavras interpo
 MAX_ERRORS = 50
 
 _CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
+# Texto livre exibido ao operador: além dos controles ASCII, recusa controles C1, separadores de linha Unicode e
+# marcas de direção bidirecional (U+202A..202E, U+2066..2069), que permitem esconder/inverter texto na interface.
+UNSAFE_TEXT = re.compile("[\x00-\x08\x0b-\x1f\x7f-\x9f  ‪-‮⁦-⁩]")
 _ID = r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$"
 SHA256 = Field(pattern=r"^[a-f0-9]{64}$")
 _PRODUCTION_ID = Field(pattern=_ID)
@@ -326,6 +329,10 @@ class ProvenanceAsset(_Media):
         if reason:
             issues.append(("unsafe_path", "relative_path", reason))
         lic = self.license
+        for field, text in (("author", self.author), ("notes", self.notes), ("license.id", lic.id),
+                            ("license.name", lic.name)):
+            if text is not None and UNSAFE_TEXT.search(text):
+                issues.append(("unsafe_text", field, "texto com caracteres de controle ou de direção."))
         if (lic.verified_by is None) != (lic.verified_at is None):
             issues.append(("verification_incomplete", "license", "verified_by e verified_at devem vir juntos."))
         external = self.origin in EXTERNAL_ORIGINS
@@ -366,8 +373,8 @@ class AssetProvenance(_Media):
 
 
 def _url_problem(url: str, host: str | None) -> str | None:
-    if _CONTROL.search(url) or any(ch.isspace() for ch in url):
-        return "URL com espaço ou controle."
+    if UNSAFE_TEXT.search(url) or any(ch.isspace() for ch in url):
+        return "URL com espaço, controle ou marca de direção."
     try:
         parts = urlsplit(url)
         hostname = parts.hostname

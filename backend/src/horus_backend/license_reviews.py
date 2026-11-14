@@ -9,7 +9,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from .media_contracts import PILOT_INPUT_PATH, STOCK_HOSTS, _url_problem, apply_license_reviews, validate_asset_provenance
+from .media_contracts import PILOT_INPUT_PATH, STOCK_HOSTS, UNSAFE_TEXT, _url_problem, apply_license_reviews, validate_asset_provenance
 from .storage import now
 from .workflows import WorkflowConflict
 
@@ -30,6 +30,13 @@ class ReviewLicense(_Strict):
     commercial_use: Literal["allowed", "restricted", "unknown"]
     attribution_required: bool
 
+    @field_validator("id", "name")
+    @classmethod
+    def readable(cls, value):
+        if not value.strip() or UNSAFE_TEXT.search(value):
+            raise ValueError("texto vazio ou com caracteres de controle")
+        return value
+
 
 class LicenseReviewRequest(_Strict):
     asset_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
@@ -42,7 +49,7 @@ class LicenseReviewRequest(_Strict):
     @field_validator("evidence")
     @classmethod
     def readable(cls, value):
-        if not value.strip() or _CONTROL.search(value):
+        if not value.strip() or UNSAFE_TEXT.search(value):
             raise ValueError("evidência vazia ou com caracteres de controle")
         return value
 
@@ -110,6 +117,12 @@ class LicenseReviewService:
                 raise WorkflowConflict("commercial_use desconhecido não pode ser verified.")
             if problem := _url_problem(lic.url, STOCK_HOSTS.get(asset["origin"])):
                 raise WorkflowConflict(f"license.url inválida: {problem}")
+            candidate = {"asset_id": request.asset_id, "asset_sha256": request.asset_sha256, "decision": request.decision,
+                         "license": lic.model_dump(), "reviewed_at": now()}
+            try:   # nenhum registro que torne a visão efetiva da proveniência inválida (estado impossível) é gravado
+                apply_license_reviews(provenance, [*self._history(db, production_id), candidate])
+            except ValueError:
+                raise WorkflowConflict("A decisão tornaria a proveniência efetiva inválida.") from None
             previous = db.execute("SELECT id FROM license_reviews WHERE production_id=? AND asset_id=? "
                                   "ORDER BY seq DESC LIMIT 1", (production_id, request.asset_id)).fetchone()
             review_id = uuid.uuid4().hex
