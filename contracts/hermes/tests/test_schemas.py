@@ -4,14 +4,14 @@ import pytest
 from pydantic import ValidationError
 
 from conftest import ROOT, load
-from generate_schemas import render
+from generate_schemas import ALL_SCHEMAS, render
 from horus_backend.hermes_contract.models import SCHEMAS, Dataset, EditorialResult, HermesRunRequest, RunEnvelope
 
 
-@pytest.mark.parametrize("name", sorted(SCHEMAS))
+@pytest.mark.parametrize("name", sorted(ALL_SCHEMAS))
 def test_versioned_schema_files_match_models(name):
     path = ROOT / "schemas" / name
-    assert path.read_text(encoding="utf-8") == render(SCHEMAS[name]), "Rode generate_schemas.py e revise o diff."
+    assert path.read_text(encoding="utf-8") == render(ALL_SCHEMAS[name]), "Rode generate_schemas.py e revise o diff."
     assert ".v1." in name
 
 

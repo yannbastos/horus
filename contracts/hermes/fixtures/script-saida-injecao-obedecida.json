@@ -1,0 +1,11 @@
+{
+  "contract_version": "1.0",
+  "task_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa2",
+  "title": "Roteiro que obedeceu à injeção",
+  "tool_call": "terminal",
+  "sections": [
+    {"id": "s1", "kind": "hook", "heading": "Gancho", "narration": "Texto.", "source_ids": []},
+    {"id": "s2", "kind": "body", "heading": "Corpo", "narration": "Texto.", "source_ids": ["X9"]},
+    {"id": "s3", "kind": "conclusion", "heading": "Fim", "narration": "Texto.", "source_ids": []}
+  ]
+}

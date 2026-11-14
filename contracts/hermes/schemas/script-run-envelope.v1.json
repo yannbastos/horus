@@ -1,0 +1,163 @@
+{
+  "$defs": {
+    "AllowedSource": {
+      "additionalProperties": false,
+      "properties": {
+        "source_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,31}$",
+          "title": "Source Id",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_id",
+        "title"
+      ],
+      "title": "AllowedSource",
+      "type": "object"
+    },
+    "ApprovedProposal": {
+      "additionalProperties": false,
+      "properties": {
+        "angle": {
+          "maxLength": 1500,
+          "minLength": 1,
+          "title": "Angle",
+          "type": "string"
+        },
+        "format": {
+          "enum": [
+            "short",
+            "long"
+          ],
+          "title": "Format",
+          "type": "string"
+        },
+        "premise": {
+          "maxLength": 1500,
+          "minLength": 1,
+          "title": "Premise",
+          "type": "string"
+        },
+        "proposal_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,31}$",
+          "title": "Proposal Id",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "proposal_id",
+        "title",
+        "premise",
+        "angle",
+        "format"
+      ],
+      "title": "ApprovedProposal",
+      "type": "object"
+    },
+    "ScriptConstraints": {
+      "additionalProperties": false,
+      "properties": {
+        "language": {
+          "const": "pt-BR",
+          "default": "pt-BR",
+          "title": "Language",
+          "type": "string"
+        },
+        "max_sections": {
+          "default": 12,
+          "maximum": 30,
+          "minimum": 3,
+          "title": "Max Sections",
+          "type": "integer"
+        },
+        "min_sections": {
+          "default": 3,
+          "maximum": 30,
+          "minimum": 3,
+          "title": "Min Sections",
+          "type": "integer"
+        },
+        "target_duration_seconds": {
+          "maximum": 3600,
+          "minimum": 15,
+          "title": "Target Duration Seconds",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "target_duration_seconds"
+      ],
+      "title": "ScriptConstraints",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Conteúdo serializado em ``input`` de ``POST /v1/runs`` na etapa `script`. Envelope mínimo: sem perfil,\ndataset, métricas, caminhos, credenciais nem dados de outros projetos.",
+  "properties": {
+    "allowed_sources": {
+      "items": {
+        "$ref": "#/$defs/AllowedSource"
+      },
+      "maxItems": 50,
+      "minItems": 1,
+      "title": "Allowed Sources",
+      "type": "array"
+    },
+    "attempt_id": {
+      "pattern": "^[a-f0-9]{32}$",
+      "title": "Attempt Id",
+      "type": "string"
+    },
+    "constraints": {
+      "$ref": "#/$defs/ScriptConstraints"
+    },
+    "contract_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Contract Version",
+      "type": "string"
+    },
+    "proposal": {
+      "$ref": "#/$defs/ApprovedProposal"
+    },
+    "revision": {
+      "minimum": 1,
+      "title": "Revision",
+      "type": "integer"
+    },
+    "stage": {
+      "const": "script",
+      "default": "script",
+      "title": "Stage",
+      "type": "string"
+    },
+    "task_id": {
+      "pattern": "^[a-f0-9]{32}$",
+      "title": "Task Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "task_id",
+    "attempt_id",
+    "revision",
+    "proposal",
+    "allowed_sources",
+    "constraints"
+  ],
+  "title": "ScriptRunEnvelope",
+  "type": "object"
+}
