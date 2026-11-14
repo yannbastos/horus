@@ -274,3 +274,59 @@ def test_font_input_registered_by_libass_overlay_is_accepted(production):
 def _inputs():
     from horus_backend.media_contracts import PILOT_INPUT_PATH
     return PILOT_INPUT_PATH
+
+@pytest.mark.parametrize('integrity_failure', [False, True])
+@pytest.mark.parametrize('decision,stale,expected', [('verified', False, 'pass'), ('rejected', False, 'warn'), ('verified', True, 'warn')])
+def test_production_qc_uses_effective_license_without_rewriting(production, decision, stale, expected, integrity_failure):
+    from horus_backend.av_quality import provenance_check
+    from horus_backend.media_contracts import validate_quality_report
+    client, pid, root = production
+    original = (root / 'asset-provenance.json').read_bytes()
+    inputs = {a['relative_path']: a['sha256'] for a in provenance()['assets']}
+    check = provenance_check(provenance(), inputs)
+    report = {'schema_version': 1, 'production_id': pid, 'video_sha256': 'd' * 64,
+              'generated_at': '2026-11-14T00:00:00+00:00', 'tool': {'name': 'test', 'version': '1'},
+              'status': 'warn', 'checks': [check], 'blocking_errors': [], 'warnings': ['asset_provenance']}
+    if integrity_failure:
+        report['checks'].append({'id': 'asset_hashes', 'category': 'integrity', 'status': 'fail',
+                                 'method': 'measured', 'measured': {'source': 'sha256'},
+                                 'threshold': {}, 'detail': 'Hash divergente medido no QC.'})
+        report.update(status='fail', blocking_errors=['asset_hashes'])
+    assert validate_quality_report(report)['ok']
+    raw_report = json.dumps(report).encode()
+    (root / 'quality-report.json').write_bytes(raw_report)
+    store = client.app.state.store
+    with store.connect() as db:
+        artifacts = json.loads(db.execute('SELECT artifacts FROM productions WHERE id=?', (pid,)).fetchone()['artifacts'])
+        artifacts += [{'kind': 'video', 'relative_path': 'video.mp4', 'sha256': 'd' * 64},
+                      {'kind': 'manifest', 'relative_path': 'quality-report.json', 'sha256': hashlib.sha256(raw_report).hexdigest()}]
+        db.execute('UPDATE productions SET artifacts=? WHERE id=?', (json.dumps(artifacts), pid))
+    assert post(client, pid, body(decision=decision)).status_code == 201
+    stock = body(asset_id='stock-1', asset_sha256=STOCK)
+    stock['license']['url'] = 'https://www.pexels.com/license/'
+    assert post(client, pid, stock, key='stock').status_code == 201
+    if stale:
+        # Uma revisão de outro SHA nunca verifica o novo conteúdo registrado.
+        updated = provenance()
+        updated['assets'][0]['sha256'] = 'c' * 64
+        raw = json.dumps(updated).encode()
+        (root / 'asset-provenance.json').write_bytes(raw)
+        for artifact in artifacts:
+            if artifact['relative_path'] == 'asset-provenance.json':
+                artifact['sha256'] = hashlib.sha256(raw).hexdigest()
+            elif artifact['relative_path'] == PREFIX + 'scene-1.png':
+                artifact['sha256'] = 'c' * 64
+        with store.connect() as db:
+            db.execute('UPDATE productions SET artifacts=? WHERE id=?', (json.dumps(artifacts), pid))
+        original = raw
+    result = client.get(f'/v1/productions/{pid}').json()
+    qc = result['quality_report']
+    assert qc['checks'][0]['status'] == expected
+    assert qc['status'] == ('fail' if integrity_failure else expected)
+    assert qc['blocking_errors'] == (['asset_hashes'] if integrity_failure else [])
+    assert qc['warnings'] == ([] if expected == 'pass' else ['asset_provenance'])
+    assert validate_quality_report(qc)['ok']
+    assert result['review'] is None and result['publishable'] is False
+    assert (root / 'asset-provenance.json').read_bytes() == original
+    assert (root / 'quality-report.json').read_bytes() == raw_report
+    assert len(client.get(f'/v1/productions/{pid}/license-reviews').json()['history']) == 2

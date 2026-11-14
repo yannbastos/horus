@@ -119,6 +119,26 @@ class ProductionService:
         from .local_pilot import confirmed_media
         media = confirmed_media(self.root(row['id']),json.loads(row['artifacts']),row['id'])
         quality = media['quality_report']
+        if quality is not None and media['asset_provenance'] is not None:
+            from .license_reviews import LicenseReviewService
+            from .av_quality import provenance_check
+            from .media_contracts import apply_license_reviews, derive_report_status, QualityCheck, PILOT_INPUT_PATH
+            history = LicenseReviewService._history(db, row['id'])
+            if history:
+                try:
+                    effective = apply_license_reviews(media['asset_provenance'], history)
+                except ValueError:
+                    # Histórico incompatível com o documento atual não libera licenças.
+                    effective = media['asset_provenance']
+                inputs = {a['relative_path']: a['sha256'] for a in json.loads(row['artifacts'])
+                          if PILOT_INPUT_PATH.fullmatch(a['relative_path'])}
+                # Preserva falhas de integridade já medidas; só atualiza o diagnóstico de licença.
+                quality['checks'] = [provenance_check(effective, inputs)
+                    if c['id'] == 'asset_provenance' and c['status'] in {'pass', 'warn'} else c
+                    for c in quality['checks']]
+                quality['status'] = derive_report_status([QualityCheck.model_validate(c) for c in quality['checks']])
+                quality['warnings'] = [c['id'] for c in quality['checks'] if c['status'] == 'warn']
+                quality['blocking_errors'] = [c['id'] for c in quality['checks'] if c['status'] == 'fail']
         acknowledgement_required = row['mode']=='local_pilot' and (
             quality is None or quality['status']=='not_run' or bool(quality['blocking_errors']))
         return {key: row[key] for key in ("id", "script_id", "script_version", "script_content_hash", "job_id", "mode", "created_at")} | {

@@ -83,6 +83,8 @@ Estado: **implementado e testado** (`license_reviews.py`, migração v8, rotas e
 
 ## QC audiovisual (`av_quality.py`)
 
+Na leitura da produção, o check `asset_provenance` do QC é recalculado com as revisões humanas append-only e hashes registrados. Verificação remove o aviso apenas dos assets correspondentes; rejeição e SHA divergente não liberam o asset. Falhas de integridade já medidas são preservadas. O relatório e a proveniência originais permanecem intactos, assim como a confirmação explícita para aprovação.
+
 `run_quality(root, *, production_id, ffmpeg=None, ffprobe=None, video_relative=None, timeout=180) -> dict` devolve um `quality-report.json` válido (já passado por `validate_quality_report`; se o próprio QC gerasse algo inválido, levanta `RuntimeError`). `run_quality_async` é a versão cancelável (`Task.cancel()` encerra a árvore do FFmpeg); `run_quality` é segura dentro de um loop em execução. Somente leitura, sem rede; subprocessos pelo `processes.OwnedProcess` (Job Object) com timeout (check `skipped` com o motivo se estourar).
 
 Entradas em `root`: `pilot-evidence.json`, assets de entrada, SRT ao lado da narração, MP4 em `**/render/short-rascunho.mp4` (ou `*.mp4` na raiz), e opcionais `word-timings.json`, `asset-provenance.json`, `plan.json` (texto do roteiro). Sem MP4, o relatório usa o hash sentinela `000…0` e o check `video_present` falha.
