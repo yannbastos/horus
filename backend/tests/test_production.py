@@ -115,6 +115,41 @@ def start(client, script, key='production', mode='simulated', **extra):
         json={'expected_version': script['version'], 'mode': mode, **extra})
 
 
+@pytest.mark.parametrize('quality,narration', [
+    ('draft', {'provider': 'windows_sapi', 'voice_id': 'fixture-pt-br'}),
+    ('final', {'provider': 'windows_sapi', 'voice_id': 'fixture-pt-br'}),
+    ('final', {'provider': 'kokoro', 'voice_id': 'pf_dora'}),
+])
+def test_record_exposes_persisted_render_selection(settings, quality, narration):
+    with client_for(settings) as client:
+        script = script_for(client)
+        response = start(client, script, mode='local_pilot', render_quality=quality, narration=narration)
+        assert response.status_code == 201, response.text
+        production_id = response.json()['id']
+        for record in (response.json(), client.get('/v1/productions/' + production_id).json(),
+                       client.get(f"/v1/scripts/{script['id']}/productions").json()['items'][0]):
+            assert record['render_quality'] == quality
+            assert record['narration'] == narration
+            assert str(settings.data_dir) not in json.dumps(record)
+
+
+@pytest.mark.parametrize('plan', [None, '{}', 'null', '[]', 'invalid',
+    '{"render_quality":"unknown","audio":{"provider":"kokoro"}}',
+    '{"audio":{"provider":"kokoro","voice_id":"C:\\\\private\\\\voice.pt"}}',
+    '{"audio":{"provider":"kokoro","voice_id":"/private/voice.pt"}}'])
+def test_legacy_or_invalid_plan_does_not_invent_selection(settings, plan):
+    with client_for(settings) as client:
+        script = script_for(client)
+        response = start(client, script)
+        item = finished(client, response.json())
+        with client.app.state.store.connect() as db:
+            # A coluna exige texto; vazio representa o plano antigo ausente.
+            db.execute('UPDATE productions SET plan=? WHERE id=?', (plan or '', item['id']))
+        record = client.get('/v1/productions/' + item['id']).json()
+        assert record['render_quality'] is None
+        assert record['narration'] is None
+
+
 def finished(client, production):
     for _ in range(200):
         item = client.get('/v1/productions/' + production['id']).json()
@@ -131,6 +166,7 @@ def test_simulated_artifacts_idempotency_and_restart(settings):
         assert response.status_code == 201, response.text
         item = finished(client, response.json())
         assert item['status'] == 'succeeded', item
+        assert item['render_quality'] == 'draft' and item['narration'] is None
         assert item['stage'] == 'review' and item['review'] is None
         assert item['demo_only'] and not item['real_voice'] and not item['speech_aligned']
         assert {a['kind'] for a in item['artifacts']} == {'plan', 'scene', 'audio', 'subtitles', 'manifest'}

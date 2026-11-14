@@ -4,6 +4,12 @@ Implementação backend na branch M4: roteiro M3 aprovado → JobManager → wor
 
 ## API e estados
 
+O `ProductionRecord` devolvido na criação, consulta e listagem inclui `render_quality`
+(`draft`, `final` ou `null`) e `narration` (`{provider, voice_id}` ou `null`), lidos
+do plano persistido no banco. São as escolhas da produção, não a preferência atual
+nem uma certificação do MP4. Registros antigos sem informação explícita retornam
+`null`; não se presume rascunho nem voz padrão. Nenhuma migração é necessária.
+
 Todas as rotas exigem a autenticação local existente. Os POSTs abaixo exigem `Idempotency-Key` (1–128 caracteres):
 
 | Operação | Entrada / resposta |

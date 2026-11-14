@@ -7,7 +7,7 @@ import hashlib
 import json
 import math
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import re
 import sys
 import uuid
@@ -116,6 +116,25 @@ class ProductionService:
     def record(self, db, row):
         job = self.store.job(db.execute("SELECT * FROM jobs WHERE id=?", (row["job_id"],)).fetchone())
         result = job["result"] or {}
+        # A coluna é o plano persistido na submissão; não depende do worker nem
+        # lê plan.json do disco. Não aplicar defaults atuais a registros antigos.
+        try:
+            saved_plan = json.loads(row['plan'])
+        except (ValueError, TypeError):
+            saved_plan = {}
+        if not isinstance(saved_plan, dict):
+            saved_plan = {}
+        render_quality = saved_plan.get('render_quality')
+        if render_quality not in ('draft', 'final'):
+            render_quality = None
+        narration = None
+        audio = saved_plan.get('audio')
+        if isinstance(audio, dict):
+            values = {key: audio.get(key) for key in ('provider', 'voice_id')}
+            if all(isinstance(value, str) and 0 < len(value) <= limit
+                   and not PurePosixPath(value).is_absolute() and not PureWindowsPath(value).is_absolute()
+                   for value, limit in ((values['provider'], 80), (values['voice_id'], 1000))):
+                narration = values
         from .local_pilot import confirmed_media
         media = confirmed_media(self.root(row['id']),json.loads(row['artifacts']),row['id'])
         quality = media['quality_report']
@@ -146,6 +165,7 @@ class ProductionService:
             "artifacts": json.loads(row["artifacts"]), "review": json.loads(row["review"]) if row["review"] else None,
             "error": job["error"], "failure": result.get('failure'), "demo_only": True, "real_voice": False, **media,
             "quality_acknowledgement_required":acknowledgement_required,
+            "render_quality": render_quality, "narration": narration,
             "publishable": False, "narration_kind": result.get("narration_kind"),
             "narration_disclosure": result.get("narration_disclosure"), "alignment_method": result.get("alignment_method")}
 
