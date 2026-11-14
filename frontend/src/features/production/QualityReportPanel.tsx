@@ -1,6 +1,36 @@
 import type { NormalizedQualityReport } from '../../services/production';
 import { formatTimecode } from '../../services/production';
 
+const SEVERITY_ORDER: Record<string, number> = {
+  fail: 0,
+  warn: 1,
+  not_checked: 2,
+  skipped: 3,
+  pass: 4,
+};
+
+const CHECK_SHORT_EXPLANATION: Record<string, string> = {
+  asset_provenance: 'Há mídia, fonte ou voz sem verificação humana de licença.',
+  subtitles_vs_words: 'Diferença de tempo entre legendas e palavras faladas.',
+  subtitles_vs_sections: 'Legendas fora dos limites da seção correspondente.',
+  word_timings: 'Alinhamento das palavras faladas com o áudio.',
+  loudness: 'Volume médio (LUFS) fora da faixa recomendada (-26 a -12 LUFS).',
+  true_peak: 'Pico real de áudio próximo ou acima do teto.',
+  clipping: 'Distorção por saturação no áudio.',
+  audio_clipping: 'Distorção por saturação no áudio.',
+  silence: 'Trecho de silêncio prolongado inesperado.',
+  black_frames: 'Quadros escuros ou pretos detectados no vídeo.',
+  freeze_frames: 'Imagem congelada sem variação entre quadros.',
+  duration: 'Duração total fora do intervalo esperado.',
+  integrity: 'Integridade técnica dos fluxos de áudio e vídeo do MP4.',
+  resolution: 'Resolução diferente do esperado para o perfil escolhido.',
+  subtitle_safe_area: 'Legenda próxima da borda ou área de risco.',
+};
+
+function explainCheck(id: string): string | null {
+  return CHECK_SHORT_EXPLANATION[id] ?? null;
+}
+
 function formatDate(iso: string | null | undefined): string {
   if (!iso) return '—';
   try {
@@ -126,6 +156,11 @@ export default function QualityReportPanel({
                       )}
                     </div>
                     <small>{item.detail}</small>
+                    {explainCheck(item.id) && (
+                      <small className="muted" style={{ display: 'block', marginTop: '2px' }}>
+                        O que significa: {explainCheck(item.id)}
+                      </small>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -176,6 +211,11 @@ export default function QualityReportPanel({
                       )}
                     </div>
                     <small>{item.detail}</small>
+                    {explainCheck(item.id) && (
+                      <small className="muted" style={{ display: 'block', marginTop: '2px' }}>
+                        O que significa: {explainCheck(item.id)}
+                      </small>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -197,7 +237,9 @@ export default function QualityReportPanel({
                   </tr>
                 </thead>
                 <tbody>
-                  {quality.checks.map(check => {
+                  {[...quality.checks]
+                    .sort((a, b) => (SEVERITY_ORDER[a.status] ?? 9) - (SEVERITY_ORDER[b.status] ?? 9))
+                    .map(check => {
                     const statusTone =
                       check.status === 'pass'
                         ? 'good'

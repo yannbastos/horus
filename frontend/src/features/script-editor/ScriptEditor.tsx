@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { ScriptDocument, ScriptSectionKind } from '../../services/scripts';
 import {
   countWords,
@@ -44,9 +44,14 @@ export default function ScriptEditor({
   onCancel,
 }: ScriptEditorProps) {
   const titleId = useId();
+  const titleErrorId = `${titleId}-error`;
   const [draft, setDraft] = useState<ScriptDocument>(() => initialDocument);
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const pendingFocusSectionIdRef = useRef<string | null>(null);
+  const sectionHeadingRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const titleInputRef = useRef<HTMLInputElement | null>(null);
+  const handleSubmitRef = useRef<() => Promise<void>>(async () => {});
 
   useEffect(() => {
     setDraft(initialDocument);
@@ -66,6 +71,29 @@ export default function ScriptEditor({
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [isDirty]);
+
+  useEffect(() => {
+    const targetId = pendingFocusSectionIdRef.current;
+    if (!targetId) return;
+    const input = sectionHeadingRefs.current[targetId];
+    if (input) {
+      input.focus();
+      pendingFocusSectionIdRef.current = null;
+    }
+  }, [draft.sections]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+        event.preventDefault();
+        if (!submitting) {
+          void handleSubmitRef.current();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [submitting]);
 
   const validation = useMemo(() => validateHumanScriptDocument(draft), [draft]);
 
@@ -102,8 +130,9 @@ export default function ScriptEditor({
 
   function handleAddBodySection() {
     if (!canAddSection) return;
+    const newId = generateNextSectionId(draft.sections);
+    pendingFocusSectionIdRef.current = newId;
     setDraft(prev => {
-      const newId = generateNextSectionId(prev.sections);
       const nextSection = {
         id: newId,
         kind: 'body' as const,
@@ -150,10 +179,15 @@ export default function ScriptEditor({
     setAttemptedSubmit(true);
     setConfirmDiscard(false);
     if (!validation.valid) {
+      if (validation.titleError) {
+        titleInputRef.current?.focus();
+      }
       return;
     }
     await onSave(normalizeHumanDocument(draft));
   }
+
+  handleSubmitRef.current = handleSubmit;
 
   function handleRequestCancel() {
     if (isDirty) {
@@ -206,6 +240,9 @@ export default function ScriptEditor({
             </span>
           </div>
         </div>
+        <small className="muted">
+          Estimativa visual (~145 ppm; a duração final depende da voz escolhida). Para 60–120 s, comece com ~150–200 palavras.
+        </small>
       </div>
 
       {apiError && (
@@ -236,27 +273,34 @@ export default function ScriptEditor({
               {msg}
             </p>
           ))}
-          {Object.keys(validation.sectionErrors).length > 0 && (
+          {(validation.titleError || Object.keys(validation.sectionErrors).length > 0) && (
             <p className="error">
-              Há campos obrigatórios ou limites inválidos em {Object.keys(validation.sectionErrors).length} seção(ões).
+              Revise os campos destacados abaixo{Object.keys(validation.sectionErrors).length > 0 ? ` em ${Object.keys(validation.sectionErrors).length} seção(ões)` : ''}.
             </p>
           )}
         </div>
       )}
 
       <label htmlFor={titleId}>
-        Título do roteiro ({draft.title.trim().length}/{MAX_TITLE_LENGTH})
+        Título do roteiro ({draft.title.trim().length}/{MAX_TITLE_LENGTH} chars)
         <input
+          ref={titleInputRef}
           id={titleId}
           type="text"
           value={draft.title}
           maxLength={MAX_TITLE_LENGTH}
           disabled={submitting}
           placeholder="Ex.: Automação local de roteiros com supervisão humana"
-          aria-invalid={attemptedSubmit && !draft.title.trim() ? true : undefined}
+          aria-invalid={attemptedSubmit && validation.titleError ? true : undefined}
+          aria-describedby={attemptedSubmit && validation.titleError ? titleErrorId : undefined}
           onChange={e => handleTitleChange(e.target.value)}
         />
       </label>
+      {attemptedSubmit && validation.titleError && (
+        <p id={titleErrorId} className="error" role="alert">
+          {validation.titleError}
+        </p>
+      )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         <div className="row spread">
@@ -279,7 +323,9 @@ export default function ScriptEditor({
           const canMoveDown = isBody && draft.sections[index + 1]?.kind === 'body';
           const canRemove = isBody && bodyCount > 1;
           const headingInputId = `${titleId}-sec-${index}-heading`;
+          const headingErrorId = `${headingInputId}-error`;
           const narrationInputId = `${titleId}-sec-${index}-narration`;
+          const narrationErrorId = `${narrationInputId}-error`;
 
           return (
             <div
@@ -340,6 +386,9 @@ export default function ScriptEditor({
               <label htmlFor={headingInputId}>
                 Título da seção #{index + 1} ({section.heading.trim().length}/{MAX_HEADING_LENGTH})
                 <input
+                  ref={el => {
+                    sectionHeadingRefs.current[section.id] = el;
+                  }}
                   id={headingInputId}
                   type="text"
                   value={section.heading}
@@ -353,17 +402,18 @@ export default function ScriptEditor({
                       : 'Ex.: Desenvolvimento do argumento'
                   }
                   aria-invalid={secErrors?.heading ? true : undefined}
+                  aria-describedby={secErrors?.heading ? headingErrorId : undefined}
                   onChange={e => handleSectionFieldChange(index, 'heading', e.target.value)}
                 />
               </label>
               {secErrors?.heading && (
-                <p className="error" role="alert">
+                <p id={headingErrorId} className="error" role="alert">
                   {secErrors.heading}
                 </p>
               )}
 
               <label htmlFor={narrationInputId}>
-                Narração da seção #{index + 1} ({secMetrics.chars}/{MAX_SECTION_NARRATION} chars)
+                Narração da seção #{index + 1} ({secMetrics.words} palavras · {secMetrics.chars}/{MAX_SECTION_NARRATION} chars)
                 <textarea
                   id={narrationInputId}
                   value={section.narration}
@@ -372,11 +422,12 @@ export default function ScriptEditor({
                   disabled={submitting}
                   placeholder="Escreva o texto falado desta seção..."
                   aria-invalid={secErrors?.narration ? true : undefined}
+                  aria-describedby={secErrors?.narration ? narrationErrorId : undefined}
                   onChange={e => handleSectionFieldChange(index, 'narration', e.target.value)}
                 />
               </label>
               {secErrors?.narration && (
-                <p className="error" role="alert">
+                <p id={narrationErrorId} className="error" role="alert">
                   {secErrors.narration}
                 </p>
               )}
@@ -421,6 +472,7 @@ export default function ScriptEditor({
           className="button primary"
           type="button"
           disabled={submitting}
+          title="Salvar roteiro (Ctrl+S)"
           onClick={() => void handleSubmit()}
         >
           {submitting
@@ -437,6 +489,7 @@ export default function ScriptEditor({
         >
           Cancelar
         </button>
+        <small className="muted">Atalho: Ctrl+S para salvar</small>
       </div>
     </div>
   );
