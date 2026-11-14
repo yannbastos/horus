@@ -5,6 +5,7 @@ import type { Page } from './components/Sections';
 import { connectDesktop, nativeDesktop } from './platform/desktop';
 import { api } from './services/api';
 import type { Connection, HermesStatus } from './services/api';
+import { useProductionObserver } from './services/productionNotices';
 import type { Theme } from './features/Settings';
 
 const Library = lazy(() => import('./features/Library'));
@@ -52,13 +53,56 @@ export default function App() {
     return () => { active = false; };
   }, []);
   const effectiveTheme = theme === 'system' ? (systemDark ? 'dark' : 'light') : theme;
+  const { activeCount: activeProductions, notice: productionNotice, dismissNotice } = useProductionObserver(connection);
   return <div className="horus" data-theme={effectiveTheme}>
     <a className="skip-link" href="#main">Ir para o conteúdo</a>
     <aside className="sidebar"><div className="brand"><div className="brand-name"><EyeMark /><span>HORUS</span></div><p className="eyebrow">INTELIGÊNCIA AUDIOVISUAL</p></div>
-      <nav aria-label="Navegação principal"><p className="eyebrow navigation-label">ESPAÇO DE TRABALHO</p>{navigation.map(item => <button key={item.id} aria-current={page === item.id ? 'page' : undefined} onClick={() => setPage(item.id)}>{item.title}</button>)}<button aria-current={page === 'production-center' ? 'page' : undefined} onClick={() => setPage('production-center')}>Central de Produção</button><p className="eyebrow navigation-label tools-label">FERRAMENTAS</p><button aria-current={page === 'transcription' ? 'page' : undefined} onClick={() => setPage('transcription')}>Transcrição</button></nav>
+      <nav aria-label="Navegação principal"><p className="eyebrow navigation-label">ESPAÇO DE TRABALHO</p>{navigation.map(item => <button key={item.id} aria-current={page === item.id ? 'page' : undefined} onClick={() => setPage(item.id)}>{item.id === 'production' && activeProductions > 0 ? `${item.title} (${activeProductions})` : item.title}</button>)}<button aria-current={page === 'production-center' ? 'page' : undefined} onClick={() => setPage('production-center')}>Central de Produção</button><p className="eyebrow navigation-label tools-label">FERRAMENTAS</p><button aria-current={page === 'transcription' ? 'page' : undefined} onClick={() => setPage('transcription')}>Transcrição</button></nav>
       <div className="sidebar-bottom"><div className="integration"><p className="eyebrow">HERMES AGENT</p><p className="muted"><span className="status-dot" />{hermes?.connected ? 'API verificada' : hermes?.cli_available ? 'CLI localizado' : 'Integração pendente'}</p></div><button className="settings-navigation" aria-current={page === 'settings' ? 'page' : undefined} onClick={() => setPage('settings')}>Ajustes</button><p className="eyebrow signature">SEU ESPAÇO DE CRIAÇÃO</p></div>
     </aside>
     <div className="workspace-shell"><header className="topbar"><div className="row"><span className="eyebrow accent">HORUS</span><span className="muted">/</span><span className="eyebrow">CENTRAL AUDIOVISUAL</span></div><span className="tag">APLICATIVO EM DESENVOLVIMENTO</span></header>
+      {productionNotice && (
+        <div
+          className={`production-notice ${productionNotice.kind}`}
+          role="status"
+          aria-live="polite"
+          aria-label="Aviso de produção"
+          data-testid="production-notice"
+        >
+          <div className="row" style={{ gap: 10, flexWrap: 'wrap' }}>
+            <span className={
+              productionNotice.kind === 'succeeded'
+                ? 'tag good'
+                : productionNotice.kind === 'interrupted'
+                  ? 'tag warn'
+                  : 'tag bad'
+            }>
+              {productionNotice.badge}
+            </span>
+            <span>{productionNotice.message}</span>
+          </div>
+          <div className="actions">
+            <button
+              type="button"
+              className="button primary"
+              onClick={() => {
+                dismissNotice();
+                setPage('production');
+              }}
+            >
+              Abrir produção
+            </button>
+            <button
+              type="button"
+              className="button"
+              onClick={() => dismissNotice()}
+              aria-label="Fechar aviso de produção"
+            >
+              Fechar
+            </button>
+          </div>
+        </div>
+      )}
       <main id="main" tabIndex={-1}><Suspense fallback={<p className="loading" role="status">Abrindo seu espaço…</p>}>
         {page === 'overview' ? <Overview navigate={setPage} />
           : page === 'settings' ? <Settings theme={theme} setTheme={setTheme} connection={connection} connect={candidate => { setConnection(candidate); setBackendError(''); }} hermes={hermes} onHermesStatus={setHermes} />

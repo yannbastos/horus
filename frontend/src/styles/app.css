@@ -361,4 +361,8 @@ main::-webkit-scrollbar-track,
 .guide-step-info { display: flex; align-items: baseline; gap: 10px; min-width: 0; flex: 1 1 260px; }
 .guide-step-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .guide-reopen-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 14px; border: 1px solid var(--Line); background: var(--Sunken); }
+.production-notice { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 28px; border-bottom: 1px solid var(--Line); background: var(--Sunken); }
+.production-notice.succeeded { border-left: 3px solid var(--Good); }
+.production-notice.failed { border-left: 3px solid var(--Bad); }
+.production-notice.interrupted { border-left: 3px solid var(--Warn); }
 @media(prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }

@@ -1,5 +1,10 @@
 import { api, ApiError } from './api';
 import type { Connection, JobStatus } from './api';
+import {
+  observeProductionCreated,
+  observeProductionList,
+  observeProductionRecord,
+} from './productionNotices';
 import type { ScriptSection } from './scripts';
 import {
   MAX_INTERPOLATED_RUN_SECONDS,
@@ -2256,7 +2261,9 @@ export async function getScriptProductions(
     { signal }
   );
   const items = Array.isArray(response) ? response : response.items ?? [];
-  return sortProductionsDesc(items);
+  const sorted = sortProductionsDesc(items);
+  observeProductionList(sorted);
+  return sorted;
 }
 
 export async function getProduction(
@@ -2269,7 +2276,9 @@ export async function getProduction(
     `/v1/productions/${encodeURIComponent(productionId)}`,
     { signal }
   );
-  return adaptProductionRecord(record);
+  const adapted = adaptProductionRecord(record);
+  observeProductionRecord(adapted);
+  return adapted;
 }
 
 export async function createScriptProduction(
@@ -2294,7 +2303,9 @@ export async function createScriptProduction(
       signal,
     }
   );
-  return adaptProductionRecord(record);
+  const adapted = adaptProductionRecord(record);
+  observeProductionCreated(adapted);
+  return adapted;
 }
 
 export async function reviewProduction(
