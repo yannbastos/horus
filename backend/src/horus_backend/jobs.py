@@ -68,6 +68,32 @@ _parse_request = TypeAdapter(JobRequest).validate_python
 TIMEOUTS = {"factory.profile": 30, "factory.render.preview": 3600}
 
 
+# Ambiente mínimo por operação (S-2): nenhuma credencial do operador chega aos subprocessos.
+# Base do SO; HOME/USERPROFILE/LOCALAPPDATA/APPDATA são necessários para caches de usuário
+# (Hugging Face, yt-dlp, npm/Remotion) e não carregam segredos por si.
+_BASE_ENV = {"PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "COMSPEC", "PATHEXT",
+             "USERPROFILE", "HOME", "LOCALAPPDATA", "APPDATA"}
+# Ferramentas e opções lidas por dependencies.find_tool e transcriber.py.
+_TOOL_ENV = {"HORUS_FFMPEG", "HORUS_FFPROBE", "HORUS_TOOLS_DIR"}
+_OPERATION_ENV = {
+    "transcription.run": _TOOL_ENV | {"HORUS_WHISPER_DEVICE"},
+    # Proxy de rede do operador: necessário para o download funcionar atrás de proxy.
+    "youtube.download": _TOOL_ENV | {"HORUS_YTDLP", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY"},
+    "factory.profile": {"HORUS_NODE"},
+    "factory.render.preview": _TOOL_ENV | {"HORUS_NODE"},
+}
+
+
+def job_environment(request, settings: Settings) -> dict[str, str]:
+    allowed = _BASE_ENV | _OPERATION_ENV[request.operation]
+    env = {k: v for k, v in os.environ.items() if k.upper() in allowed}
+    env.update(PYTHONUNBUFFERED="1", PYTHONUTF8="1")
+    if isinstance(request, FactoryRequest) and settings.factory_root:
+        env["FABRICA_HOME"] = str(settings.factory_root)
+        env["PYTHONPATH"] = str(settings.factory_root / "scripts")
+    return env
+
+
 def transcript(segments: list[str]) -> str:
     return "".join(f"{text}\n" for text in segments)
 
@@ -294,13 +320,8 @@ class JobManager:
             command = self.command(request)
             self.store.update(job_id, "running", new_attempt=True)
             await self.emit(job_id, "state", "running")
-            env = {**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONUTF8": "1"}
-            env.pop("HORUS_API_TOKEN", None)
-            env.pop("HORUS_MANAGED", None)
+            env = job_environment(request, self.settings)
             factory = isinstance(request, FactoryRequest)
-            if factory and self.settings.factory_root:
-                env["FABRICA_HOME"] = str(self.settings.factory_root)
-                env["PYTHONPATH"] = str(self.settings.factory_root / "scripts")
             self.active_process = await OwnedProcess.start(command, env=env, cwd=self.settings.factory_root if factory else None)
             if self.store.get_job(job_id)["status"] == "cancel_requested":
                 await self.active_process.stop()
