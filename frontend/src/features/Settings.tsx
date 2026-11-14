@@ -7,7 +7,45 @@ import NarrationSettings from './narration/NarrationSettings';
 
 export type Theme = 'system' | 'light' | 'dark';
 export type SettingsSection = 'general' | 'privacy';
-type Diagnostics = { checks: { id: string; name: string; available: boolean; detail: string }[]; notice: string };
+
+type DiagnosticCheck = { id: string; name: string; available: boolean; detail: string };
+type ProductionDiagnosticCheck = DiagnosticCheck & { required_for: string[] };
+type ProductionDiagnostics = { ready: boolean; missing: string[]; checks: ProductionDiagnosticCheck[] };
+type Diagnostics = { checks?: DiagnosticCheck[]; notice?: string; production?: ProductionDiagnostics | null };
+
+const REQUIRED_FOR_LABELS: Record<string, string> = {
+  draft: 'Rascunho',
+  final: 'Final 1080×1920',
+  windows_sapi: 'Voz Windows SAPI',
+  kokoro: 'Voz Kokoro local',
+};
+
+function formatRequiredFor(items: string[]): string {
+  if (items.length === 0) return 'Geral';
+  return items.map(item => REQUIRED_FOR_LABELS[item] ?? item).join(', ');
+}
+
+function readProductionDiagnostics(raw: unknown): ProductionDiagnostics | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const record = raw as Record<string, unknown>;
+  if (typeof record.ready !== 'boolean' || !Array.isArray(record.checks)) return null;
+  const checks: ProductionDiagnosticCheck[] = record.checks
+    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object' && !Array.isArray(item)))
+    .map(item => ({
+      id: typeof item.id === 'string' ? item.id : '',
+      name: typeof item.name === 'string' ? item.name : '',
+      available: Boolean(item.available),
+      detail: typeof item.detail === 'string' ? item.detail : '',
+      required_for: Array.isArray(item.required_for)
+        ? item.required_for.filter((req): req is string => typeof req === 'string')
+        : [],
+    }))
+    .filter(item => item.id && item.name);
+  const missing = Array.isArray(record.missing)
+    ? record.missing.filter((item): item is string => typeof item === 'string')
+    : [];
+  return { ready: record.ready, missing, checks };
+}
 
 function EnvironmentDiagnostics({ connection }: { connection: Connection }) {
   const [report, setReport] = useState<Diagnostics | null>(null);
@@ -23,11 +61,64 @@ function EnvironmentDiagnostics({ connection }: { connection: Connection }) {
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [connection, revision]);
+  const production = readProductionDiagnostics(report?.production);
+  const missingNames = production
+    ? production.missing.map(id => production.checks.find(c => c.id === id)?.name ?? id)
+    : [];
   return <section className="card" aria-label="Diagnóstico do ambiente"><p className="eyebrow">AMBIENTE LOCAL</p><h2>Ferramentas da operação.</h2>
     <p className="muted">{report?.notice ?? 'Consulta somente a presença das ferramentas no ambiente do backend.'}</p>
     <button className="button" disabled={loading} onClick={() => setRevision(value => value + 1)}>VERIFICAR NOVAMENTE</button>
-    {loading && <p role="status">Verificando ferramentas…</p>}
+    {loading && <p role="status" aria-live="polite">Verificando ferramentas…</p>}
     {error && <p className="error" role="alert">{error}</p>}
+    {production && (
+      <div
+        className="card sunken"
+        role="region"
+        aria-labelledby="production-readiness-title"
+        data-testid="production-readiness"
+      >
+        <div className="row spread">
+          <div>
+            <p className="eyebrow accent">PRONTIDÃO DO PILOTO LOCAL</p>
+            <h3 id="production-readiness-title">Pronto para produzir?</h3>
+          </div>
+          <span className={production.ready ? 'tag good' : 'tag warn'}>
+            {production.ready ? 'PRONTO PARA PRODUZIR' : `FALTA (${production.missing.length})`}
+          </span>
+        </div>
+        <p className="muted" data-testid="production-readiness-summary">
+          {production.ready
+            ? missingNames.length > 0
+              ? `Pronto para produzir no piloto local. Item opcional indisponível: ${missingNames.join(', ')}.`
+              : 'Pronto para produzir: todas as ferramentas e vozes locais foram verificadas.'
+            : missingNames.length > 0
+              ? `Falta configurar (${missingNames.length}): ${missingNames.join(', ')}.`
+              : 'Falta concluir a configuração das ferramentas obrigatórias para produzir.'}
+        </p>
+        <ul className="readiness-checks" style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 10 }}>
+          {production.checks.map(check => (
+            <li
+              key={check.id}
+              data-testid={`production-check-${check.id}`}
+              style={{ padding: 12, border: '1px solid var(--Line)', background: 'var(--Background)', display: 'grid', gap: 6 }}
+            >
+              <div className="row spread">
+                <strong>{check.name}</strong>
+                <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+                  <span className="tag" data-testid={`production-check-purpose-${check.id}`}>
+                    Para: {formatRequiredFor(check.required_for)}
+                  </span>
+                  <span className={check.available ? 'tag good' : 'tag warn'}>
+                    {check.available ? 'DISPONÍVEL' : 'INDISPONÍVEL'}
+                  </span>
+                </div>
+              </div>
+              <p className="muted">{check.detail}</p>
+            </li>
+          ))}
+        </ul>
+      </div>
+    )}
     {report?.checks?.map(check => <div key={check.id}><div className="row spread"><h3>{check.name}</h3><span className="tag">{check.available ? 'LOCALIZADO' : 'NÃO LOCALIZADO'}</span></div><p className="muted">{check.detail}</p></div>)}
   </section>;
 }
