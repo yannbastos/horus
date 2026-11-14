@@ -348,4 +348,10 @@ main::-webkit-scrollbar-track,
   .form-row, .media-list { grid-template-columns: 1fr; }
   .empty-state { padding: 24px; }
 }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.diff-added { background: color-mix(in srgb, var(--Good) 18%, transparent); border-bottom: 2px solid var(--Good); text-decoration: none; padding: 0 2px; color: var(--InkStrong); }
+.diff-removed { background: color-mix(in srgb, var(--Bad) 18%, transparent); border-bottom: 1px solid var(--Bad); text-decoration: line-through; padding: 0 2px; color: var(--Ink); }
+.compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.compare-row-changed td, .compare-row-changed th { background: color-mix(in srgb, var(--Warn) 8%, transparent); }
+@media(max-width: 900px) { .compare-grid { grid-template-columns: 1fr; } }
 @media(prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }

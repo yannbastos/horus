@@ -208,6 +208,8 @@ export type ProductionRecord = {
   quality_acknowledgement_required?: boolean | null;
   requires_quality_acknowledgement?: boolean | null;
   // Campos opcionais defensivos adicionais (Sonnet schema v1)
+  render_quality?: RenderQuality | string | null;
+  narration?: ProductionNarrationSelection | null;
   audio_kind?: string | null;
   voice_kind?: string | null;
   tts_engine?: string | null;

@@ -22,6 +22,7 @@ import {
   sortScriptsDesc,
 } from '../services/scripts';
 import ScriptEditor from './script-editor/ScriptEditor';
+import ScriptComparePanel from './script-compare/ScriptComparePanel';
 import {
   cloneDocumentForEditing,
   countWords,
@@ -144,6 +145,10 @@ export default function ScriptReview({
   >(null);
   const [editorError, setEditorError] = useState('');
   const [editorConflict, setEditorConflict] = useState(false);
+  const [compareState, setCompareState] = useState<{
+    baseVersion: number;
+    targetVersion: number;
+  } | null>(null);
 
   // Synchronous lock to prevent duplicate submissions on rapid double-clicks
   const inFlightRef = useRef(false);
@@ -196,6 +201,7 @@ export default function ScriptReview({
     setEditorSession(null);
     setEditorError('');
     setEditorConflict(false);
+    setCompareState(null);
     idempotencyCacheRef.current = null;
     return () => {
       cancelPendingInspect();
@@ -864,10 +870,35 @@ export default function ScriptReview({
 
       {scripts.length > 0 && (
         <div role="region" aria-label="Histórico de versões do roteiro" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <p className="eyebrow">HISTÓRICO DE VERSÕES DO ROTEIRO ({scripts.length})</p>
-          {scripts.map(item => {
+          <div className="row spread">
+            <p className="eyebrow">HISTÓRICO DE VERSÕES DO ROTEIRO ({scripts.length})</p>
+            {scripts.length >= 2 ? (
+              <button
+                type="button"
+                className={`button ${compareState ? 'active' : ''}`}
+                onClick={() =>
+                  setCompareState(prev =>
+                    prev
+                      ? null
+                      : {
+                          baseVersion: scripts[1].version,
+                          targetVersion: scripts[0].version,
+                        }
+                  )
+                }
+              >
+                {compareState ? 'Ocultar comparação' : 'Comparar versões'}
+              </button>
+            ) : (
+              <small className="muted" role="status">
+                Apenas 1 versão disponível — crie ou gere outra versão para comparar.
+              </small>
+            )}
+          </div>
+          {scripts.map((item, idx) => {
             const isSelected = activeScript?.version === item.version;
             const itemOrigin = getScriptOrigin(item);
+            const previousScript = scripts[idx + 1] ?? null;
             return (
               <div
                 key={item.id}
@@ -888,7 +919,7 @@ export default function ScriptReview({
                       {SCRIPT_STATUS_LABELS[item.status] || item.status}
                     </span>
                   </div>
-                  <div className="row">
+                  <div className="row" style={{ flexWrap: 'wrap' }}>
                     <small className="muted">
                       Rev. {item.workflow_revision} · Proposta {item.proposal_artifact_id} ·{' '}
                       {formatDate(item.created_at)}
@@ -901,6 +932,21 @@ export default function ScriptReview({
                         onClick={() => void handleInspectVersion(item)}
                       >
                         {isSelected ? `Exibindo v${item.version}` : `Ver v${item.version}`}
+                      </button>
+                    )}
+                    {previousScript && (
+                      <button
+                        className="button"
+                        type="button"
+                        style={{ padding: '4px 10px', minHeight: '28px', fontSize: '10px' }}
+                        onClick={() =>
+                          setCompareState({
+                            baseVersion: previousScript.version,
+                            targetVersion: item.version,
+                          })
+                        }
+                      >
+                        Comparar com a anterior
                       </button>
                     )}
                   </div>
@@ -921,6 +967,21 @@ export default function ScriptReview({
             );
           })}
         </div>
+      )}
+
+      {compareState && !editorSession && (
+        <ScriptComparePanel
+          scripts={scripts}
+          baseVersion={compareState.baseVersion}
+          targetVersion={compareState.targetVersion}
+          onChangeBaseVersion={version =>
+            setCompareState(prev => (prev ? { ...prev, baseVersion: version } : null))
+          }
+          onChangeTargetVersion={version =>
+            setCompareState(prev => (prev ? { ...prev, targetVersion: version } : null))
+          }
+          onClose={() => setCompareState(null)}
+        />
       )}
 
       <ProductionRun connection={connection} latestScript={latestScript} />
