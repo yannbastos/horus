@@ -178,6 +178,16 @@ export type AssetProvenanceReport = {
   assets: AssetProvenanceItem[];
 };
 
+export type FailureDetail = {
+  code: string;
+  stage: string;
+  type: string;
+  exit_code: number | null;
+  duration_seconds: number | null;
+  stderr_tail: string;
+  stderr_limit_bytes: number | null;
+};
+
 // Contrato 5 — Registro da produção
 export type ProductionRecord = {
   id: string;
@@ -193,6 +203,7 @@ export type ProductionRecord = {
   artifacts: ProductionArtifact[];
   review: ProductionReview | null;
   error?: string | null;
+  failure?: FailureDetail | null;
   demo_only?: boolean;
   real_voice?: boolean;
   speech_aligned?: boolean;
@@ -474,8 +485,48 @@ export function parseSrtTimestampToSeconds(raw: string): number | null {
   return hours * 3600 + minutes * 60 + seconds + ms / 1000;
 }
 
+/** Valida defensivamente o bloco aditivo `failure` sem quebrar a tela em payloads malformados. */
+export function parseFailureDetail(raw: unknown): FailureDetail | null {
+  if (!isRecord(raw)) return null;
+  const code = typeof raw.code === 'string' && raw.code.trim() ? raw.code.trim() : null;
+  const stage = typeof raw.stage === 'string' && raw.stage.trim() ? raw.stage.trim() : null;
+  const type = typeof raw.type === 'string' && raw.type.trim() ? raw.type.trim() : 'ProcessError';
+  const exitCode =
+    typeof raw.exit_code === 'number' && Number.isFinite(raw.exit_code)
+      ? Math.trunc(raw.exit_code)
+      : null;
+  const durationSeconds =
+    typeof raw.duration_seconds === 'number' &&
+    Number.isFinite(raw.duration_seconds) &&
+    raw.duration_seconds >= 0
+      ? raw.duration_seconds
+      : null;
+  const stderrTail = typeof raw.stderr_tail === 'string' ? raw.stderr_tail : '';
+  const stderrLimitBytes =
+    typeof raw.stderr_limit_bytes === 'number' &&
+    Number.isFinite(raw.stderr_limit_bytes) &&
+    raw.stderr_limit_bytes >= 0
+      ? Math.trunc(raw.stderr_limit_bytes)
+      : null;
+
+  if (!code && !stage && !stderrTail && exitCode === null && durationSeconds === null) {
+    return null;
+  }
+
+  return {
+    code: code ?? 'unknown',
+    stage: stage ?? '',
+    type,
+    exit_code: exitCode,
+    duration_seconds: durationSeconds,
+    stderr_tail: stderrTail,
+    stderr_limit_bytes: stderrLimitBytes,
+  };
+}
+
 export function adaptProductionRecord(raw: ProductionRecord): ProductionRecord {
   const artifacts = Array.isArray(raw.artifacts) ? raw.artifacts : [];
+  const failure = parseFailureDetail(raw.failure);
   const review = raw.review
     ? {
         ...raw.review,
@@ -500,6 +551,7 @@ export function adaptProductionRecord(raw: ProductionRecord): ProductionRecord {
   return {
     ...raw,
     artifacts,
+    failure,
     review,
     publishable: false,
   };
