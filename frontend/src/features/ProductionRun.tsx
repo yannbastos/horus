@@ -42,6 +42,7 @@ import ProductionProgress, { describeJobEvent, suggestFailureAction } from './pr
 import FailureDiagnostics from './production/FailureDiagnostics';
 import QualityReportPanel from './production/QualityReportPanel';
 import ProductionCompare from './production/ProductionCompare';
+import ProductionExportPanel from './production/ProductionExportPanel';
 import TimecodeReviewWorkspace from './production/TimecodeReviewWorkspace';
 
 const PRODUCTION_STAGES: ProductionStage[] = [
@@ -2345,6 +2346,8 @@ export default function ProductionRun({
               </div>
             </div>
           )}
+
+          <ProductionExportPanel connection={connection} production={activeProduction} />
         </div>
       )}
 
