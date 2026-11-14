@@ -8,7 +8,8 @@ from datetime import datetime, timezone
 from typing import Any, Mapping, Protocol
 from urllib.parse import parse_qsl, urlsplit
 
-_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+# Controles ASCII e C1, separadores de linha Unicode e marcas de direção bidirecional.
+_CONTROL = re.compile("[\x00-\x1f\x7f-\x9f  ‪-‮⁦-⁩]")
 # Parâmetros que carregam credencial; nunca aceitos em URL de candidato (ex.: Pixabay usa `?key=`).
 _SECRET_PARAMS = {"key", "api_key", "apikey", "token", "access_token", "auth", "authorization", "secret", "password"}
 
