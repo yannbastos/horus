@@ -19,7 +19,7 @@ const required = ['HORUS_PILOT_FACTORY', 'HORUS_ALIGNMENT_MODEL', ...(noOverlay 
 const missing = required.filter(name => !process.env[name]);
 if (missing.length) {
   console.error(`Variáveis ausentes: ${missing.join(', ')}. Veja docs/piloto-local.md.`);
-  process.exit(mode === 'run' && process.env.HORUS_E2E_STRICT !== '1' ? 0 : 2);
+  process.exit(2);
 }
 
 function freePort() {

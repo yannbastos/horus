@@ -6,8 +6,8 @@ import subprocess
 import pytest
 
 
-@pytest.mark.parametrize('strict,code', [('1', 2), ('0', 0)])
-def test_real_journey_missing_environment_is_strict_only(strict, code):
+@pytest.mark.parametrize('strict,code', [('1', 2), ('0', 2)])
+def test_real_journey_missing_environment_always_fails(strict, code):
     node = shutil.which('node')
     if not node:
         pytest.skip('Node indisponível')
