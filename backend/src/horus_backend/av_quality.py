@@ -21,6 +21,7 @@ import re
 import struct
 import wave
 import zlib
+from difflib import SequenceMatcher
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -40,6 +41,9 @@ SUBTITLE_TOLERANCE = 0.05       # cue dentro da cena medida
 SYNC_WARN, SYNC_FAIL = 0.30, 1.00   # desvio cue x palavras (s)
 COVERAGE_WARN, COVERAGE_FAIL = 0.98, 0.90
 BLACK_FAIL_SECONDS = 2.0
+FPS_TOLERANCE = 0.5            # mesma tolerância de fps do manifesto (`pilot_quality`)
+COVERAGE_LOOKAHEAD = 40         # janela do casamento guloso (só para textos enormes)
+COVERAGE_EXACT_CELLS = 4_000_000  # acima disso (palavras do roteiro x legendas) usa o guloso com janela
 _SRT_TIME = re.compile(r"(\d+):(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(\d+):(\d{2}):(\d{2})[,.](\d{3})")
 
 
@@ -85,17 +89,26 @@ def _usable(tool: Path | None) -> bool:
     return tool is not None and Path(tool).is_file()
 
 
+PROBE_REJECTED = "MP4 ilegível ou truncado (rejeitado pelo ffprobe)"
+
+
 async def _probe(ffprobe: Path | None, video: Path, timeout: float):
+    """(dict, "") ou (None, motivo). Motivo iniciado por `PROBE_REJECTED` = o ffprobe rodou e recusou o arquivo."""
     if not _usable(ffprobe):
         return None, "ffprobe indisponível"
     code, out, err = await _run([str(ffprobe), "-v", "error", "-print_format", "json", "-show_format", "-show_streams",
                                  str(video)], timeout)
+    if code is None:        # timeout/falha ao iniciar: não é veredito sobre o arquivo
+        return None, f"ffprobe falhou: {err.strip()[:200]}"
     if code != 0:
-        return None, f"ffprobe falhou: {err.strip()[:200] or code}"
+        return None, f"{PROBE_REJECTED}: {err.strip()[:200] or code}"
     try:
-        return json.loads(out), ""
+        probed = json.loads(out)
     except ValueError:
-        return None, "saída do ffprobe inválida"
+        return None, f"{PROBE_REJECTED}: saída do ffprobe inválida"
+    if not isinstance(probed, dict):
+        return None, f"{PROBE_REJECTED}: saída do ffprobe inválida"
+    return probed, ""
 
 
 def _num(text):
@@ -137,6 +150,7 @@ class _Context:
         self.hash_errors: list[str] = []
         self.section_wavs: dict[int, Path] = {}
         self.word_source: str | None = None   # `source` declarado em word-timings.json (None se ausente)
+        self.wav_error: str | None = None     # WAV da narração presente mas ilegível/truncado
 
     def read_json(self, relative: str):
         path, reason = _confined(self.root, relative)
@@ -228,17 +242,25 @@ def _check_integrity(ctx: _Context, video: Path | None) -> list[dict]:
 
 
 def _wav(path: Path | None, **kwargs):
+    """(estatísticas, motivo, corrompido). `corrompido=True`: o arquivo existe mas não pôde ser lido até o fim."""
     if path is None:
-        return None, "WAV da narração indisponível"
+        return None, "WAV da narração indisponível", False
     try:
-        return analyze_wav(path, **kwargs), ""
+        return analyze_wav(path, **kwargs), "", False
     except (wave.Error, ValueError, EOFError, OSError) as error:
-        return None, f"WAV ilegível: {error if isinstance(error, ValueError) else type(error).__name__}"
+        return None, f"WAV ilegível: {error if isinstance(error, ValueError) else type(error).__name__}", True
 
 
 def _check_audio_file(ctx: _Context) -> tuple[list[dict], dict | None]:
-    stats, reason = _wav(ctx.narration)
+    stats, reason, corrupt = _wav(ctx.narration)
     ids = ("audio_clipping", "audio_level", "audio_silence")
+    if stats is None and corrupt:
+        # Narração truncada/corrompida não é "não medido": o áudio entregue está quebrado e o relatório deve falhar.
+        ctx.wav_error = reason
+        return [_skip("audio_clipping", "audio", reason),
+                _check("audio_level", "audio", "fail", "measured", reason + "; a narração não pôde ser medida até o fim.",
+                       {"source": "wav_pcm16_python"}),
+                _skip("audio_silence", "audio", reason)], None
     if stats is None:
         return [_skip(i, "audio", reason or "WAV não é PCM 16 bits: não analisado") for i in ids], None
     source = "wav_pcm16_python"
@@ -270,6 +292,10 @@ def _check_audio_file(ctx: _Context) -> tuple[list[dict], dict | None]:
 
 def _check_durations(ctx: _Context, stats: dict | None, probe: dict | None, probe_reason: str) -> list[dict]:
     checks = []
+    if ctx.evidence is not None and stats is None and ctx.wav_error:
+        return [_check("duration_narration", "duration", "fail", "measured", ctx.wav_error + "; duração não conferida.",
+                       {"source": "wave_header"}),
+                _skip("duration_video_audio", "duration", "narração ilegível; comparação com o MP4 impossível")]
     if ctx.evidence is None or stats is None:
         return [_skip("duration_narration", "duration", "narração ou manifesto indisponível"),
                 _skip("duration_video_audio", "duration", "narração ou manifesto indisponível")]
@@ -296,7 +322,11 @@ def _check_durations(ctx: _Context, stats: dict | None, probe: dict | None, prob
                           "declared_seconds": _round(declared), "sections_measured": len(sections)},
                          {"tolerance_seconds": WAV_DURATION_TOLERANCE}))
     if probe is None:
-        checks.append(_skip("duration_video_audio", "duration", probe_reason or "ffprobe indisponível"))
+        if probe_reason.startswith(PROBE_REJECTED):
+            checks.append(_check("duration_video_audio", "duration", "fail", "measured", probe_reason,
+                                 {"source": "ffprobe"}))
+        else:
+            checks.append(_skip("duration_video_audio", "duration", probe_reason or "ffprobe indisponível"))
         return checks
     fmt = _num(probe.get("format", {}).get("duration"))
     audio = next((s for s in probe.get("streams", []) if s.get("codec_type") == "audio"), None)
@@ -310,6 +340,11 @@ def _check_durations(ctx: _Context, stats: dict | None, probe: dict | None, prob
             issues.append(f"vídeo − narração = {tail:.3f}s; esperado {RENDERER_TAIL}s ± {TAIL_TOLERANCE}s")
     if audio is None:
         issues.append("MP4 sem faixa de áudio")
+    else:
+        audio_seconds = _num(audio.get("duration"))
+        # A faixa de áudio do MP4 precisa conter a narração inteira; mais curta que isso é áudio cortado.
+        if audio_seconds is not None and stats["duration"] - audio_seconds > TAIL_TOLERANCE:
+            issues.append(f"faixa de áudio do MP4 mede {audio_seconds:.3f}s; narração tem {stats['duration']:.3f}s (áudio cortado)")
     if video_s is None:
         issues.append("MP4 sem faixa de vídeo")
     declared_video = ctx.evidence["video"]["duration_seconds"]
@@ -321,7 +356,43 @@ def _check_durations(ctx: _Context, stats: dict | None, probe: dict | None, prob
     checks.append(_check("duration_video_audio", "duration", "fail" if issues else "pass", "measured",
                          "; ".join(issues) if issues else "Vídeo = narração medida + cauda do renderer.",
                          measured, {"expected_tail_seconds": RENDERER_TAIL, "tolerance_seconds": TAIL_TOLERANCE}))
+    if video_s is not None:
+        format_check = _video_format(ctx.evidence["video"], video_s)
+        if format_check:
+            checks.append(format_check)
     return checks
+
+
+def _fps(stream: dict) -> float | None:
+    for key in ("avg_frame_rate", "r_frame_rate"):
+        text = stream.get(key)
+        if isinstance(text, str) and "/" in text:
+            numerator, _, denominator = text.partition("/")
+            top, bottom = _num(numerator), _num(denominator)
+            if top is not None and bottom:
+                return top / bottom
+        elif (value := _num(text)) is not None:
+            return value
+    return None
+
+
+def _video_format(declared: dict, stream: dict) -> dict | None:
+    """Resolução e fps do MP4 real contra o declarado no manifesto (o piloto mede o manifesto no próprio MP4)."""
+    width, height, fps = stream.get("width"), stream.get("height"), _fps(stream)
+    if type(width) is not int or type(height) is not int:
+        return None         # ffprobe sem dimensões: nada a afirmar
+    problems = []
+    if (width, height) != (declared["width"], declared["height"]):
+        problems.append(f"MP4 mede {width}x{height}; manifesto declara {declared['width']}x{declared['height']}")
+    declared_fps = declared["frames"] / declared["duration_seconds"]
+    if fps is not None and abs(fps - declared_fps) > FPS_TOLERANCE:
+        problems.append(f"MP4 mede {fps:.2f} fps; manifesto declara {declared_fps:.2f} fps")
+    return _check("video_format", "duration", "fail" if problems else "pass", "measured",
+                  "; ".join(problems) if problems else "Resolução e fps do MP4 conferem com o manifesto.",
+                  {"source": "ffprobe", "width": width, "height": height, "fps": _round(fps, 2),
+                   "declared_width": declared["width"], "declared_height": declared["height"],
+                   "declared_fps": _round(declared_fps, 2)},
+                  {"fps_tolerance": FPS_TOLERANCE})
 
 
 def _check_sync(ctx: _Context, stats: dict | None, srt: Path | None) -> list[dict]:
@@ -382,6 +453,25 @@ def _cues_vs_sections(cues: list[dict], scenes: list[dict]) -> dict:
                   {"tolerance_seconds": SUBTITLE_TOLERANCE}, timecode=worst)
 
 
+def _ordered_hits(script: list[str], subs: list[str]) -> int:
+    """Palavras do roteiro presentes, em ordem, nas legendas (subsequência comum).
+
+    Casamento por blocos (difflib): uma palavra ausente que reaparece mais adiante não arrasta o resto do roteiro,
+    como acontecia no casamento guloso. Textos enormes usam o guloso com janela, para limitar o custo.
+    """
+    if len(script) * len(subs) <= COVERAGE_EXACT_CELLS:
+        matcher = SequenceMatcher(None, script, subs, autojunk=False)
+        return sum(block.size for block in matcher.get_matching_blocks())
+    i = hit = 0
+    for token in script:
+        j, limit = i, min(len(subs), i + COVERAGE_LOOKAHEAD)
+        while j < limit and subs[j] != token:
+            j += 1
+        if j < limit:
+            hit, i = hit + 1, j + 1
+    return hit
+
+
 def _coverage(cues: list[dict], script_tokens: list[str] | None) -> dict:
     if not script_tokens:
         return _skip("script_coverage", "subtitles", "plan.json (texto do roteiro) ausente na produção")
@@ -389,13 +479,9 @@ def _coverage(cues: list[dict], script_tokens: list[str] | None) -> dict:
     subs = [norm(t) for cue in cues for t in cue["text"].split()]
     script = [norm(t) for t in script_tokens if norm(t)]
     subs = [t for t in subs if t]
-    i = hit = 0
-    for token in script:                       # subsequência em ordem
-        j = i
-        while j < len(subs) and subs[j] != token:
-            j += 1
-        if j < len(subs):
-            hit, i = hit + 1, j + 1
+    if not script:
+        return _skip("script_coverage", "subtitles", "roteiro sem palavras comparáveis (só pontuação)")
+    hit = _ordered_hits(script, subs)
     ratio = hit / len(script) if script else 0.0
     status = "pass" if ratio >= COVERAGE_WARN else "warn" if ratio >= COVERAGE_FAIL else "fail"
     return _check("script_coverage", "subtitles", status, "measured",
@@ -461,7 +547,7 @@ def _cues_vs_words(cues, words, method, timing_source) -> dict:
     for n, cue in enumerate(cues):
         tokens = cue["text"].split()
         chunk = words[position:position + len(tokens)]
-        if len(chunk) != len(tokens) or [w["text"] for w in chunk] != tokens:
+        if not tokens or len(chunk) != len(tokens) or [w["text"] for w in chunk] != tokens:
             unmatched += 1
             continue
         position += len(tokens)
