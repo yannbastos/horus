@@ -11,6 +11,34 @@ from horus_backend import diagnostics as d
 from horus_backend.narration import kokoro
 
 
+def test_slow_diagnostics_does_not_block_other_routes(prepared, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+    from horus_backend import api
+
+    started, release = Event(), Event()
+
+    def slow_diagnose(settings):
+        started.set()
+        assert release.wait(timeout=10), 'O teste não liberou o diagnóstico'
+        return {'checks': [], 'production': {'ready': True, 'missing': []}}
+
+    monkeypatch.setattr(api, 'diagnose', slow_diagnose)
+    with TestClient(create_app(prepared), base_url='http://127.0.0.1',
+                    headers={'Authorization': 'Bearer ' + prepared.token}) as client:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            diagnostic = executor.submit(client.get, '/v1/diagnostics')
+            try:
+                assert started.wait(timeout=5)
+                other = executor.submit(client.get, '/v1/jobs')
+                response = other.result(timeout=2)
+                assert response.status_code == 200
+                assert not diagnostic.done()
+            finally:
+                release.set()
+            assert diagnostic.result(timeout=5).status_code == 200
+
+
 @pytest.fixture
 def prepared(tmp_path, monkeypatch):
     files = ['scripts/.venv/' + ('Scripts/python.exe' if os.name == 'nt' else 'bin/python'),
