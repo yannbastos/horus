@@ -19,7 +19,7 @@ import sys
 import time
 import wave
 
-from .processes import OwnedProcess
+from .processes import OwnedProcess, ProductionFailure, ProductionTimeout
 from .narration.providers import PRODUCTION_ORIGINS
 
 def narration_disclosure(provider, voice):
@@ -48,29 +48,62 @@ async def synthesize(input_path):
         command = [sys.executable, '-m', 'horus_backend.narration.production_worker', str(input_path)]
     else:
         command = [sys.executable, str(Path(__file__).with_name('local_pilot_windows.py')), str(input_path)]
-    owned = await OwnedProcess.start(command, env=env, cwd=input_path.parent)
+    started = time.monotonic()
+    owned = None
+    private = [s['text'] for s in request.get('sections', [])]
     try:
+        owned = await OwnedProcess.start(command, env=env, cwd=input_path.parent)
         # Limite explícito de geração, nunca cortar texto para caber em estimativa.
         stdout, stderr = await asyncio.wait_for(owned.process.communicate(), timeout=1200)
         if owned.process.returncode:
             error_path = input_path.with_suffix('.error.json')
             if error_path.is_file():
-                raise ValueError(json.loads(error_path.read_text(encoding='utf-8'))['error'])
-            raise ValueError('SAPI/cenas locais indisponíveis; confirme voz offline pt-BR e política de scripts local, sem bypass.')
+                saved = json.loads(error_path.read_text(encoding='utf-8'))
+                code = saved['error'].split(':', 1)[0]
+                error = ProductionFailure(code, 'narration',
+                    f'Narração local falhou ({saved["error"]}); confira o modelo e a voz selecionada em Ajustes e crie nova produção.',
+                    started=started, stderr=stderr, private=private, exit_code=owned.process.returncode)
+                if isinstance(saved.get('failure'), dict):
+                    error.detail.update(saved['failure'])
+                raise error
+            raise ProductionFailure('local_narration_failed', 'narration',
+                'SAPI/cenas locais indisponíveis; confirme voz offline pt-BR em Ajustes e crie nova produção.',
+                started=started, stderr=stderr, private=private, exit_code=owned.process.returncode)
+    except (OSError, TimeoutError) as error:
+        failure = ProductionTimeout if isinstance(error, TimeoutError) else ProductionFailure
+        raise failure('narration_timeout' if isinstance(error, TimeoutError) else 'narration_unavailable',
+            'narration', 'Narração local não concluiu; confira a voz e o executável em Ajustes e crie nova produção.',
+            started=started, error=error) from None
     finally:
-        await owned.stop()
-        owned.close()
+        if owned:
+            await owned.stop()
+            owned.close()
 
 
 def wav_info(path):
-    with wave.open(str(path), 'rb') as audio:
-        if audio.getnchannels() != 1 or audio.getsampwidth() != 2 or audio.getcomptype() != 'NONE':
-            raise ValueError('Narração deve produzir WAV PCM mono de 16 bits.')
-        frames, rate = audio.getnframes(), audio.getframerate()
-        duration = frames / rate
-        if not math.isfinite(duration) or duration <= 0:
-            raise ValueError('WAV sem duração positiva.')
-        return audio.getparams(), duration
+    started = time.monotonic()
+    try:
+        with wave.open(str(path), 'rb') as audio:
+            if audio.getnchannels() != 1 or audio.getsampwidth() != 2 or audio.getcomptype() != 'NONE':
+                raise ProductionFailure('narration_invalid_wav', 'narration',
+                    'Narração deve produzir WAV PCM mono de 16 bits; confira a voz e tente nova produção.', started=started)
+            frames, rate = audio.getnframes(), audio.getframerate()
+            duration = frames / rate
+            if not math.isfinite(duration) or duration <= 0:
+                raise ProductionFailure('narration_empty_wav', 'narration',
+                    'WAV sem duração positiva; confira a voz selecionada e tente nova produção.', started=started)
+            # Cabeçalho e duração declarados não comprovam que o WAV terminou de ser escrito.
+            remaining = frames * 2
+            while remaining:
+                data = audio.readframes(min(65536, remaining // 2))
+                if not data:
+                    raise ProductionFailure('narration_truncated_wav', 'narration',
+                        'Narração WAV incompleta; revise a falha da voz e crie nova produção.', started=started)
+                remaining -= len(data)
+            return audio.getparams(), duration
+    except (OSError, EOFError, wave.Error) as error:
+        raise ProductionFailure('narration_invalid_wav', 'narration',
+            'Narração WAV ausente ou inválida; confira a voz e tente nova produção.', started=started, error=error) from None
 
 
 def signal_measurements(path):
@@ -158,15 +191,25 @@ async def owned_tool(command, *, cwd, timeout=1800):
     """Execução local com posse, ambiente mínimo, timeout e encerramento da árvore."""
     env = {k:v for k,v in os.environ.items() if k.upper() in
            {'PATH','SYSTEMROOT','WINDIR','TEMP','TMP','COMSPEC','PATHEXT'}}
-    owned = await OwnedProcess.start([str(arg) for arg in command], cwd=cwd, env=env)
+    owned = None
+    started = time.monotonic()
     try:
+        owned = await OwnedProcess.start([str(arg) for arg in command], cwd=cwd, env=env)
         stdout, stderr = await asyncio.wait_for(owned.process.communicate(), timeout=timeout)
         if owned.process.returncode:
-            raise ValueError('Ferramenta local falhou: '+stderr.decode('utf-8',errors='replace')[-2000:])
+            raise ProductionFailure('local_tool_failed', 'render',
+                'FFmpeg/ferramenta local falhou; confira a instalação e o diagnóstico antes de criar nova produção.',
+                started=started, stderr=stderr, exit_code=owned.process.returncode)
         return stdout + stderr
+    except (OSError, TimeoutError) as error:
+        failure = ProductionTimeout if isinstance(error, TimeoutError) else ProductionFailure
+        raise failure('local_tool_timeout' if isinstance(error, TimeoutError) else 'local_tool_unavailable',
+            'render', 'FFmpeg/ferramenta local não concluiu; confira o executável configurado e tente uma nova produção.',
+            started=started, error=error) from None
     finally:
-        await owned.stop()
-        owned.close()
+        if owned:
+            await owned.stop()
+            owned.close()
 
 
 def configure_caption_overlay(root, folder):

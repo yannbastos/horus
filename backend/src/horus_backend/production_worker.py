@@ -17,6 +17,31 @@ import time
 import wave
 import zlib
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from horus_backend.processes import ProductionFailure, failure_detail, sanitized_tail
+
+CURRENT_STAGE = 'prepare'
+
+
+def private_inputs(root):
+    """Textos da produção para redação antes de truncar qualquer diagnóstico."""
+    try:
+        plan = json.loads((root/'plan.json').read_text(encoding='utf-8-sig'))
+    except (OSError, ValueError):
+        return []
+    values = []
+    def collect(item):
+        if isinstance(item, dict):
+            for key, value in item.items():
+                if key in {'text', 'narration', 'narracao', 'heading', 'title', 'titulo', 'fala', 'texto'} and isinstance(value, str):
+                    values.append(value)
+                collect(value)
+        elif isinstance(item, list):
+            for value in item:
+                collect(value)
+    collect(plan)
+    return values
+
 
 def write_json(path, value):
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -25,18 +50,33 @@ def write_json(path, value):
 def run_factory_render(root, command, environment):
     """Preserva diagnóstico local de falha; o erro público continua controlado."""
     log = root/'render-stderr.log'
-    with log.open('wb') as stderr:
-        completed = subprocess.run(command, env=environment, stdout=subprocess.DEVNULL, stderr=stderr)
+    started = time.monotonic()
+    private = private_inputs(root)
+    try:
+        completed = subprocess.run(command, env=environment, stdout=subprocess.DEVNULL,
+                                   stderr=subprocess.PIPE, timeout=3300)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        log.write_text(sanitized_tail(getattr(error, 'stderr', ''), private=private), encoding='utf-8')
+        raise ProductionFailure('render_timeout' if isinstance(error, subprocess.TimeoutExpired) else 'render_unavailable',
+            'render', 'Render da fábrica não concluiu; confira as dependências locais e crie nova produção após revisar os arquivos.',
+            started=started, error=error, private=private) from None
+    tail = sanitized_tail(completed.stderr, private=private)
+    # Nunca criar log bruto no disco, inclusive se o backend morrer durante o render.
+    log.write_text(tail, encoding='utf-8')
     if completed.returncode:
-        with log.open('rb') as stderr:
-            stderr.seek(max(0, log.stat().st_size-8192))
-            tail = stderr.read().decode('utf-8', errors='replace')
-        write_json(root/'render-failure.json', {'schema_version':1,
-            'exit_code':completed.returncode, 'stderr_tail':tail, 'stderr_limit_bytes':8192})
+        detail = failure_detail('render_failed', 'render', started=started, stderr=tail,
+                                exit_code=completed.returncode)
+        if (root/'result.json').is_file():
+            saved = json.loads((root/'result.json').read_text(encoding='utf-8')).get('failure')
+            if isinstance(saved, dict):
+                detail['tool_failure'] = saved
+        write_json(root/'render-failure.json', {'schema_version':1, **detail})
     return completed
 
 
 def stage(value):
+    global CURRENT_STAGE
+    CURRENT_STAGE = value
     print(json.dumps({"stage": value}), flush=True)
 
 
@@ -341,10 +381,10 @@ def render(root, source):
 def unavailable_message(error):
     """Causa real de uma falha de SO/tempo no piloto local; nunca atribui tudo à voz SAPI nem expõe caminhos."""
     if isinstance(error, TimeoutError):
-        return 'Piloto local indisponivel: tempo limite esgotado em uma etapa local (síntese, alinhamento ou FFmpeg).'
+        return 'Piloto local indisponivel: tempo limite esgotado em uma etapa local (síntese, alinhamento ou FFmpeg); confira as dependências e crie nova produção após revisar os arquivos.'
     detail = (error.strerror or '').strip() if isinstance(error, OSError) else ''
     return ('Piloto local indisponivel: falha de sistema em uma etapa local (' + type(error).__name__
-            + (': ' + detail[:120] if detail else '') + '); confira HORUS_FFMPEG, HORUS_ALIGNMENT_MODEL e a voz escolhida.')
+            + (': ' + sanitized_tail(detail, limit=120) if detail else '') + '); confira HORUS_FFMPEG, HORUS_ALIGNMENT_MODEL e a voz escolhida.')
 
 
 def factory_missing(source, python, browser, ffprobe, ffmpeg):
@@ -369,6 +409,7 @@ def main():
     args = parser.parse_args()
     root, source = args.root, args.factory_source
     if args.factory_render:
+        stage('render')
         render(root, source)
         return
     from horus_backend.production_contract import ProductionPlan, render_srt
@@ -385,10 +426,16 @@ def main():
         try:
             artifacts.extend(prepare(root, folder, plan, alignment_model=os.environ.get("HORUS_ALIGNMENT_MODEL"), progress=stage))
         except ValueError as error:
-            write_json(root / 'result.json', {'blocked': True, 'error': 'Piloto local bloqueado: ' + str(error), 'artifacts': artifacts})
+            detail = getattr(error, 'detail', failure_detail('local_pilot_blocked', CURRENT_STAGE, error=error))
+            detail['stage'] = CURRENT_STAGE
+            write_json(root / 'result.json', {'blocked': True,
+                'error': 'Piloto local bloqueado: ' + sanitized_tail(str(error), private=private_inputs(root)) +
+                         ' Confira as dependências e a voz selecionada antes de criar nova produção.',
+                'failure': detail, 'artifacts': artifacts})
             return
         except (OSError, TimeoutError) as error:
-            write_json(root / 'result.json', {'blocked': True, 'error': unavailable_message(error), 'artifacts': artifacts})
+            write_json(root / 'result.json', {'blocked': True, 'error': unavailable_message(error),
+                'failure':getattr(error, 'detail', failure_detail('local_pilot_unavailable', CURRENT_STAGE, error=error)), 'artifacts': artifacts})
             return
     else:
         rate = 16000
@@ -440,7 +487,8 @@ def main():
         ffprobe, ffmpeg = tool('ffprobe'), tool('ffmpeg')
         missing = factory_missing(source, python, browser, ffprobe, ffmpeg)
         if missing:
-            write_json(root / 'result.json', {'blocked': True, 'error': 'Prepare separadamente, sem downloads no job: ' + '; '.join(missing), 'artifacts': artifacts})
+            write_json(root / 'result.json', {'blocked': True, 'error': 'Prepare separadamente, sem downloads no job: ' + '; '.join(missing),
+                'failure':failure_detail('render_dependencies_missing', 'render'), 'artifacts': artifacts})
             return
         # Somente código/locks/dependências Remotion; nenhum public-dir/mídia do operador.
         remotion = root / 'remotion'
@@ -471,7 +519,8 @@ def main():
             proxy_thread.join()
         if completed.returncode:
             artifacts.append({'kind':'manifest','relative_path':'render-failure.json'})
-            write_json(root / 'result.json', {'error': 'Render offline da fábrica falhou; consulte render-failure.json para o diagnóstico local.', 'artifacts': artifacts})
+            write_json(root / 'result.json', {'error': 'Render offline da fábrica falhou; consulte render-failure.json, confira as dependências e crie nova produção.',
+                'failure':json.loads((root/'render-failure.json').read_text(encoding='utf-8')), 'artifacts': artifacts})
             sys.exit(1)
         try:
             network_summary(root, rejected)
@@ -512,5 +561,20 @@ def main():
     write_json(root / 'result.json', {'artifacts': artifacts, 'demo_only': True, 'real_voice': False, 'speech_aligned': False, **metadata})
 
 
+def entrypoint():
+    started = time.monotonic()
+    try:
+        main()
+    except Exception as error:
+        root = Path(sys.argv[1])
+        detail = getattr(error, 'detail', failure_detail('production_stage_failed', CURRENT_STAGE,
+                            started=started, error=error, private=private_inputs(root)))
+        message = (str(error) if isinstance(error, ProductionFailure) else
+            f'Produção falhou na etapa {CURRENT_STAGE}; confira as dependências locais e o diagnóstico antes de criar nova produção.')
+        write_json(root/'result.json', {'error':message, 'failure':detail, 'artifacts':[]})
+        return 1
+    return 0
+
+
 if __name__ == '__main__':
-    main()
+    sys.exit(entrypoint())
