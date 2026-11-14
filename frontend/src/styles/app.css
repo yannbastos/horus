@@ -354,4 +354,11 @@ main::-webkit-scrollbar-track,
 .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .compare-row-changed td, .compare-row-changed th { background: color-mix(in srgb, var(--Warn) 8%, transparent); }
 @media(max-width: 900px) { .compare-grid { grid-template-columns: 1fr; } }
+.guide-panel { padding: 16px; gap: 12px; }
+.guide-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.guide-step { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 12px; border: 1px solid var(--Line); background: var(--Background); }
+.guide-step.current { border-color: var(--AccentInk); }
+.guide-step-info { display: flex; align-items: baseline; gap: 10px; min-width: 0; flex: 1 1 260px; }
+.guide-step-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.guide-reopen-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 14px; border: 1px solid var(--Line); background: var(--Sunken); }
 @media(prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }

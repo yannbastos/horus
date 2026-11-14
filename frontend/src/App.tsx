@@ -64,7 +64,7 @@ export default function App() {
           : page === 'settings' ? <Settings theme={theme} setTheme={setTheme} connection={connection} connect={candidate => { setConnection(candidate); setBackendError(''); }} hermes={hermes} onHermesStatus={setHermes} />
           : page === 'library' ? <Library connection={connection} />
           : page === 'transcription' ? null
-          : page === 'production-center' ? <div className="page"><ProductionCenter connection={connection} onOpenProduction={() => setPage('production')} /></div>
+          : page === 'production-center' ? <div className="page"><ProductionCenter connection={connection} onOpenProduction={() => setPage('production')} onOpenSettings={() => setPage('settings')} /></div>
           : page === 'radar' ? <div className="page"><SectionHeader section={sections.radar} /><Radar connection={connection} onOpenProduction={() => setPage('production')} /></div>
           : <div className="page"><SectionHeader section={sections[page]} />{page === 'production' && <EditorialWorkflows connection={connection} onOpenCenter={() => setPage('production-center')} />}{(page === 'production' || page === 'channels') && <JobWorkspace connection={connection} />}<Preview section={sections[page]} /></div>}
         {(transcriptionOpened || page === 'transcription') && <Transcription connection={connection} hidden={page !== 'transcription'} />}
