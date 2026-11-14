@@ -233,7 +233,15 @@ def align_with_report(script_text: str, asr_words: Sequence[Mapping[str, Any]], 
     if not tokens:
         raise ValueError("roteiro sem palavras.")
     line_starts = [m.end() for m in re.finditer("\n", script_text)]
-    section_of = [bounds[bisect.bisect_right(line_starts, offset)] for offset, _ in tokens]   # (número, início, fim)
+    # Limites efetivos: nunca além da duração do áudio nem antes do fim da seção anterior (as seções podem se sobrepor
+    # em até `SECTION_EPS` ou terminar um pouco depois do áudio; palavras interpoladas não podem herdar esse excesso).
+    effective, floor = [], 0.0
+    for number, start, end in bounds:
+        low = max(start, floor)
+        high = max(min(end, duration_seconds), low)
+        effective.append((number, low, high))
+        floor = high
+    section_of = [effective[bisect.bisect_right(line_starts, offset)] for offset, _ in tokens]   # (número, início, fim)
 
     asr = clean_asr_words(asr_words, duration_seconds)
     asr_subs = [(norm, k) for k, word in enumerate(asr) for norm in expand(word["text"])]
