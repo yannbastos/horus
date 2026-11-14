@@ -1,5 +1,74 @@
 # Piloto audiovisual local — HOR-054 / HOR-056
 
+## Meu primeiro vídeo com roteiro próprio — HOR-133
+
+1. Em **Radar**, carregue a demonstração e use **Iniciar análise** com Hermes simulado. Em **Editorial**, autorize a execução simulada e aprove a proposta resultante. Isso não chama o Hermes real.
+2. Na revisão de roteiro, use o editor manual quando disponível na sua versão: escreva título e 3 a 6 seções, com gancho, desenvolvimento e conclusão. Para 60 a 120 segundos, comece com cerca de 150 a 200 palavras; a duração final depende da voz. Aprove a versão escrita.
+3. Em **Ajustes → Narração**, confira a disponibilidade e ouça uma prévia. Na produção, selecione `local_pilot`, voz `kokoro/pf_dora` ou Microsoft Maria e qualidade `final` (1080×1920). Quando a tela ainda não expuser uma opção, use o corpo da API abaixo.
+4. Aguarde o MP4 e o QC. Na revisão da produção, assista, ouça, confira legendas e registre a verificação de licenças. Aprove pelo hash do vídeo; erros de QC exigem reconhecimento explícito. Aprovar o piloto mantém `demo_only=true` e `publishable=false`.
+
+API local autenticada (cada POST exige uma `Idempotency-Key` nova; conserve-a para repetir o mesmo pedido):
+
+```text
+POST /v1/workflows/{workflow_id}/scripts
+{"source":"manual","expected_revision":1,"proposal_artifact_id":"ID_DA_PROPOSTA_APROVADA","document":{"title":"Meu vídeo","sections":[{"id":"inicio","kind":"hook","heading":"Gancho","narration":"Seu texto de abertura."},{"id":"meio","kind":"body","heading":"Desenvolvimento","narration":"Seu desenvolvimento."},{"id":"fim","kind":"conclusion","heading":"Conclusão","narration":"Seu encerramento."}]}}
+POST /v1/scripts/{script_id}/review
+{"expected_version":1,"decision":"approve"}
+POST /v1/scripts/{script_id}/productions
+{"expected_version":1,"mode":"local_pilot","render_quality":"final","narration":{"provider":"kokoro","voice_id":"pf_dora"}}
+GET /v1/productions/{production_id}
+POST /v1/productions/{production_id}/review
+{"decision":"approve","artifact_sha256":"SHA256_DO_MP4","acknowledge_quality_errors":true,"notes":[]}
+```
+
+Use revisão/versão/IDs retornados pela API. Para Maria, consulte `GET /v1/narration/providers` e informe `provider: "windows_sapi"` e o `voice_id` instalado. A verificação de licença é separada: `GET/POST /v1/productions/{production_id}/license-reviews`; cada decisão referencia `asset_id` e `asset_sha256`, termos e evidência, sem modificar o manifesto original. Nunca registre uma licença como verificada sem conferi-la. O reconhecimento de QC só é necessário quando `quality_acknowledgement_required=true`.
+
+Ensaio reproduzível com texto fictício realista, números, sigla e frases longas, pelas APIs públicas (sem editar o banco). Requer os recursos locais já preparados abaixo e Kokoro; não baixa modelos:
+
+```powershell
+$env:HORUS_PILOT_FACTORY = "$env:TEMP/horus-m4/backend-factory-demo"
+$env:HORUS_ALIGNMENT_MODEL = "$env:LOCALAPPDATA/Horus/models/whisper"
+$env:HORUS_FFMPEG = "$env:LOCALAPPDATA/Horus/tools/ffmpeg/n8.1.3-35-gf1acb0a266/ffmpeg-n8.1.3-35-gf1acb0a266-win64-gpl-8.1/bin/ffmpeg.exe"
+$env:HORUS_KOKORO_PYTHON = "$env:LOCALAPPDATA/Horus/tools/kokoro-proof/venv/Scripts/python.exe"
+$env:HORUS_KOKORO_MODEL_DIR = "$env:LOCALAPPDATA/Horus/tools/kokoro-proof/model"
+& backend/.venv/Scripts/python.exe -m pytest backend/tests/test_manual_script_flow.py -q -s --basetemp "$env:TEMP/hm-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+```
+
+O teste registra `manual-flow-report.json` para cada voz, com tempos monotônicos, hashes, duração física, alinhamento e QC. A aprovação e a verificação de uma cena são fictícias de teste; não substituem escuta humana nem autorizam a licença da voz. O roteiro humano usa `origin=human`, `authored_by=human`, `simulated=false`; somente a proposta permanece simulada. A disponibilidade e os rótulos do editor dependem do incremento de interface; este ensaio valida a API, não a tela.
+
+### Normalização da narração Kokoro
+
+Com `HORUS_FFMPEG` configurado, o worker normaliza Kokoro em duas passagens `loudnorm` antes do alinhamento e do render: alvo −16 LUFS, teto −1,5 dBTP. O limitador pode usar ganho dinâmico; `narration-normalization.json` registra loudness antes/depois, ganho solicitado, ganho efetivo de loudness, método, SHA do FFmpeg e hashes dos WAVs. A quantidade de amostras e os limites das seções são preservados. Os WAVs originais e o intermediário normalizado ficam registrados como artefatos locais; o QC continua medindo o áudio final e usa os mesmos limiares. Sem FFmpeg explícito, não se presume normalização. Maria mantém seu áudio original. Se a fábrica terminar com erro, `render-failure.json` preserva o código de saída e os últimos 8192 bytes do diagnóstico local; o texto público do erro continua controlado.
+
+### Evidências do ensaio manual — 13/11/2026
+
+Roteiro fictício original em pt-BR com **193 palavras, 4 seções**, números (`2026`, `12`, `30`, `50%`), sigla `ONG` e frases longas. As duas execuções abaixo partiram do Radar/Hermes simulado, passaram pela autorização e aprovação da proposta, criação manual pública, aprovação do roteiro e render `final`; registraram uma licença fictícia de cena, aprovação fictícia do MP4 por hash e persistência após reinício. Nenhuma decisão do teste constitui aceite editorial ou licença real da voz.
+
+| Medição | Kokoro `pf_dora` | Microsoft Maria |
+|---|---:|---:|
+| Narração WAV | 73,225 s | 111,123311 s |
+| MP4 1080×1920 / 30 fps | 74,033333 s / 2221 frames | 111,933333 s / 3358 frames |
+| Palavras casadas / interpoladas | 190 / 3 (98,45%) | 192 / 1 (99,48%) |
+| Maior trecho interpolado | 1,02 s | 1,24 s |
+| ASR | 207,45 s | 51,58 s |
+| Render da fábrica / render com verificações | 310,015 / 384,515 s | 238,656 / 325,422 s |
+| Sobreposição libass | 45,359 s | 57,969 s |
+| Fluxo até aprovação pela API | 854,594 s | 418,688 s |
+| LUFS medidos no MP4 | −16,56 | −23,85 |
+
+Fonte: relógios monotônicos de `manual-flow-report.json`, `alignment-report.json`, `render/validation.json` e `caption-overlay.json`; duração física de WAV/ffprobe e loudness do QC. São medições desta máquina; houve outros ensaios concorrentes, especialmente no caso Kokoro. Não são estimativas nem benchmark de desempenho.
+
+- Kokoro MP4 SHA-256: `e9ebd159d95e7595f22fb5aefe272afc2e92d0fbb2bd99d10f35c1918c32a670`; WAV: `7a9ade7f270247b07fc072a82f47f12b13569b77d5676908f430de134232978f`. Relatório em `%TEMP%/hmh-f06bd277/test_real_manual_script_to_fin0/manual-flow-report.json`, produção `154bcba89b344b21bb909f485b034b22`.
+- Maria MP4 SHA-256: `d53b7a456635dc4138fcaede722266df02dc5fb24333909897ca5320833850ba`; WAV: `43493a8ab667ed0656371bb8208a46c3855c2088be264f8fb5dc1a7045ace7a8`. Relatório em `%TEMP%/hmr-d95d0354/test_real_manual_script_to_fin0/manual-flow-report.json`, produção `d97d525ad5a245fda807257fd4c85859`.
+
+QC persistido: **warn somente por proveniência não verificada**, sem erros; loudness, integridade e sincronização passaram nas duas vozes. SRT versus palavras: desvio médio/máximo 0,000 s; os tempos interpolados continuam identificados como interpolados. Kokoro não casou “Vila Aurora queira”; Maria não casou “milagrosa,”. Os números e a sigla tiveram correspondência. Nenhum limiar foi alterado. O validador independente também retornou `blocking_errors=[]`; sua checagem estrutural com `forced_alignment` conserva um aviso legado de contenção não verificada, embora o QC físico confira a contenção por palavras. A normalização Kokoro mediu −26,81 → −16,52 LUFS no WAV, ganho efetivo de loudness de 10,29 dB; o original permanece preservado.
+
+Ensaios preliminares: o texto de 233 palavras passou com Kokoro, mas ultrapassou 120 s com Maria (131,162766 s); o exemplo foi encurtado, sem cortar áudio nem mudar o limite do teste. O ensaio Hermes simulado terminou com **1 failed, 5 passed em 2354,15 s**: Maria falhou no renderer sem diagnóstico disponível; após preservar stderr no worker, a repetição isolada acima passou (**1 passed em 419,42 s**), sem reocorrência. A causa da falha anterior permanece indeterminada. O ensaio editorial legado com 193 palavras também passou nas duas vozes (**5 passed em 1533,42 s**).
+
+Validações focadas: `python -m pytest backend/tests/test_manual_script_flow.py backend/tests/test_local_pilot.py backend/tests/test_production.py backend/tests/test_scripts_manual.py backend/tests/test_narration_kokoro.py backend/tests/test_av_quality.py backend/tests/test_pilot_quality.py backend/tests/test_speech_alignment.py -q --tb=short`: **276 passed, 13 skipped em 73,95 s**. Normalização física, diagnósticos de falha e preservação dos originais têm testes. Uma passagem concorrente da suíte terminou com **1 failed, 1107 passed, 15 skipped em 397,86 s**, com falha em `test_radar_workflow.py::test_cancel` (`completed` em vez de `cancelled`); a repetição isolada passou (**1 passed em 2,14 s**), sem alterar o Radar/Hermes. Suíte completa final, sem renders concorrentes: `& backend/.venv/Scripts/python.exe -m pytest backend/tests -q --tb=short`: **1110 passed, 15 skipped, 1 warning em 485,99 s**. O aviso é do Pydantic no teste deliberado de tipo inválido (`simulated="false"`). Os skips incluem os ensaios reais opt-in, executados separadamente acima. `git diff --check` aprovado.
+
+Limites: API e arquivos reais verificados; frontend, instalador, Linux, naturalidade vocal e aceite humano editorial não foram validados. Um frame foi inspecionado e estava legível, sem recorte aparente; isso não é inspeção integral nem escuta. `publishable=false` e `demo_only=true` permanecem.
+
 ## Provedor e voz na produção — HOR-132, 13/11/2026
 
 O pedido aceita `narration: {provider, voice_id}` opcional em `local_pilot`.

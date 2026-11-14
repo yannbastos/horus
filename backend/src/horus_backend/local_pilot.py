@@ -247,6 +247,73 @@ def align_narration(wav, script_text, *, sections, engine, model_dir):
                          model_dir=Path(model_dir), environment=environment, timeout=900)
 
 
+def normalize_narration(root, folder, sections, executable):
+    """Normaliza Kokoro antes do alinhamento; preserva contagem de amostras e originais."""
+    original = folder/'narration-original'
+    original.mkdir()
+    source = original/'combined.wav'
+    records, params, total = [], None, 0
+    with wave.open(str(source), 'wb') as combined:
+        for section in sections:
+            path = folder/f"section-{section['n']}.wav"
+            current, _ = wav_info(path)
+            if params is None:
+                params = current
+                combined.setparams(params)
+            elif current[:3] != params[:3]:
+                raise ValueError('Formatos WAV por seção incompatíveis.')
+            saved = original/path.name
+            shutil.copyfile(path, saved)
+            with wave.open(str(saved), 'rb') as wav:
+                combined.writeframes(wav.readframes(wav.getnframes()))
+            records.append({'path':path, 'original':saved, 'frames':current.nframes})
+            total += current.nframes
+    def run_filter(path, filter_value, output=None):
+        command = [executable, '-hide_banner', '-nostats', '-y', '-i', path, '-af', filter_value]
+        command += (['-ar', str(params.framerate), '-ac', str(params.nchannels), '-c:a', 'pcm_s16le', output]
+                    if output else ['-f', 'null', '-'])
+        raw = asyncio.run(owned_tool(command, cwd=root, timeout=120))
+        blocks = re.findall(rb'\{[^{}]*"input_i"[^{}]*\}', raw)
+        if not blocks:
+            raise ValueError('FFmpeg não forneceu medição loudnorm.')
+        result = json.loads(blocks[-1])
+        if not all(math.isfinite(float(result[k])) for k in ('input_i','input_tp','input_lra','input_thresh','target_offset')):
+            raise ValueError('Narração sem loudness finita para normalização.')
+        return result
+    base = 'loudnorm=I=-16:TP=-1.5:LRA=11'
+    measured = run_filter(source, base+':print_format=json')
+    normalized = folder/'narration-normalized.wav'
+    filter_value = base + ''.join(':'+name+'='+measured[key] for name,key in (
+        ('measured_I','input_i'),('measured_TP','input_tp'),('measured_LRA','input_lra'),
+        ('measured_thresh','input_thresh'),('offset','target_offset')))
+    # loudnorm pode usar limitação dinâmica de pico; não declarar ganho constante.
+    rendered = run_filter(source, filter_value+':linear=true:print_format=json'+
+                          f',aresample={params.framerate},apad=whole_len={total},atrim=end_sample={total}', normalized)
+    current, _ = wav_info(normalized)
+    if current[:3] != params[:3] or current.nframes != total:
+        raise ValueError('Normalização alterou formato ou duração das seções.')
+    final = run_filter(normalized, base+':print_format=json')
+    with wave.open(str(normalized), 'rb') as wav:
+        for record in records:
+            with wave.open(str(record['path']), 'wb') as section:
+                section.setparams(params)
+                section.writeframes(wav.readframes(record['frames']))
+    report = {'schema_version':1, 'method':'ffmpeg_loudnorm_two_pass', 'target_lufs':-16,
+        'ffmpeg_sha256':sha(Path(executable)),
+        'true_peak_limit_dbtp':-1.5, 'input_lufs':float(measured['input_i']),
+        'output_lufs':float(final['input_i']), 'output_true_peak_dbtp':float(final['input_tp']),
+        'requested_gain_db':round(-16-float(measured['input_i']), 3),
+        'effective_loudness_gain_db':round(float(final['input_i'])-float(measured['input_i']), 3),
+        'normalization_type':rendered['normalization_type'], 'sample_count_unchanged':True,
+        'original_sha256':sha(source), 'normalized_sha256':sha(normalized),
+        'sections':[{'relative_path':r['path'].relative_to(root).as_posix(),
+                     'original_relative_path':r['original'].relative_to(root).as_posix(),
+                     'original_sha256':sha(r['original']), 'sha256':sha(r['path']), 'frames':r['frames']}
+                    for r in records]}
+    write(root/'narration-normalization.json', report)
+    return report
+
+
 def prepare(root, folder, plan, *, alignment_model=None, progress=None):
     """Produz insumos medidos, preservando plan.json aprovado como estimativa original."""
     sections = [{'n':line['n'], 'text':' '.join(line['narracao'].split()), 'heading':scene['heading'],
@@ -267,12 +334,19 @@ def prepare(root, folder, plan, *, alignment_model=None, progress=None):
     origin = voice.get('origin', 'system_voice')
     if selection and (engine != selection['provider'] or voice.get('voice_id') != selection['voice_id']):
         raise ValueError('Síntese diverge do provedor/voz registrados no plano.')
+    normalization = (normalize_narration(root, folder, sections, Path(os.environ['HORUS_FFMPEG']))
+                     if engine == 'kokoro' and os.environ.get('HORUS_FFMPEG') else None)
     synthesis = {'engine':engine, 'voice':voice['voice'], 'voice_id':voice.get('voice_id'),
                  'origin':origin, 'model':voice.get('model')}
     attribution = engine + '; ' + voice['voice'] + '; licença não verificada.'
     cursor, lines, subtitles, words, assets, evidence_assets, scenes = 0.0, [], [], [], [], [], []
     generated = datetime.now(timezone.utc).isoformat()
     paths = []
+    if normalization:
+        paths.append({'kind':'manifest','relative_path':'narration-normalization.json'})
+        paths.append({'kind':'audio','relative_path':(folder/'narration-normalized.wav').relative_to(root).as_posix()})
+        paths.extend({'kind':'audio','relative_path':p.relative_to(root).as_posix()}
+                     for p in sorted((folder/'narration-original').glob('*.wav')))
     def add_asset(path, asset_id, origin, license, attribution):
         evidence_assets.append({'id':asset_id,'relative_path':path.relative_to(root).as_posix(),
             'sha256':sha(path),'origin':origin,'license':license,'attribution':attribution,'generated_at':generated})

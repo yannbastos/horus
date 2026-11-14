@@ -21,6 +21,20 @@ def write_json(path, value):
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def run_factory_render(root, command, environment):
+    """Preserva diagnóstico local de falha; o erro público continua controlado."""
+    log = root/'render-stderr.log'
+    with log.open('wb') as stderr:
+        completed = subprocess.run(command, env=environment, stdout=subprocess.DEVNULL, stderr=stderr)
+    if completed.returncode:
+        with log.open('rb') as stderr:
+            stderr.seek(max(0, log.stat().st_size-8192))
+            tail = stderr.read().decode('utf-8', errors='replace')
+        write_json(root/'render-failure.json', {'schema_version':1,
+            'exit_code':completed.returncode, 'stderr_tail':tail, 'stderr_limit_bytes':8192})
+    return completed
+
+
 def stage(value):
     print(json.dumps({"stage": value}), flush=True)
 
@@ -332,14 +346,15 @@ def main():
                'npm_config_offline': 'true', 'npm_config_yes': 'false', 'HORUS_DEMO_BROWSER': str(browser),
                'HORUS_DEMO_FFPROBE': ffprobe, 'HORUS_DEMO_FFMPEG': ffmpeg}
         try:
-            completed = subprocess.run([str(python), str(Path(__file__).resolve()), str(root), '--factory-source', str(source), '--factory-render'], env=env,
-                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            completed = run_factory_render(root,
+                [str(python), str(Path(__file__).resolve()), str(root), '--factory-source', str(source), '--factory-render'], env)
         finally:
             proxy.shutdown()
             proxy.server_close()
             proxy_thread.join()
         if completed.returncode:
-            write_json(root / 'result.json', {'error': 'Render offline da fábrica falhou; verifique dependências locais, codec e browser.', 'artifacts': artifacts})
+            artifacts.append({'kind':'manifest','relative_path':'render-failure.json'})
+            write_json(root / 'result.json', {'error': 'Render offline da fábrica falhou; consulte render-failure.json para o diagnóstico local.', 'artifacts': artifacts})
             sys.exit(1)
         try:
             network_summary(root, rejected)
