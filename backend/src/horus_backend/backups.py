@@ -16,6 +16,7 @@ exigem decisão do operador.
 from __future__ import annotations
 
 import logging
+import json
 import os
 import re
 import sqlite3
@@ -145,8 +146,105 @@ def remove_backups(database: Path, *, retention_days: int | None, dry_run: bool 
     return report
 
 
+def _readonly(path: Path):
+    """Sem sidecars criados nem WAL ignorado: exige arquivo estável/checkpointado."""
+    if path.is_symlink() or not path.is_file():
+        raise ValueError('Banco ausente ou link; escolha um arquivo SQLite regular.')
+    for suffix in ('-wal', '-journal'):
+        sidecar = path.with_name(path.name + suffix)
+        if sidecar.exists() and sidecar.stat().st_size:
+            raise ValueError('Há WAL/journal pendente; feche o aplicativo e conclua o checkpoint antes de verificar.')
+    return sqlite3.connect(f'{path.resolve().as_uri()}?mode=ro&immutable=1', uri=True)
+
+
+def _inspect(db) -> dict:
+    integrity = [row[0] for row in db.execute('PRAGMA integrity_check')]
+    version = db.execute('PRAGMA user_version').fetchone()[0]
+    tables = {}
+    if integrity == ['ok']:
+        for (name,) in db.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").fetchall():
+            quoted = '"' + name.replace('"', '""') + '"'
+            tables[name] = db.execute(f'SELECT COUNT(*) FROM {quoted}').fetchone()[0]
+    return dict(ok=integrity == ['ok'], integrity_check=integrity, user_version=version, tables=tables)
+
+
+def inspect_database(path: Path) -> dict:
+    try:
+        with closing(_readonly(path)) as db:
+            return _inspect(db)
+    except (OSError, ValueError, sqlite3.Error) as error:
+        # Mensagens SQLite e caminhos privados não são propagados.
+        detail = str(error) if isinstance(error, ValueError) else 'Banco ilegível ou corrompido; preserve o original e escolha outra cópia.'
+        return dict(ok=False, integrity_check=[], user_version=None, tables={}, error=detail)
+
+
+def verify(database: Path) -> dict:
+    """Compara snapshots locais; diferenças de contagem não significam corrupção."""
+    current = inspect_database(database)
+    backups = []
+    for entry in inventory(database):
+        snapshot = inspect_database(entry.path)
+        comparison = None
+        if snapshot['ok'] and current['ok']:
+            comparison = {name: {'backup': snapshot['tables'].get(name), 'current': current['tables'].get(name),
+                                 'delta': current['tables'][name] - snapshot['tables'][name]
+                                 if name in current['tables'] and name in snapshot['tables'] else None}
+                          for name in sorted(snapshot['tables'].keys() | current['tables'].keys())}
+        backups.append(dict(name=entry.name, **snapshot, comparison=comparison))
+    return dict(ok=current['ok'] and all(b['ok'] for b in backups), current=current, backups=backups)
+
+
+def restore(backup: Path, destination: Path) -> dict:
+    """Copia SQLite íntegro para arquivo exclusivo; nunca migra ou altera a origem."""
+    if destination.exists() or destination.is_symlink() or any(
+            destination.with_name(destination.name + suffix).exists()
+            or destination.with_name(destination.name + suffix).is_symlink() for suffix in SIDECARS):
+        raise ValueError('Destino ou sidecar já existe; escolha um arquivo novo, nunca o banco operacional.')
+    with closing(_readonly(backup)) as source:
+        before = _inspect(source)
+        if not before['ok']:
+            raise ValueError('Backup sem integridade; nenhum destino foi criado.')
+        # O_EXCL evita sobrescrever inclusive se outro processo criar o destino.
+        with destination.open('xb'):
+            pass
+        with closing(sqlite3.connect(destination)) as target:
+            source.backup(target)
+            after = _inspect(target)
+        if after != before:
+            raise ValueError('A cópia não passou na verificação; preserve os arquivos e não use o destino.')
+    return dict(ok=True, **{key: after[key] for key in ('integrity_check', 'user_version', 'tables')},
+                instruction='Com o aplicativo fechado, guarde o horus.sqlite3 atual e seus sidecars juntos em uma pasta de segurança; copie manualmente o arquivo restaurado para horus.sqlite3 na pasta de dados configurada, sem misturar sidecars antigos. A abertura pelo Hórus pode migrar a cópia; confira os dados antes de qualquer troca definitiva.')
+
+
+def verification_main(argv: list[str]) -> int:
+    import argparse
+    parser = argparse.ArgumentParser(description='Verificação e restauração local sem sobrescrita.')
+    parser.add_argument('command', choices=('verify', 'restore'))
+    parser.add_argument('database', type=Path)
+    parser.add_argument('--to', type=Path)
+    parser.add_argument('--json', action='store_true', help='Somente JSON, sem resumo textual.')
+    args = parser.parse_args(argv)
+    if (args.command == 'restore') != (args.to is not None):
+        parser.error('restore exige --to; verify não aceita --to')
+    try:
+        report = verify(args.database) if args.command == 'verify' else restore(args.database, args.to)
+    except (OSError, ValueError, sqlite3.Error) as error:
+        report = dict(ok=False, error=str(error) if isinstance(error, ValueError)
+                      else 'Operação recusada ou banco ilegível; nenhum arquivo existente foi sobrescrito.')
+    if not args.json:
+        print('Verificação concluída.' if report['ok'] else 'Verificação falhou; preserve os arquivos e confira os erros.')
+        if args.command == 'verify':
+            print(f"Backups encontrados: {len(report.get('backups', []))}; diferenças de contagem podem ser esperadas entre versões.")
+        if report.get('instruction'):
+            print(report['instruction'])
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+    return 0 if report['ok'] else 1
+
+
 def main(argv: list[str]) -> int:
     """`python -m horus_backend.backups <banco> [--apply]`: lista (dry-run); remove só com `--apply` e a variável de ambiente."""
+    if argv and argv[0] in {'verify', 'restore'}:
+        return verification_main(argv)
     args = [arg for arg in argv if arg != "--apply"]
     if len(args) != 1:
         print("uso: python -m horus_backend.backups <caminho do horus.sqlite3> [--apply]", file=sys.stderr)

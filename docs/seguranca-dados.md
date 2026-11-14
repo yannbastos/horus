@@ -56,6 +56,37 @@ Decisão do idealizador pendente: executar (ou não) o `VACUUM` único nos banco
 
 Os backups `horus.backup-v<versão>-<token>.sqlite3` ficam na pasta do banco. `backups.py` oferece inventário e política; **nada é removido automaticamente** e o ciclo de retenção nunca os acessa.
 
+### Verificar e ensaiar a restauração
+
+Com o aplicativo fechado e o SQLite checkpointado, execute:
+
+```powershell
+python -m horus_backend.backups verify "caminho/horus.sqlite3"
+python -m horus_backend.backups verify "caminho/horus.sqlite3" --json
+python -m horus_backend.backups restore "caminho/horus.backup-v9-TOKEN.sqlite3" --to "caminho/horus-restaurado.sqlite3"
+```
+
+`verify` lê cada backup e o banco atual em modo imutável/somente leitura, sem criar
+sidecars: executa `integrity_check`, informa `user_version`, contagens por tabela
+e diferenças frente ao atual. WAL/journal não vazio bloqueia a leitura para não
+ignorar transações pendentes; feche o app e conclua o checkpoint antes de repetir.
+Diferenças de contagem e tabelas entre versões são informativas, não corrupção.
+A saída padrão contém resumo e JSON; `--json` em ambos os comandos emite apenas JSON.
+Código de saída 0 indica sucesso, 1 indica falha de verificação/operação e 2 erro de uso.
+
+`restore` exige destino novo, recusa arquivo ou sidecar existente e verifica a
+integridade, versão e contagens após a cópia SQLite. Não migra nem modifica a
+origem, não substitui o banco operacional e não apaga arquivos. Se houver falha
+após criar o destino, preserve a cópia incompleta para análise e escolha outro nome.
+Com o app **fechado**, guarde o `horus.sqlite3` atual e seus sidecars juntos em uma
+pasta de segurança. Copie manualmente o arquivo restaurado para `horus.sqlite3`
+na pasta de dados configurada, sem misturar os sidecars antigos; a abertura pelo
+backend pode migrar essa cópia.
+Confirme os dados no app antes de qualquer troca definitiva; integridade SQLite e
+contagens não provam a disponibilidade das mídias externas referenciadas no banco.
+
+### Inventário e retenção
+
 - **Inventário:** nome, versão de origem, tamanho, idade, e, abrindo o backup somente leitura (`mode=ro&immutable=1`, sem criar `-wal`/`-shm`), `json_extract(payload,'$.radar')` para contar workflows com cópia do Radar (total e ainda não redigidos). Backup ilegível mostra `?`.
 - **Regras, na ordem:**
   1. versão do backup **maior** que o schema atual: mantido sempre;
