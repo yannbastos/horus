@@ -119,7 +119,7 @@ ALLOWLIST: dict[str, dict[str, str]] = {
 ALLOWLIST["narration/providers.py"]["call:subprocess.run"] = "F-08"
 
 # Frontend: só o cliente HTTP dos serviços fala com a API local (CSP do Tauri limita connect-src a loopback).
-FRONTEND_FETCH_FILES = {"services/api.ts", "services/narration.ts", "services/production.ts"}
+FRONTEND_FETCH_FILES = {"services/api.ts", "services/narration.ts", "services/production.ts", "services/exports.ts"}  # F-14
 
 
 def _scan_tree() -> dict[str, set[str]]:
