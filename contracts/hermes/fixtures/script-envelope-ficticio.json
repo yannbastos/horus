@@ -1,0 +1,19 @@
+{
+  "contract_version": "1.0",
+  "stage": "script",
+  "task_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa2",
+  "attempt_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2",
+  "revision": 1,
+  "proposal": {
+    "proposal_id": "P1",
+    "title": "Por que cidades antigas tinham ruas tortas (DADOS FICTÍCIOS)",
+    "premise": "Ruas irregulares eram decisões de engenharia, não acaso.",
+    "angle": "Comparar um mapa medieval com um planejamento moderno.",
+    "format": "short"
+  },
+  "allowed_sources": [
+    {"source_id": "D1", "title": "Mapa medieval comentado (fictício)"},
+    {"source_id": "D2", "title": "Planejamento urbano moderno (fictício)"}
+  ],
+  "constraints": {"target_duration_seconds": 60, "min_sections": 3, "max_sections": 6, "language": "pt-BR"}
+}

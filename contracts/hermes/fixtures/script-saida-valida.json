@@ -1,0 +1,11 @@
+{
+  "contract_version": "1.0",
+  "task_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa2",
+  "title": "Por que as ruas antigas eram tortas",
+  "sections": [
+    {"id": "s1", "kind": "hook", "heading": "Gancho", "narration": "Você já se perguntou por que as ruas antigas não eram retas?", "source_ids": []},
+    {"id": "s2", "kind": "body", "heading": "O mapa medieval", "narration": "Cada curva protegia do vento e dificultava invasões.", "source_ids": ["D1"]},
+    {"id": "s3", "kind": "body", "heading": "O contraste moderno", "narration": "O planejamento moderno prioriza fluxo e linha reta.", "source_ids": ["D2"]},
+    {"id": "s4", "kind": "conclusion", "heading": "Fechamento", "narration": "A próxima rua torta que você ver tem uma razão.", "source_ids": []}
+  ]
+}

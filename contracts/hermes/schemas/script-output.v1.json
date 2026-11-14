@@ -1,0 +1,89 @@
+{
+  "$defs": {
+    "ScriptOutputSection": {
+      "additionalProperties": false,
+      "properties": {
+        "heading": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Heading",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,31}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "hook",
+            "body",
+            "conclusion"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "narration": {
+          "maxLength": 8000,
+          "minLength": 1,
+          "title": "Narration",
+          "type": "string"
+        },
+        "source_ids": {
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,31}$",
+            "type": "string"
+          },
+          "maxItems": 50,
+          "title": "Source Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "heading",
+        "narration"
+      ],
+      "title": "ScriptOutputSection",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Saída esperada do Hermes. Sem `simulated`/`schema_version` do documento: quem decide é o Hórus.",
+  "properties": {
+    "contract_version": {
+      "const": "1.0",
+      "title": "Contract Version",
+      "type": "string"
+    },
+    "sections": {
+      "items": {
+        "$ref": "#/$defs/ScriptOutputSection"
+      },
+      "maxItems": 30,
+      "minItems": 3,
+      "title": "Sections",
+      "type": "array"
+    },
+    "task_id": {
+      "pattern": "^[a-f0-9]{32}$",
+      "title": "Task Id",
+      "type": "string"
+    },
+    "title": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Title",
+      "type": "string"
+    }
+  },
+  "required": [
+    "contract_version",
+    "task_id",
+    "title",
+    "sections"
+  ],
+  "title": "ScriptOutput",
+  "type": "object"
+}

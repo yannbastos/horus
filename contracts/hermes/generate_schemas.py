@@ -10,6 +10,9 @@ ROOT = Path(__file__).parent
 sys.path.insert(0, str(ROOT.parent.parent / 'backend' / 'src'))
 
 from horus_backend.hermes_contract.models import SCHEMAS  # noqa: E402
+from horus_backend.hermes_contract.script import SCRIPT_SCHEMAS  # noqa: E402
+
+ALL_SCHEMAS = {**SCHEMAS, **SCRIPT_SCHEMAS}
 
 
 def render(model) -> str:
@@ -17,6 +20,6 @@ def render(model) -> str:
 
 
 if __name__ == "__main__":
-    for name, model in SCHEMAS.items():
+    for name, model in ALL_SCHEMAS.items():
         (ROOT / "schemas" / name).write_text(render(model), encoding="utf-8", newline="\n")
         print(f"schemas/{name}")

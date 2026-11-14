@@ -25,6 +25,18 @@ Na raiz do Hórus:
 | `fixtures/` | Envelope e resultados **fictícios** (URLs `example.org`) |
 | `tests/` | Schemas, validador e fluxo HTTP simulado |
 
+## Etapa `script` (roteiro) — somente contrato, sem executor
+
+**Estado:** contrato e validador prontos, exercitados apenas contra o Hermes simulado; nenhum executor, rota ou chamada real usa a etapa (HOR-134, fase F0 do plano Hermes real).
+
+- `hermes_contract/script.py`: envelope mínimo `ScriptRunEnvelope` (proposta aprovada, ids e títulos das fontes permitidas, duração alvo e limites de seções), saída `ScriptOutput` e `validate_script_output`, que converte a saída num `ScriptDocument` já validado por `script_contract`. Schemas: `schemas/script-run-envelope.v1.json` e `schemas/script-output.v1.json` (gerados por `generate_schemas.py`).
+- Saída inválida é rejeitada com `Issue` (`schema`, `task_mismatch`, `section_count`, `unknown_source`, `script_contract`); nada é truncado, completado ou reescrito. Fonte fora da lista permitida é rejeitada.
+- O envelope usa `extra=forbid`, limites de tamanho e rejeita caminhos locais e credenciais nos textos. Não há campo para perfil, dataset, métricas nem outros projetos; a ausência de dados alheios é garantida pela estrutura, não por análise semântica do texto.
+- Títulos de fontes são dados: ficam só no `input` JSON, nunca nas `instructions`. Defesa contra injeção é a validação estrita da saída, não a filtragem do texto.
+- Origem: a conversão usa `origin="simulated"` (padrão) ou `"human"`; a origem `hermes` ainda não existe em `script_contract` e fica para a etapa de backend.
+- Não valida adequação da narração à duração alvo (seria heurística); apenas número de seções.
+- O `fake_server.py` não precisou de mudança: já devolve qualquer texto como saída. Testes: `tests/test_script_stage.py` e `backend/tests/test_hermes_script_contract.py`.
+
 ## O que foi conferido no código instalado do Hermes 0.23.1
 
 Leitura de `gateway/platforms/api_server_runs.py`, `api_server_run_idempotency.py`, `api_server.py` e `hermes_cli/tools_config.py`, sem executar o gateway:
