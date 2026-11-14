@@ -40,6 +40,7 @@ import ProductionLaunchOptions from './production/ProductionLaunchOptions';
 import ProductionGlossary, { termTitle } from './production/ProductionGlossary';
 import ProductionProgress, { describeJobEvent, suggestFailureAction } from './production/ProductionProgress';
 import QualityReportPanel from './production/QualityReportPanel';
+import ProductionCompare from './production/ProductionCompare';
 import TimecodeReviewWorkspace from './production/TimecodeReviewWorkspace';
 
 const PRODUCTION_STAGES: ProductionStage[] = [
@@ -2324,65 +2325,11 @@ export default function ProductionRun({
         </div>
       )}
 
-      {productions.length > 0 && (
-        <div
-          role="region"
-          aria-label="Histórico de execuções da produção"
-          style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}
-        >
-          <p className="eyebrow">HISTÓRICO DE EXECUÇÕES DESTE ROTEIRO ({productions.length})</p>
-          {productions.map(item => {
-            const isSelected = activeProduction?.id === item.id;
-            return (
-              <div
-                key={item.id}
-                className="fact-item"
-                style={{
-                  borderColor: isSelected ? 'var(--AccentInk)' : undefined,
-                }}
-              >
-                <div className="row spread">
-                  <div className="row" style={{ flexWrap: 'wrap' }}>
-                    <span className="eyebrow accent" style={{ overflowWrap: 'anywhere' }}>
-                      {item.id}
-                    </span>
-                    <span
-                      className={`tag ${item.mode === 'simulated' ? 'simulated' : 'demo'}`}
-                    >
-                      {MODE_LABELS[item.mode] || item.mode}
-                    </span>
-                    <span className={`tag ${STATUS_TONE[item.status] || ''}`}>
-                      {STATUS_LABELS[item.status] || item.status}
-                    </span>
-                    {item.review && (
-                      <span
-                        className={`tag ${item.review.decision === 'approve' ? 'good' : 'bad'}`}
-                      >
-                        {REVIEW_DECISION_LABELS[item.review.decision]}
-                      </span>
-                    )}
-                  </div>
-                  <div className="row" style={{ flexWrap: 'wrap' }}>
-                    <small className="muted">
-                      Etapa: {STAGE_LABELS[item.stage] || item.stage} · {formatDate(item.created_at)}
-                    </small>
-                    {productions.length > 1 && (
-                      <button
-                        className={`button ${isSelected ? 'active' : ''}`}
-                        type="button"
-                        style={{ padding: '4px 10px', minHeight: '28px', fontSize: '10px' }}
-                        onClick={() => void handleInspectProduction(item)}
-                      >
-                        {isSelected ? 'Exibindo' : 'Inspecionar'}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+      <ProductionCompare
+        productions={productions}
+        activeProductionId={activeProduction?.id ?? null}
+        onOpenProduction={item => void handleInspectProduction(item)}
+      />
     </article>
   );
 }
